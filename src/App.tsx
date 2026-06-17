@@ -90,6 +90,7 @@ type Sale = {
   customer_id: string | null;
   subtotal: number;
   tax: number;
+  discount_amount: number;
   total: number;
   status: string;
   created_at: string;
@@ -191,6 +192,8 @@ function App() {
   const [cartQty, setCartQty] = useState("1");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
   const [amountTendered, setAmountTendered] = useState("");
+  const [posDiscountType, setPosDiscountType] = useState<"percent" | "fixed">("percent");
+  const [posDiscountValue, setPosDiscountValue] = useState("");
   const [sales, setSales] = useState<Sale[]>([]);
   const [voidingId, setVoidingId] = useState("");
   const [reorderSuppliers, setReorderSuppliers] = useState<Record<string, string>>({});
@@ -516,7 +519,7 @@ function App() {
   async function loadSales() {
     const { data, error } = await supabase
       .from("sales")
-      .select("id, customer_id, subtotal, tax, total, status, created_at")
+      .select("id, customer_id, subtotal, tax, discount_amount, total, status, created_at")
       .order("created_at", { ascending: false })
       .limit(20);
     if (error) { console.error(error); return; }
@@ -878,10 +881,15 @@ function App() {
     }
 
     const subtotal = cart.reduce((sum, c) => sum + c.line_total, 0);
+    const discountVal = Math.max(0, Number(posDiscountValue) || 0);
+    const discountAmount = posDiscountType === "percent"
+      ? Math.min(subtotal, subtotal * (discountVal / 100))
+      : Math.min(subtotal, discountVal);
+    const finalTotal = Math.max(0, subtotal - discountAmount);
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .insert({ subtotal, tax: 0, total: subtotal, status: "completed", customer_id: posCustomerId || null })
+      .insert({ subtotal, tax: 0, discount_amount: discountAmount, total: finalTotal, status: "completed", customer_id: posCustomerId || null })
       .select("id")
       .single();
 
@@ -901,7 +909,7 @@ function App() {
 
     const { error: payErr } = await supabase
       .from("payments")
-      .insert({ sale_id: sale.id, payment_method: paymentMethod, amount: subtotal });
+      .insert({ sale_id: sale.id, payment_method: paymentMethod, amount: finalTotal });
 
     if (payErr) { console.error(payErr); }
 
@@ -932,6 +940,8 @@ function App() {
 
     setCart([]);
     setAmountTendered("");
+    setPosDiscountValue("");
+    setPosDiscountType("percent");
     setPosCustomerPhone("");
     setPosCustomerId(null);
     setPosCustomerName("");
@@ -1462,15 +1472,65 @@ function App() {
                 ))}
               </tbody>
               <tfoot>
-                <tr>
-                  <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total</td>
-                  <td style={{ fontWeight: "bold" }}>
-                    ${cart.reduce((s, c) => s + c.line_total, 0).toFixed(2)}
-                  </td>
-                  <td></td>
-                </tr>
+                {(() => {
+                  const subtotal = cart.reduce((s, c) => s + c.line_total, 0);
+                  const discountVal = Math.max(0, Number(posDiscountValue) || 0);
+                  const discountAmt = posDiscountType === "percent"
+                    ? Math.min(subtotal, subtotal * (discountVal / 100))
+                    : Math.min(subtotal, discountVal);
+                  const finalTotal = Math.max(0, subtotal - discountAmt);
+                  return (
+                    <>
+                      <tr>
+                        <td colSpan={3} style={{ textAlign: "right" }}>Subtotal</td>
+                        <td>${subtotal.toFixed(2)}</td>
+                        <td></td>
+                      </tr>
+                      {discountAmt > 0 && (
+                        <tr>
+                          <td colSpan={3} style={{ textAlign: "right", color: "#16a34a" }}>Discount</td>
+                          <td style={{ color: "#16a34a" }}>−${discountAmt.toFixed(2)}</td>
+                          <td></td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total</td>
+                        <td style={{ fontWeight: "bold" }}>${finalTotal.toFixed(2)}</td>
+                        <td></td>
+                      </tr>
+                    </>
+                  );
+                })()}
               </tfoot>
             </table>
+          </div>
+
+          {/* Discount controls */}
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
+            <span style={{ fontWeight: "bold", fontSize: "13px" }}>Discount:</span>
+            <select
+              value={posDiscountType}
+              onChange={(e) => { setPosDiscountType(e.target.value as "percent" | "fixed"); setPosDiscountValue(""); }}
+              style={{ padding: "6px 8px", fontSize: "13px" }}
+            >
+              <option value="percent">% Off</option>
+              <option value="fixed">$ Off</option>
+            </select>
+            <input
+              type="number"
+              min="0"
+              step={posDiscountType === "percent" ? "1" : "0.01"}
+              max={posDiscountType === "percent" ? "100" : undefined}
+              placeholder={posDiscountType === "percent" ? "e.g. 10" : "e.g. 2.00"}
+              value={posDiscountValue}
+              onChange={(e) => setPosDiscountValue(e.target.value)}
+              style={{ width: "110px", padding: "6px 8px", fontSize: "13px" }}
+            />
+            {posDiscountValue && (
+              <button onClick={() => setPosDiscountValue("")} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}>
+                Clear
+              </button>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
@@ -1491,24 +1551,32 @@ function App() {
                 onChange={() => setPaymentMethod("card")}
               />{" "}Card
             </label>
-            {paymentMethod === "cash" && (
-              <>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Amount tendered"
-                  value={amountTendered}
-                  onChange={(e) => setAmountTendered(e.target.value)}
-                  style={{ width: "150px", padding: "8px" }}
-                />
-                {Number(amountTendered) >= cart.reduce((s, c) => s + c.line_total, 0) && amountTendered !== "" && (
-                  <span style={{ fontWeight: "bold", color: "#15803d" }}>
-                    Change: ${(Number(amountTendered) - cart.reduce((s, c) => s + c.line_total, 0)).toFixed(2)}
-                  </span>
-                )}
-              </>
-            )}
+            {paymentMethod === "cash" && (() => {
+              const subtotal = cart.reduce((s, c) => s + c.line_total, 0);
+              const discountVal = Math.max(0, Number(posDiscountValue) || 0);
+              const discountAmt = posDiscountType === "percent"
+                ? Math.min(subtotal, subtotal * (discountVal / 100))
+                : Math.min(subtotal, discountVal);
+              const finalTotal = Math.max(0, subtotal - discountAmt);
+              return (
+                <>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Amount tendered"
+                    value={amountTendered}
+                    onChange={(e) => setAmountTendered(e.target.value)}
+                    style={{ width: "150px", padding: "8px" }}
+                  />
+                  {Number(amountTendered) >= finalTotal && amountTendered !== "" && (
+                    <span style={{ fontWeight: "bold", color: "#15803d" }}>
+                      Change: ${(Number(amountTendered) - finalTotal).toFixed(2)}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
             <button
               onClick={handleCompleteSale}
               style={{
@@ -3206,6 +3274,11 @@ function App() {
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span>Subtotal</span><span>${Number(receipt.sale.subtotal).toFixed(2)}</span>
                   </div>
+                  {Number(receipt.sale.discount_amount) > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}>
+                      <span>Discount</span><span>−${Number(receipt.sale.discount_amount).toFixed(2)}</span>
+                    </div>
+                  )}
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span>Tax</span><span>${Number(receipt.sale.tax).toFixed(2)}</span>
                   </div>
