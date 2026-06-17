@@ -89,6 +89,7 @@ type CartItem = {
 
 type Sale = {
   id: string;
+  cashier_id: string | null;
   customer_id: string | null;
   subtotal: number;
   tax: number;
@@ -143,6 +144,7 @@ type StockCountLine = {
 type DrawerSession = {
   id: string;
   business_id: string;
+  cashier_id: string | null;
   status: string;
   opening_float: number;
   opened_at: string;
@@ -168,6 +170,15 @@ type LoyaltyTransaction = {
   sale_id: string | null;
   points: number;
   type: string;
+  created_at: string;
+};
+
+type Employee = {
+  id: string;
+  business_id: string;
+  name: string;
+  role: string;
+  status: string;
   created_at: string;
 };
 
@@ -272,6 +283,12 @@ function App() {
   const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
   const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [bulkImporting, setBulkImporting] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [activeCashierId, setActiveCashierId] = useState<string | null>(null);
+  const [activeCashierName, setActiveCashierName] = useState("");
+  const [newEmpName, setNewEmpName] = useState("");
+  const [newEmpRole, setNewEmpRole] = useState<"cashier" | "manager">("cashier");
+  const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
 
   useEffect(() => {
     loadBusinessId();
@@ -285,6 +302,7 @@ function App() {
     loadCustomers();
     loadLoyaltyTransactions();
     loadDrawerSession();
+    loadEmployees();
   }, []);
 
   async function loadBusinessId() {
@@ -467,7 +485,7 @@ function App() {
     setDrawerLoading(true);
     const { data, error } = await supabase
       .from('drawer_sessions')
-      .insert({ business_id: businessId, opening_float: float, status: 'open', opened_at: new Date().toISOString() })
+      .insert({ business_id: businessId, opening_float: float, status: 'open', opened_at: new Date().toISOString(), cashier_id: activeCashierId || null })
       .select('*')
       .single();
     if (error) { setMessage('Failed to open drawer: ' + error.message); setDrawerLoading(false); return; }
@@ -675,7 +693,7 @@ function App() {
   async function loadSales() {
     const { data, error } = await supabase
       .from("sales")
-      .select("id, customer_id, subtotal, tax, discount_amount, total, status, created_at")
+      .select("id, cashier_id, customer_id, subtotal, tax, discount_amount, total, status, created_at")
       .order("created_at", { ascending: false });
     if (error) { console.error(error); return; }
     setSales((data as Sale[]) || []);
@@ -686,6 +704,15 @@ function App() {
       .from("payments")
       .select("sale_id, payment_method, amount");
     setAllPayments((data as EodPayment[]) ?? []);
+  }
+
+  async function loadEmployees() {
+    const { data, error } = await supabase
+      .from("employees")
+      .select("id, business_id, name, role, status, created_at")
+      .order("created_at", { ascending: false });
+    if (error) { console.error(error); return; }
+    setEmployees((data as Employee[]) || []);
   }
 
   async function loadPurchaseOrders() {
@@ -1040,6 +1067,11 @@ function App() {
     if (cart.length === 0) return;
     setMessage("");
 
+    if (employees.filter(e => e.status === "active").length > 0 && !activeCashierId) {
+      setMessage("Select a cashier before completing the sale");
+      return;
+    }
+
     for (const item of cart) {
       const product = products.find((p) => p.product_id === item.product_id);
       if (!product || item.quantity > product.quantity_on_hand) {
@@ -1063,7 +1095,7 @@ function App() {
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .insert({ subtotal, tax: 0, discount_amount: discountAmount, total: finalTotal, status: "completed", customer_id: posCustomerId || null })
+      .insert({ subtotal, tax: 0, discount_amount: discountAmount, total: finalTotal, status: "completed", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
       .select("id")
       .single();
 
@@ -1346,6 +1378,35 @@ function App() {
     await loadSuppliers();
   }
 
+  async function handleAddEmployee(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newEmpName.trim() || !businessId) return;
+    const { error } = await supabase.from("employees").insert({
+      business_id: businessId,
+      name: newEmpName.trim(),
+      role: newEmpRole,
+      status: "active",
+    });
+    if (error) { console.error(error); setMessage("Failed to add employee: " + error.message); return; }
+    setNewEmpName("");
+    setNewEmpRole("cashier");
+    setMessage("Employee added");
+    await loadEmployees();
+  }
+
+  async function handleToggleEmployeeStatus(emp: Employee) {
+    const newStatus = emp.status === "active" ? "inactive" : "active";
+    const { error } = await supabase.from("employees").update({ status: newStatus }).eq("id", emp.id);
+    if (error) { console.error(error); setMessage("Status update failed"); return; }
+    if (activeCashierId === emp.id && newStatus === "inactive") {
+      setActiveCashierId(null);
+      setActiveCashierName("");
+      setMessage("Employee deactivated — cashier deselected");
+    } else {
+      setMessage(newStatus === "active" ? "Employee activated" : "Employee deactivated");
+    }
+    await loadEmployees();
+  }
 
   async function loadProducts() {
     const { data, error } = await supabase
@@ -1670,6 +1731,28 @@ function App() {
           Add to Cart
         </button>
       </form>
+
+      {employees.filter(e => e.status === "active").length > 0 && (
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
+          <select
+            value={activeCashierId ?? ""}
+            onChange={(e) => {
+              const emp = employees.find(em => em.id === e.target.value);
+              setActiveCashierId(emp ? emp.id : null);
+              setActiveCashierName(emp ? emp.name : "");
+            }}
+            style={{ padding: "8px", flex: "1 1 200px", borderColor: !activeCashierId ? "#dc2626" : "#ccc" }}
+          >
+            <option value="">— Select cashier —</option>
+            {employees.filter(e => e.status === "active").map(e => (
+              <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
+            ))}
+          </select>
+          {activeCashierName && (
+            <span style={{ color: "#1d4ed8", fontWeight: "bold" }}>Cashier: {activeCashierName}</span>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
         <input
@@ -3046,6 +3129,23 @@ function App() {
 
       <h2 style={{ marginTop: "40px" }}>Sales History</h2>
 
+      {employees.length > 0 && (
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px" }}>
+          <label style={{ fontSize: "14px", color: "#555" }}>Filter by cashier:</label>
+          <select
+            value={salesCashierFilter}
+            onChange={(e) => setSalesCashierFilter(e.target.value)}
+            style={{ padding: "6px 10px" }}
+          >
+            <option value="all">All cashiers</option>
+            <option value="none">No cashier</option>
+            {employees.map(e => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div style={{ overflowX: "auto", marginBottom: "40px" }}>
         <table border={1} cellPadding={10} style={{ width: "100%" }}>
           <thead>
@@ -3054,18 +3154,24 @@ function App() {
               <th>Total</th>
               <th>Tax</th>
               <th>Status</th>
+              <th>Cashier</th>
               <th>Created At</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {sales.length === 0 ? (
-              <tr><td colSpan={6}>No sales yet</td></tr>
+              <tr><td colSpan={7}>No sales yet</td></tr>
             ) : (
-              sales.map((s) => {
+              sales.filter(s => {
+                if (salesCashierFilter === "all") return true;
+                if (salesCashierFilter === "none") return !s.cashier_id;
+                return s.cashier_id === salesCashierFilter;
+              }).map((s) => {
                 const rowStyle = s.status === "voided" || s.status === "returned"
                   ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
                 const statusColor = s.status === "returned" ? "#7c3aed" : s.status === "voided" ? "#999" : "inherit";
+                const cashierName = s.cashier_id ? (employees.find(e => e.id === s.cashier_id)?.name ?? s.cashier_id.slice(0, 8)) : "—";
                 return (
                   <React.Fragment key={s.id}>
                     <tr style={rowStyle}>
@@ -3073,6 +3179,7 @@ function App() {
                       <td>${Number(s.total).toFixed(2)}</td>
                       <td>${Number(s.tax).toFixed(2)}</td>
                       <td style={{ color: statusColor, fontWeight: s.status === "returned" ? "bold" : "inherit" }}>{s.status}</td>
+                      <td style={{ color: "#555" }}>{cashierName}</td>
                       <td>{new Date(s.created_at).toLocaleString()}</td>
                       <td style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <button onClick={() => handlePrintReceipt(s)} style={{ padding: "3px 10px", cursor: "pointer" }}>Print</button>
@@ -3093,7 +3200,7 @@ function App() {
                     </tr>
                     {returningSaleId === s.id && (
                       <tr key={`${s.id}-return`}>
-                        <td colSpan={6} style={{ background: "#faf5ff", padding: "16px", border: "1px solid #c4b5fd" }}>
+                        <td colSpan={7} style={{ background: "#faf5ff", padding: "16px", border: "1px solid #c4b5fd" }}>
                           <strong style={{ color: "#7c3aed" }}>Process Return — Sale {s.id.slice(0, 8)}</strong>
                           {returnLines.length === 0 ? (
                             <p style={{ margin: "8px 0 0", color: "#888" }}>All items from this sale have already been returned.</p>
@@ -3577,6 +3684,44 @@ function App() {
               </table>
             </div>
 
+            {employees.length > 0 && (() => {
+              const cashierMap = Object.fromEntries(employees.map(e => [e.id, e.name]));
+              const byEmployee: Record<string, { name: string; count: number; revenue: number }> = {};
+              for (const s of todaySales) {
+                const key = s.cashier_id ?? "__none__";
+                if (!byEmployee[key]) byEmployee[key] = { name: s.cashier_id ? (cashierMap[s.cashier_id] ?? s.cashier_id.slice(0, 8)) : "No cashier", count: 0, revenue: 0 };
+                byEmployee[key].count++;
+                byEmployee[key].revenue += Number(s.total);
+              }
+              const rows = Object.values(byEmployee).sort((a, b) => b.revenue - a.revenue);
+              if (rows.length === 0) return null;
+              return (
+                <>
+                  <h4 style={{ margin: "0 0 8px" }}>Cashier Breakdown</h4>
+                  <div style={{ overflowX: "auto", marginBottom: "20px" }}>
+                    <table border={1} cellPadding={8} style={{ width: "100%" }}>
+                      <thead>
+                        <tr style={{ background: "#f3f4f6" }}>
+                          <th style={{ textAlign: "left" }}>Cashier</th>
+                          <th>Sales</th>
+                          <th>Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.name}</td>
+                            <td style={{ textAlign: "center" }}>{r.count}</td>
+                            <td>${r.revenue.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
+
             {voidedToday > 0 && (
               <p style={{ color: "#999", fontSize: "13px", margin: 0 }}>
                 {voidedToday} voided sale(s) excluded from summary.
@@ -3945,6 +4090,91 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Employee / Cashier Management */}
+      <h2 style={{ marginTop: "40px" }}>Employee Management</h2>
+
+      <form onSubmit={handleAddEmployee} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
+        <input
+          type="text"
+          placeholder="Employee name *"
+          value={newEmpName}
+          onChange={(e) => setNewEmpName(e.target.value)}
+          style={{ padding: "8px", flex: "1 1 180px" }}
+          required
+        />
+        <select
+          value={newEmpRole}
+          onChange={(e) => setNewEmpRole(e.target.value as "cashier" | "manager")}
+          style={{ padding: "8px" }}
+        >
+          <option value="cashier">Cashier</option>
+          <option value="manager">Manager</option>
+        </select>
+        <button
+          type="submit"
+          disabled={!newEmpName.trim()}
+          style={{ padding: "8px 20px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}
+        >
+          Add Employee
+        </button>
+      </form>
+
+      <div style={{ overflowX: "auto", marginBottom: "40px" }}>
+        <table border={1} cellPadding={10} style={{ width: "100%" }}>
+          <thead>
+            <tr style={{ background: "#f3f4f6" }}>
+              <th style={{ textAlign: "left" }}>Name</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Added</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {employees.length === 0 ? (
+              <tr><td colSpan={5} style={{ color: "#888" }}>No employees yet</td></tr>
+            ) : (
+              employees.map(emp => {
+                const rowStyle = emp.status === "inactive" ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
+                return (
+                  <tr key={emp.id} style={rowStyle}>
+                    <td style={{ fontWeight: "bold" }}>{emp.name}</td>
+                    <td>
+                      <span style={{
+                        padding: "2px 8px", borderRadius: "12px", fontSize: "12px",
+                        background: emp.role === "manager" ? "#fef3c7" : "#dbeafe",
+                        color: emp.role === "manager" ? "#92400e" : "#1e40af",
+                      }}>{emp.role}</span>
+                    </td>
+                    <td>
+                      <span style={{
+                        padding: "2px 8px", borderRadius: "12px", fontSize: "12px",
+                        background: emp.status === "active" ? "#dcfce7" : "#f3f4f6",
+                        color: emp.status === "active" ? "#15803d" : "#6b7280",
+                      }}>{emp.status}</span>
+                    </td>
+                    <td style={{ color: "#888", fontSize: "13px" }}>{new Date(emp.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <button
+                        onClick={() => handleToggleEmployeeStatus(emp)}
+                        style={{
+                          padding: "3px 12px", cursor: "pointer", borderRadius: "4px",
+                          background: emp.status === "active" ? "#fee2e2" : "#dcfce7",
+                          color: emp.status === "active" ? "#b91c1c" : "#15803d",
+                          border: "none", fontWeight: "bold",
+                        }}
+                      >
+                        {emp.status === "active" ? "Deactivate" : "Activate"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {receipt && (() => {
         const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
