@@ -1425,8 +1425,8 @@ function App() {
         </div>
         <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
           <div style={{ fontSize: "13px", color: "#666" }}>Low Stock Items</div>
-          <div style={{ fontSize: "28px", fontWeight: "bold", color: products.filter(p => p.quantity_on_hand <= p.reorder_level).length > 0 ? "red" : "inherit" }}>
-            {products.filter(p => p.quantity_on_hand <= p.reorder_level).length}
+          <div style={{ fontSize: "28px", fontWeight: "bold", color: products.filter(p => p.quantity_on_hand < p.reorder_level).length > 0 ? "red" : "inherit" }}>
+            {products.filter(p => p.quantity_on_hand < p.reorder_level).length}
           </div>
         </div>
         <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
@@ -1475,7 +1475,7 @@ function App() {
 
           <tbody>
             {products.map((product, index) => {
-              const isLowStock = product.quantity_on_hand <= product.reorder_level;
+              const isLowStock = product.quantity_on_hand < product.reorder_level;
               return (
                 <tr key={index} style={{ backgroundColor: isLowStock ? "#ffe5e5" : "inherit" }}>
                   <td>{product.product_name}</td>
@@ -1585,7 +1585,7 @@ function App() {
       <h2 style={{ marginTop: "40px" }}>Reorder Center</h2>
 
       {(() => {
-        const lowStock = products.filter((p) => p.quantity_on_hand <= p.reorder_level);
+        const lowStock = products.filter((p) => p.quantity_on_hand < p.reorder_level);
         if (lowStock.length === 0) {
           return <p style={{ color: "#16a34a" }}>All products are sufficiently stocked.</p>;
         }
@@ -2387,7 +2387,7 @@ function App() {
       {/* 2. Low Stock Report */}
       <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Low Stock Report</h3>
       {(() => {
-        const lowStock = products.filter(p => p.quantity_on_hand <= p.reorder_level);
+        const lowStock = products.filter(p => p.quantity_on_hand < p.reorder_level);
         return (
           <div style={{ overflowX: "auto" }}>
             <table border={1} cellPadding={10} style={{ width: "100%" }}>
