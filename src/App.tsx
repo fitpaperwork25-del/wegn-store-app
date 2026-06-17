@@ -1732,6 +1732,90 @@ function App() {
         <button type="submit" style={{ padding: "8px 20px" }}>Add Customer</button>
       </form>
 
+      {/* Customer Insights */}
+      <h3 style={{ marginTop: "24px", marginBottom: "8px" }}>Customer Insights</h3>
+      <p style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>Based on most recent 20 sales</p>
+      {(() => {
+        const completedSales = sales.filter(s => s.status === "completed");
+        const totalVisits = completedSales.length;
+        const storeAvg = totalVisits > 0
+          ? completedSales.reduce((sum, s) => sum + Number(s.total), 0) / totalVisits
+          : 0;
+        const repeatCount = customers.filter(c =>
+          completedSales.filter(s => s.customer_id === c.id).length >= 2
+        ).length;
+
+        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
+
+        const top5 = customers
+          .map(c => {
+            const custSales = completedSales.filter(s => s.customer_id === c.id);
+            const totalSpend = custSales.reduce((sum, s) => sum + Number(s.total), 0);
+            const visits = custSales.length;
+            const avgPerVisit = visits > 0 ? totalSpend / visits : 0;
+            const custSaleIds = new Set(custSales.map(s => s.id));
+            const itemQtys: Record<string, number> = {};
+            saleItems
+              .filter(si => custSaleIds.has(si.sale_id))
+              .forEach(si => { itemQtys[si.product_id] = (itemQtys[si.product_id] ?? 0) + si.quantity; });
+            const favProductId = Object.entries(itemQtys).sort((a, b) => b[1] - a[1])[0]?.[0];
+            const favProduct = favProductId ? (productMap[favProductId] ?? "—") : "—";
+            return { id: c.id, name: c.name, visits, totalSpend, avgPerVisit, favProduct };
+          })
+          .filter(r => r.totalSpend > 0)
+          .sort((a, b) => b.totalSpend - a.totalSpend)
+          .slice(0, 5);
+
+        return (
+          <>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
+              {[
+                { label: "Total Customers", value: customers.length },
+                { label: "Store Avg Spend / Visit", value: `$${storeAvg.toFixed(2)}` },
+                { label: "Repeat Customers", value: repeatCount },
+              ].map(card => (
+                <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "16px", minWidth: "160px", flex: 1 }}>
+                  <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
+                  <div style={{ fontSize: "24px", fontWeight: "bold" }}>{card.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <h4 style={{ marginBottom: "8px" }}>Top 5 Customers by Spend</h4>
+            <div style={{ overflowX: "auto", marginBottom: "24px" }}>
+              <table border={1} cellPadding={10} style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Visits</th>
+                    <th>Total Spend</th>
+                    <th>Avg / Visit</th>
+                    <th>Favorite Product</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {top5.length === 0 ? (
+                    <tr><td colSpan={6}>No customer sales data yet</td></tr>
+                  ) : (
+                    top5.map((row, i) => (
+                      <tr key={row.id}>
+                        <td>{i + 1}</td>
+                        <td>{row.name}</td>
+                        <td>{row.visits}</td>
+                        <td>${row.totalSpend.toFixed(2)}</td>
+                        <td>${row.avgPerVisit.toFixed(2)}</td>
+                        <td>{row.favProduct}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        );
+      })()}
+
       <h3 style={{ marginBottom: "4px" }}>Customers</h3>
       <p style={{ fontSize: "12px", color: "#888", marginBottom: "8px" }}>Click a row to see purchase history</p>
       {(() => {
