@@ -87,11 +87,20 @@ type CartItem = {
 
 type Sale = {
   id: string;
+  customer_id: string | null;
   customer_name: string | null;
   subtotal: number;
   tax: number;
   total: number;
   status: string;
+  created_at: string;
+};
+
+type Customer = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
   created_at: string;
 };
 
@@ -160,6 +169,13 @@ function App() {
   const [eodItems, setEodItems] = useState<EodItem[]>([]);
   const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [posCustomerPhone, setPosCustomerPhone] = useState("");
+  const [posCustomerId, setPosCustomerId] = useState<string | null>(null);
+  const [posCustomerName, setPosCustomerName] = useState("");
+  const [newCusName, setNewCusName] = useState("");
+  const [newCusPhone, setNewCusPhone] = useState("");
+  const [newCusEmail, setNewCusEmail] = useState("");
 
   useEffect(() => {
     loadBusinessId();
@@ -169,6 +185,7 @@ function App() {
     loadPurchaseOrders();
     loadSales();
     loadSaleItems();
+    loadCustomers();
   }, []);
 
   async function loadBusinessId() {
@@ -188,10 +205,51 @@ function App() {
     setSaleItems((data as SaleItemRecord[]) || []);
   }
 
+  async function loadCustomers() {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id, name, phone, email, created_at")
+      .order("created_at", { ascending: false });
+    if (error) { console.error(error); return; }
+    setCustomers((data as Customer[]) || []);
+  }
+
+  function handleLookupCustomer() {
+    const phone = posCustomerPhone.trim();
+    if (!phone) return;
+    const match = customers.find(c => c.phone === phone);
+    if (match) {
+      setPosCustomerId(match.id);
+      setPosCustomerName(match.name);
+      setMessage(`Customer: ${match.name}`);
+    } else {
+      setPosCustomerId(null);
+      setPosCustomerName("");
+      setMessage(`No customer found for ${phone} — sale will be anonymous`);
+    }
+  }
+
+  async function handleAddCustomer(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage("");
+    if (!newCusName || !newCusPhone) return;
+    const { error } = await supabase.from("customers").insert({
+      name: newCusName,
+      phone: newCusPhone,
+      email: newCusEmail || null,
+    });
+    if (error) { console.error(error); setMessage("Failed to add customer: " + error.message); return; }
+    setNewCusName("");
+    setNewCusPhone("");
+    setNewCusEmail("");
+    setMessage("Customer added");
+    await loadCustomers();
+  }
+
   async function loadSales() {
     const { data, error } = await supabase
       .from("sales")
-      .select("id, customer_name, subtotal, tax, total, status, created_at")
+      .select("id, customer_id, customer_name, subtotal, tax, total, status, created_at")
       .order("created_at", { ascending: false })
       .limit(20);
     if (error) { console.error(error); return; }
@@ -556,7 +614,7 @@ function App() {
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .insert({ subtotal, tax: 0, total: subtotal, status: "completed" })
+      .insert({ subtotal, tax: 0, total: subtotal, status: "completed", customer_id: posCustomerId || null })
       .select("id")
       .single();
 
@@ -607,11 +665,15 @@ function App() {
 
     setCart([]);
     setAmountTendered("");
+    setPosCustomerPhone("");
+    setPosCustomerId(null);
+    setPosCustomerName("");
     setMessage("Sale completed");
     await loadProducts();
     await loadTransactions();
     await loadSales();
     await loadSaleItems();
+    await loadCustomers();
   }
 
   async function handleToggleEod() {
@@ -1073,6 +1135,22 @@ function App() {
           Add to Cart
         </button>
       </form>
+
+      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
+        <input
+          type="text"
+          placeholder="Customer phone (optional)"
+          value={posCustomerPhone}
+          onChange={(e) => { setPosCustomerPhone(e.target.value); setPosCustomerId(null); setPosCustomerName(""); }}
+          style={{ padding: "8px", width: "220px" }}
+        />
+        <button type="button" onClick={handleLookupCustomer} style={{ padding: "8px 14px" }}>
+          Lookup
+        </button>
+        {posCustomerName && (
+          <span style={{ color: "#15803d", fontWeight: "bold" }}>{posCustomerName}</span>
+        )}
+      </div>
 
       {cart.length > 0 && (
         <div style={{ marginBottom: "32px" }}>
@@ -1613,6 +1691,81 @@ function App() {
                       <td>{row.draftPOs}</td>
                       <td>${row.totalSpend.toFixed(2)}</td>
                       <td>{row.lastPO ? row.lastPO.toLocaleDateString() : "—"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      <h2 style={{ marginTop: "40px" }}>Customer Management</h2>
+
+      <h3 style={{ marginBottom: "8px" }}>Add Customer</h3>
+      <form
+        onSubmit={handleAddCustomer}
+        style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "24px" }}
+      >
+        <input
+          type="text"
+          placeholder="Name *"
+          value={newCusName}
+          onChange={(e) => setNewCusName(e.target.value)}
+          style={{ flex: "1 1 150px", padding: "8px" }}
+        />
+        <input
+          type="text"
+          placeholder="Phone *"
+          value={newCusPhone}
+          onChange={(e) => setNewCusPhone(e.target.value)}
+          style={{ flex: "1 1 140px", padding: "8px" }}
+        />
+        <input
+          type="email"
+          placeholder="Email (optional)"
+          value={newCusEmail}
+          onChange={(e) => setNewCusEmail(e.target.value)}
+          style={{ flex: "1 1 180px", padding: "8px" }}
+        />
+        <button type="submit" style={{ padding: "8px 20px" }}>Add Customer</button>
+      </form>
+
+      <h3 style={{ marginBottom: "8px" }}>Customers</h3>
+      {(() => {
+        const rows = customers.map((c) => {
+          const custSales = sales.filter(s => s.customer_id === c.id && s.status === "completed");
+          const totalSpend = custSales.reduce((sum, s) => sum + Number(s.total), 0);
+          const lastVisit = custSales.length > 0
+            ? new Date(Math.max(...custSales.map(s => new Date(s.created_at).getTime())))
+            : null;
+          return { ...c, visitCount: custSales.length, totalSpend, lastVisit };
+        });
+        return (
+          <div style={{ overflowX: "auto", marginBottom: "40px" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Visits</th>
+                  <th>Total Spend</th>
+                  <th>Last Visit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr><td colSpan={6}>No customers yet</td></tr>
+                ) : (
+                  rows.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.name}</td>
+                      <td>{row.phone}</td>
+                      <td>{row.email ?? "—"}</td>
+                      <td>{row.visitCount}</td>
+                      <td>${row.totalSpend.toFixed(2)}</td>
+                      <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
                     </tr>
                   ))
                 )}
