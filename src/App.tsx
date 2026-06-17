@@ -158,6 +158,7 @@ function App() {
   const [newName, setNewName] = useState("");
   const [newSku, setNewSku] = useState("");
   const [newBarcode, setNewBarcode] = useState("");
+  const [barcodeAutoFill, setBarcodeAutoFill] = useState("");
   const [newCostPrice, setNewCostPrice] = useState("");
   const [newSellingPrice, setNewSellingPrice] = useState("");
   const [newReorderLevel, setNewReorderLevel] = useState("");
@@ -1012,6 +1013,19 @@ function App() {
     setTransactions(merged as Transaction[]);
   }
 
+  function handleBarcodeLookup() {
+    const barcode = newBarcode.trim();
+    if (!barcode) return;
+    const match = products.find(p => p.barcode === barcode);
+    if (match) {
+      setNewName(match.product_name);
+      setNewSku(match.sku ?? "");
+      setBarcodeAutoFill(`Auto-filled from existing product: ${match.product_name}`);
+    } else {
+      setBarcodeAutoFill("");
+    }
+  }
+
   async function handleAddProduct(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
@@ -1079,6 +1093,7 @@ function App() {
     setNewSellingPrice("");
     setNewReorderLevel("");
     setNewInitialStock("");
+    setBarcodeAutoFill("");
     setMessage("Product added successfully");
     await loadProducts();
     await loadTransactions();
@@ -1489,7 +1504,9 @@ function App() {
           type="text"
           placeholder="Barcode"
           value={newBarcode}
-          onChange={(e) => setNewBarcode(e.target.value)}
+          onChange={(e) => { setNewBarcode(e.target.value); setBarcodeAutoFill(""); }}
+          onBlur={handleBarcodeLookup}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeLookup(); } }}
           style={{ flex: "1 1 120px", padding: "8px" }}
         />
         <input
@@ -1525,6 +1542,13 @@ function App() {
           Add Product
         </button>
       </form>
+
+      {barcodeAutoFill && (
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", padding: "8px 14px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "6px", fontSize: "13px" }}>
+          <span style={{ color: "#1d4ed8" }}>{barcodeAutoFill}</span>
+          <button onClick={() => setBarcodeAutoFill("")} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "15px", color: "#64748b" }}>✕</button>
+        </div>
+      )}
 
       <h2 style={{ marginTop: "40px" }}>Bulk Import Products</h2>
 
