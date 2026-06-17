@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 
 type Transaction = {
@@ -117,6 +117,15 @@ type ProductStock = {
   average_cost: number;
 };
 
+type ReturnLineItem = {
+  product_id: string;
+  product_name: string;
+  original_qty: number;
+  already_returned: number;
+  available_qty: number;
+  return_qty: number;
+};
+
 type BulkRow = {
   name: string;
   selling_price: string;
@@ -188,6 +197,10 @@ function App() {
   const [newCusPhone, setNewCusPhone] = useState("");
   const [newCusEmail, setNewCusEmail] = useState("");
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
+  const [returningSaleId, setReturningSaleId] = useState<string | null>(null);
+  const [returnLines, setReturnLines] = useState<ReturnLineItem[]>([]);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnLoading, setReturnLoading] = useState(false);
   const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
   const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [bulkImporting, setBulkImporting] = useState(false);
@@ -218,6 +231,72 @@ function App() {
       .select("sale_id, product_id, quantity, unit_price, line_total");
     if (error) { console.error(error); return; }
     setSaleItems((data as SaleItemRecord[]) || []);
+  }
+
+  async function handleOpenReturn(sale: Sale) {
+    if (returningSaleId === sale.id) { setReturningSaleId(null); setReturnLines([]); return; }
+    const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
+    const { data: items, error: itemsErr } = await supabase
+      .from('sale_items')
+      .select('product_id, quantity')
+      .eq('sale_id', sale.id);
+    if (itemsErr || !items) { console.error(itemsErr); return; }
+    const { data: prior } = await supabase
+      .from('return_items')
+      .select('product_id, quantity_returned')
+      .eq('sale_id', sale.id);
+    const priorMap: Record<string, number> = {};
+    (prior ?? []).forEach((r: any) => { priorMap[r.product_id] = (priorMap[r.product_id] ?? 0) + r.quantity_returned; });
+    const lines: ReturnLineItem[] = items
+      .map((i: any) => ({
+        product_id: i.product_id,
+        product_name: productMap[i.product_id] ?? i.product_id,
+        original_qty: i.quantity,
+        already_returned: priorMap[i.product_id] ?? 0,
+        available_qty: i.quantity - (priorMap[i.product_id] ?? 0),
+        return_qty: 0,
+      }))
+      .filter(l => l.available_qty > 0);
+    setReturnLines(lines);
+    setReturnReason("");
+    setReturningSaleId(sale.id);
+  }
+
+  async function handleConfirmReturn() {
+    if (!returningSaleId) return;
+    const toReturn = returnLines.filter(l => l.return_qty > 0);
+    if (toReturn.length === 0) return;
+    setReturnLoading(true);
+    for (const line of toReturn) {
+      const product = products.find(p => p.product_id === line.product_id);
+      if (!product) continue;
+      await supabase.from('return_items').insert({
+        sale_id: returningSaleId,
+        product_id: line.product_id,
+        quantity_returned: line.return_qty,
+        reason: returnReason || null,
+      });
+      const newQty = product.quantity_on_hand + line.return_qty;
+      await supabase.from('inventory').update({ quantity_on_hand: newQty }).eq('id', product.inventory_id);
+      await supabase.from('inventory_transactions').insert({
+        business_id: product.business_id,
+        product_id: line.product_id,
+        transaction_type: 'return',
+        quantity_change: line.return_qty,
+        quantity_before: product.quantity_on_hand,
+        quantity_after: newQty,
+        reason: `Return for sale ${returningSaleId.slice(0, 8)}${returnReason ? ': ' + returnReason : ''}`,
+      });
+    }
+    await supabase.from('sales').update({ status: 'returned' }).eq('id', returningSaleId);
+    setReturningSaleId(null);
+    setReturnLines([]);
+    setReturnReason("");
+    setReturnLoading(false);
+    setMessage("Return processed");
+    await loadProducts();
+    await loadTransactions();
+    await loadSales();
   }
 
   function downloadCsvTemplate() {
@@ -2435,32 +2514,100 @@ function App() {
             {sales.length === 0 ? (
               <tr><td colSpan={6}>No sales yet</td></tr>
             ) : (
-              sales.map((s) => (
-                <tr key={s.id} style={{ backgroundColor: s.status === "voided" ? "#f5f5f5" : "inherit", color: s.status === "voided" ? "#999" : "inherit" }}>
-                  <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
-                  <td>${Number(s.total).toFixed(2)}</td>
-                  <td>${Number(s.tax).toFixed(2)}</td>
-                  <td>{s.status}</td>
-                  <td>{new Date(s.created_at).toLocaleString()}</td>
-                  <td style={{ display: "flex", gap: "6px" }}>
-                    <button
-                      onClick={() => handlePrintReceipt(s)}
-                      style={{ padding: "3px 10px", cursor: "pointer" }}
-                    >
-                      Print
-                    </button>
-                    {s.status === "completed" && (
-                      <button
-                        onClick={() => handleVoidSale(s.id)}
-                        disabled={voidingId === s.id}
-                        style={{ padding: "3px 10px", color: "#b91c1c", cursor: "pointer" }}
-                      >
-                        Void
-                      </button>
+              sales.map((s) => {
+                const rowStyle = s.status === "voided" || s.status === "returned"
+                  ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
+                const statusColor = s.status === "returned" ? "#7c3aed" : s.status === "voided" ? "#999" : "inherit";
+                return (
+                  <React.Fragment key={s.id}>
+                    <tr style={rowStyle}>
+                      <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
+                      <td>${Number(s.total).toFixed(2)}</td>
+                      <td>${Number(s.tax).toFixed(2)}</td>
+                      <td style={{ color: statusColor, fontWeight: s.status === "returned" ? "bold" : "inherit" }}>{s.status}</td>
+                      <td>{new Date(s.created_at).toLocaleString()}</td>
+                      <td style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                        <button onClick={() => handlePrintReceipt(s)} style={{ padding: "3px 10px", cursor: "pointer" }}>Print</button>
+                        {s.status === "completed" && (
+                          <>
+                            <button
+                              onClick={() => handleVoidSale(s.id)}
+                              disabled={voidingId === s.id}
+                              style={{ padding: "3px 10px", color: "#b91c1c", cursor: "pointer" }}
+                            >Void</button>
+                            <button
+                              onClick={() => handleOpenReturn(s)}
+                              style={{ padding: "3px 10px", color: "#7c3aed", cursor: "pointer" }}
+                            >Return</button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                    {returningSaleId === s.id && (
+                      <tr key={`${s.id}-return`}>
+                        <td colSpan={6} style={{ background: "#faf5ff", padding: "16px", border: "1px solid #c4b5fd" }}>
+                          <strong style={{ color: "#7c3aed" }}>Process Return — Sale {s.id.slice(0, 8)}</strong>
+                          {returnLines.length === 0 ? (
+                            <p style={{ margin: "8px 0 0", color: "#888" }}>All items from this sale have already been returned.</p>
+                          ) : (
+                            <>
+                              <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "10px", fontSize: "13px" }}>
+                                <thead>
+                                  <tr><th>Product</th><th>Original Qty</th><th>Already Returned</th><th>Available</th><th>Return Qty</th></tr>
+                                </thead>
+                                <tbody>
+                                  {returnLines.map(line => (
+                                    <tr key={line.product_id}>
+                                      <td>{line.product_name}</td>
+                                      <td>{line.original_qty}</td>
+                                      <td>{line.already_returned}</td>
+                                      <td>{line.available_qty}</td>
+                                      <td>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={line.available_qty}
+                                          value={line.return_qty}
+                                          onChange={(e) => {
+                                            const val = Math.min(Math.max(0, Number(e.target.value)), line.available_qty);
+                                            setReturnLines(prev => prev.map(l => l.product_id === line.product_id ? { ...l, return_qty: val } : l));
+                                          }}
+                                          style={{ width: "60px", padding: "4px" }}
+                                        />
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "10px", flexWrap: "wrap" }}>
+                                <input
+                                  type="text"
+                                  placeholder="Reason (optional)"
+                                  value={returnReason}
+                                  onChange={(e) => setReturnReason(e.target.value)}
+                                  style={{ flex: "1 1 200px", padding: "7px" }}
+                                />
+                                <button
+                                  onClick={handleConfirmReturn}
+                                  disabled={returnLoading || returnLines.every(l => l.return_qty === 0)}
+                                  style={{
+                                    padding: "7px 20px",
+                                    background: returnLines.every(l => l.return_qty === 0) ? "#ccc" : "#7c3aed",
+                                    color: "#fff", border: "none", borderRadius: "5px",
+                                    cursor: returnLines.every(l => l.return_qty === 0) ? "not-allowed" : "pointer",
+                                    fontWeight: "bold",
+                                  }}
+                                >{returnLoading ? "Processing…" : "Confirm Return"}</button>
+                                <button onClick={() => { setReturningSaleId(null); setReturnLines([]); }} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
+                              </div>
+                            </>
+                          )}
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                </tr>
-              ))
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
