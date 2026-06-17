@@ -261,6 +261,8 @@ function App() {
   const [closingCount, setClosingCount] = useState("");
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [posRedeemPoints, setPosRedeemPoints] = useState("");
+  const [analyticsRange, setAnalyticsRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
+  const [allPayments, setAllPayments] = useState<EodPayment[]>([]);
   const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
   const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [bulkImporting, setBulkImporting] = useState(false);
@@ -273,6 +275,7 @@ function App() {
     loadPurchaseOrders();
     loadSales();
     loadSaleItems();
+    loadAllPayments();
     loadCustomers();
     loadLoyaltyTransactions();
     loadDrawerSession();
@@ -667,10 +670,16 @@ function App() {
     const { data, error } = await supabase
       .from("sales")
       .select("id, customer_id, subtotal, tax, discount_amount, total, status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(20);
+      .order("created_at", { ascending: false });
     if (error) { console.error(error); return; }
     setSales((data as Sale[]) || []);
+  }
+
+  async function loadAllPayments() {
+    const { data } = await supabase
+      .from("payments")
+      .select("sale_id, payment_method, amount");
+    setAllPayments((data as EodPayment[]) ?? []);
   }
 
   async function loadPurchaseOrders() {
@@ -1132,6 +1141,7 @@ function App() {
     await loadTransactions();
     await loadSales();
     await loadSaleItems();
+    await loadAllPayments();
     await loadCustomers();
     await loadLoyaltyTransactions();
   }
@@ -3026,6 +3036,191 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      {/* Sales Analytics Dashboard */}
+      <h2 style={{ marginTop: "40px" }}>Sales Analytics</h2>
+
+      {(() => {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const rangeStart: Date | null =
+          analyticsRange === 'today' ? startOfDay :
+          analyticsRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
+          analyticsRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
+          null;
+
+        const periodSales = sales.filter(s =>
+          s.status === 'completed' &&
+          (rangeStart === null || new Date(s.created_at) >= rangeStart)
+        );
+
+        const periodSaleIds = new Set(periodSales.map(s => s.id));
+
+        const periodItems = saleItems.filter(si => periodSaleIds.has(si.sale_id));
+
+        const periodPayments = allPayments.filter(p => periodSaleIds.has(p.sale_id));
+
+        const revenue = periodSales.reduce((sum, s) => sum + Number(s.total), 0);
+        const txCount = periodSales.length;
+        const avgTx = txCount > 0 ? revenue / txCount : 0;
+        const itemsSold = periodItems.reduce((sum, i) => sum + i.quantity, 0);
+        const discounts = periodSales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
+
+        const cashTotal = periodPayments.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0);
+        const cardTotal = periodPayments.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0);
+        const otherTotal = periodPayments.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0);
+
+        // Daily revenue breakdown
+        const byDay: Record<string, { revenue: number; count: number }> = {};
+        for (const s of periodSales) {
+          const d = new Date(s.created_at);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          if (!byDay[key]) byDay[key] = { revenue: 0, count: 0 };
+          byDay[key].revenue += Number(s.total);
+          byDay[key].count += 1;
+        }
+        const dailyRows = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]));
+
+        // Best-selling products
+        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
+        const byProduct: Record<string, { name: string; units: number; revenue: number }> = {};
+        for (const si of periodItems) {
+          if (!byProduct[si.product_id]) {
+            byProduct[si.product_id] = { name: productMap[si.product_id] ?? si.product_id, units: 0, revenue: 0 };
+          }
+          byProduct[si.product_id].units += si.quantity;
+          byProduct[si.product_id].revenue += si.line_total;
+        }
+        const productRows = Object.values(byProduct).sort((a, b) => b.units - a.units);
+
+        const rangeLabel = analyticsRange === 'today' ? 'Today' : analyticsRange === '7d' ? 'Last 7 Days' : analyticsRange === '30d' ? 'Last 30 Days' : 'All Time';
+
+        return (
+          <>
+            {/* Period selector */}
+            <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
+              {(['today', '7d', '30d', 'all'] as const).map(r => {
+                const label = r === 'today' ? 'Today' : r === '7d' ? 'Last 7 Days' : r === '30d' ? 'Last 30 Days' : 'All Time';
+                const active = analyticsRange === r;
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setAnalyticsRange(r)}
+                    style={{
+                      padding: "7px 18px", cursor: "pointer", borderRadius: "6px", fontWeight: active ? "bold" : "normal",
+                      background: active ? "#1d4ed8" : "#fff", color: active ? "#fff" : "#333",
+                      border: active ? "1px solid #1d4ed8" : "1px solid #ccc",
+                    }}
+                  >{label}</button>
+                );
+              })}
+              <span style={{ alignSelf: "center", fontSize: "13px", color: "#888", marginLeft: "8px" }}>
+                {txCount} completed sale{txCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* KPI cards */}
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "28px" }}>
+              {[
+                { label: "Revenue", value: `$${revenue.toFixed(2)}`, color: "#1d4ed8" },
+                { label: "Transactions", value: String(txCount) },
+                { label: "Avg Transaction", value: `$${avgTx.toFixed(2)}` },
+                { label: "Items Sold", value: String(itemsSold) },
+                { label: "Discounts Given", value: `$${discounts.toFixed(2)}`, color: discounts > 0 ? "#b45309" : undefined },
+              ].map(card => (
+                <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "14px 20px", minWidth: "140px", flex: 1 }}>
+                  <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
+                  <div style={{ fontSize: "24px", fontWeight: "bold", color: card.color ?? "inherit" }}>{card.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Payment split */}
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "32px" }}>
+              {[
+                { label: "Cash", value: cashTotal, color: "#15803d" },
+                { label: "Card", value: cardTotal, color: "#1d4ed8" },
+                ...(otherTotal > 0 ? [{ label: "Other", value: otherTotal, color: "#6b7280" }] : []),
+              ].map(p => (
+                <div key={p.label} style={{ border: "1px solid #e5e7eb", borderRadius: "8px", padding: "12px 18px", minWidth: "120px" }}>
+                  <div style={{ fontSize: "12px", color: "#888" }}>{p.label}</div>
+                  <div style={{ fontSize: "20px", fontWeight: "bold", color: p.color }}>${p.value.toFixed(2)}</div>
+                  <div style={{ fontSize: "11px", color: "#aaa" }}>
+                    {revenue > 0 ? `${((p.value / revenue) * 100).toFixed(0)}%` : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: "32px", flexWrap: "wrap", alignItems: "flex-start" }}>
+              {/* Daily revenue breakdown */}
+              <div style={{ flex: 1, minWidth: "280px" }}>
+                <h3 style={{ marginBottom: "8px" }}>Daily Revenue — {rangeLabel}</h3>
+                {dailyRows.length === 0 ? (
+                  <p style={{ color: "#888", fontSize: "14px" }}>No completed sales in this period.</p>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table border={1} cellPadding={10} style={{ width: "100%", fontSize: "14px" }}>
+                      <thead>
+                        <tr><th>Date</th><th>Revenue</th><th>Transactions</th></tr>
+                      </thead>
+                      <tbody>
+                        {dailyRows.map(([date, row]) => (
+                          <tr key={date}>
+                            <td>{new Date(date + 'T12:00:00').toLocaleDateString()}</td>
+                            <td>${row.revenue.toFixed(2)}</td>
+                            <td>{row.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
+                          <td>Total</td>
+                          <td>${revenue.toFixed(2)}</td>
+                          <td>{txCount}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Best-selling products */}
+              <div style={{ flex: 1, minWidth: "280px" }}>
+                <h3 style={{ marginBottom: "8px" }}>Best-Selling Products — {rangeLabel}</h3>
+                {productRows.length === 0 ? (
+                  <p style={{ color: "#888", fontSize: "14px" }}>No product data for this period.</p>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table border={1} cellPadding={10} style={{ width: "100%", fontSize: "14px" }}>
+                      <thead>
+                        <tr><th>#</th><th>Product</th><th>Units Sold</th><th>Revenue</th></tr>
+                      </thead>
+                      <tbody>
+                        {productRows.map((row, i) => (
+                          <tr key={row.name}>
+                            <td>{i + 1}</td>
+                            <td>{row.name}</td>
+                            <td>{row.units}</td>
+                            <td>${row.revenue.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
+                          <td colSpan={2}>Total</td>
+                          <td>{productRows.reduce((s, r) => s + r.units, 0)}</td>
+                          <td>${productRows.reduce((s, r) => s + r.revenue, 0).toFixed(2)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Cash Drawer Management */}
       <h2>Cash Drawer</h2>
