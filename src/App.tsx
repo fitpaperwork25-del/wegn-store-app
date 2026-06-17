@@ -1874,6 +1874,7 @@ function App() {
                                       <th>Date</th>
                                       <th>Total</th>
                                       <th>Status</th>
+                                      <th></th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1882,6 +1883,14 @@ function App() {
                                         <td>{new Date(s.created_at).toLocaleString()}</td>
                                         <td>${Number(s.total).toFixed(2)}</td>
                                         <td>{s.status}</td>
+                                        <td>
+                                          <button
+                                            onClick={() => handlePrintReceipt(s)}
+                                            style={{ padding: "2px 10px", cursor: "pointer" }}
+                                          >
+                                            View Receipt
+                                          </button>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>
