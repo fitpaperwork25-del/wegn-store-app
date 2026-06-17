@@ -112,6 +112,7 @@ function App() {
   const [message, setMessage] = useState("");
   const [movementFilter, setMovementFilter] = useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [barcodeInput, setBarcodeInput] = useState("");
   const [cartProductId, setCartProductId] = useState("");
   const [cartQty, setCartQty] = useState("1");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
@@ -334,6 +335,42 @@ function App() {
     await loadProducts();
     await loadPurchaseOrders();
     await loadTransactions();
+  }
+
+  function handleBarcodeSubmit(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const code = barcodeInput.trim();
+    setBarcodeInput("");
+    if (!code) return;
+
+    const product = products.find((p) => p.barcode === code);
+    if (!product) { setMessage(`Barcode not recognised: ${code}`); return; }
+    if (product.quantity_on_hand <= 0) { setMessage(`${product.product_name} is out of stock`); return; }
+
+    const existing = cart.find((c) => c.product_id === product.product_id);
+    const alreadyInCart = existing?.quantity ?? 0;
+    if (alreadyInCart + 1 > product.quantity_on_hand) {
+      setMessage(`Not enough stock for ${product.product_name}`);
+      return;
+    }
+
+    if (existing) {
+      setCart(cart.map((c) =>
+        c.product_id === product.product_id
+          ? { ...c, quantity: c.quantity + 1, line_total: (c.quantity + 1) * c.unit_price }
+          : c
+      ));
+    } else {
+      setCart([...cart, {
+        product_id: product.product_id,
+        product_name: product.product_name,
+        quantity: 1,
+        unit_price: product.selling_price,
+        line_total: product.selling_price,
+      }]);
+    }
+    setMessage("");
   }
 
   function handleAddToCart(e: React.FormEvent) {
@@ -793,6 +830,16 @@ function App() {
       <h1>Wegn-Store</h1>
 
       <h2>Point of Sale</h2>
+
+      <input
+        type="text"
+        autoFocus
+        placeholder="Scan barcode or type and press Enter"
+        value={barcodeInput}
+        onChange={(e) => setBarcodeInput(e.target.value)}
+        onKeyDown={handleBarcodeSubmit}
+        style={{ width: "100%", padding: "10px", marginBottom: "12px", fontSize: "15px", boxSizing: "border-box" }}
+      />
 
       <form
         onSubmit={handleAddToCart}
