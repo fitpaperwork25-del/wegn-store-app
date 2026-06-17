@@ -56,6 +56,14 @@ type Receipt = {
   paymentMethod: string;
 };
 
+type SaleItemRecord = {
+  sale_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+};
+
 type EodItem = {
   sale_id: string;
   product_id: string;
@@ -147,6 +155,7 @@ function App() {
   const [voidingId, setVoidingId] = useState("");
   const [reorderSuppliers, setReorderSuppliers] = useState<Record<string, string>>({});
   const [reorderQtys, setReorderQtys] = useState<Record<string, string>>({});
+  const [saleItems, setSaleItems] = useState<SaleItemRecord[]>([]);
   const [showEod, setShowEod] = useState(false);
   const [eodItems, setEodItems] = useState<EodItem[]>([]);
   const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
@@ -159,6 +168,7 @@ function App() {
     loadSuppliers();
     loadPurchaseOrders();
     loadSales();
+    loadSaleItems();
   }, []);
 
   async function loadBusinessId() {
@@ -168,6 +178,14 @@ function App() {
       .limit(1)
       .single();
     if (data) setBusinessId(data.id);
+  }
+
+  async function loadSaleItems() {
+    const { data, error } = await supabase
+      .from("sale_items")
+      .select("sale_id, product_id, quantity, unit_price, line_total");
+    if (error) { console.error(error); return; }
+    setSaleItems((data as SaleItemRecord[]) || []);
   }
 
   async function loadSales() {
@@ -519,6 +537,7 @@ function App() {
     await loadProducts();
     await loadTransactions();
     await loadSales();
+    await loadSaleItems();
   }
 
   async function handleCompleteSale() {
@@ -592,6 +611,7 @@ function App() {
     await loadProducts();
     await loadTransactions();
     await loadSales();
+    await loadSaleItems();
   }
 
   async function handleToggleEod() {
@@ -2215,6 +2235,89 @@ function App() {
               </tfoot>
             </table>
           </div>
+        );
+      })()}
+
+      {/* 5. Profit / Gross Margin Report */}
+      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Profit / Gross Margin</h3>
+      <p style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>
+        Approximate profit based on current average cost
+      </p>
+      {(() => {
+        const completedSaleIds = new Set(sales.filter(s => s.status === "completed").map(s => s.id));
+        const completedItems = saleItems.filter(si => completedSaleIds.has(si.sale_id));
+        const productMap = Object.fromEntries(products.map(p => [p.product_id, p]));
+
+        let totalRevenue = 0;
+        let totalCogs = 0;
+
+        const byProduct: Record<string, { name: string; units: number; revenue: number; cogs: number }> = {};
+        for (const si of completedItems) {
+          const product = productMap[si.product_id];
+          const cost = product ? product.average_cost * si.quantity : 0;
+          totalRevenue += si.line_total;
+          totalCogs += cost;
+          if (!byProduct[si.product_id]) {
+            byProduct[si.product_id] = { name: product?.product_name ?? si.product_id, units: 0, revenue: 0, cogs: 0 };
+          }
+          byProduct[si.product_id].units += si.quantity;
+          byProduct[si.product_id].revenue += si.line_total;
+          byProduct[si.product_id].cogs += cost;
+        }
+
+        const grossProfit = totalRevenue - totalCogs;
+        const marginPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+        return (
+          <>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
+              {[
+                { label: "Total Revenue", value: `$${totalRevenue.toFixed(2)}` },
+                { label: "Total COGS", value: `$${totalCogs.toFixed(2)}` },
+                { label: "Gross Profit", value: `$${grossProfit.toFixed(2)}` },
+                { label: "Gross Margin %", value: `${marginPct.toFixed(1)}%` },
+              ].map(card => (
+                <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "16px", minWidth: "160px", flex: 1 }}>
+                  <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
+                  <div style={{ fontSize: "24px", fontWeight: "bold" }}>{card.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table border={1} cellPadding={10} style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Units Sold</th>
+                    <th>Revenue</th>
+                    <th>COGS</th>
+                    <th>Gross Profit</th>
+                    <th>Margin %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(byProduct).length === 0 ? (
+                    <tr><td colSpan={6}>No completed sales data</td></tr>
+                  ) : (
+                    Object.entries(byProduct).map(([pid, row]) => {
+                      const gp = row.revenue - row.cogs;
+                      const mp = row.revenue > 0 ? (gp / row.revenue) * 100 : 0;
+                      return (
+                        <tr key={pid}>
+                          <td>{row.name}</td>
+                          <td>{row.units}</td>
+                          <td>${row.revenue.toFixed(2)}</td>
+                          <td>${row.cogs.toFixed(2)}</td>
+                          <td>${gp.toFixed(2)}</td>
+                          <td>{mp.toFixed(1)}%</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         );
       })()}
 
