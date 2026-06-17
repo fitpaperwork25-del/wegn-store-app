@@ -43,6 +43,24 @@ type POItem = {
   created_at: string;
 };
 
+type CartItem = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+};
+
+type Sale = {
+  id: string;
+  customer_name: string | null;
+  subtotal: number;
+  tax: number;
+  total: number;
+  status: string;
+  created_at: string;
+};
+
 type ProductStock = {
   inventory_id: string;
   business_id: string;
@@ -93,6 +111,12 @@ function App() {
   const [newInitialStock, setNewInitialStock] = useState("");
   const [message, setMessage] = useState("");
   const [movementFilter, setMovementFilter] = useState("all");
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartProductId, setCartProductId] = useState("");
+  const [cartQty, setCartQty] = useState("1");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+  const [amountTendered, setAmountTendered] = useState("");
+  const [sales, setSales] = useState<Sale[]>([]);
 
   useEffect(() => {
     loadBusinessId();
@@ -100,6 +124,7 @@ function App() {
     loadTransactions();
     loadSuppliers();
     loadPurchaseOrders();
+    loadSales();
   }, []);
 
   async function loadBusinessId() {
@@ -109,6 +134,16 @@ function App() {
       .limit(1)
       .single();
     if (data) setBusinessId(data.id);
+  }
+
+  async function loadSales() {
+    const { data, error } = await supabase
+      .from("sales")
+      .select("id, customer_name, subtotal, tax, total, status, created_at")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) { console.error(error); return; }
+    setSales((data as Sale[]) || []);
   }
 
   async function loadPurchaseOrders() {
@@ -299,6 +334,119 @@ function App() {
     await loadProducts();
     await loadPurchaseOrders();
     await loadTransactions();
+  }
+
+  function handleAddToCart(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage("");
+    if (!cartProductId) return;
+    const qty = Number(cartQty);
+    if (!qty || qty <= 0) return;
+
+    const product = products.find((p) => p.product_id === cartProductId);
+    if (!product) return;
+
+    const existing = cart.find((c) => c.product_id === cartProductId);
+    const alreadyInCart = existing?.quantity ?? 0;
+    if (alreadyInCart + qty > product.quantity_on_hand) {
+      setMessage(`Not enough stock. Available: ${product.quantity_on_hand}`);
+      return;
+    }
+
+    if (existing) {
+      setCart(cart.map((c) =>
+        c.product_id === cartProductId
+          ? { ...c, quantity: c.quantity + qty, line_total: (c.quantity + qty) * c.unit_price }
+          : c
+      ));
+    } else {
+      setCart([...cart, {
+        product_id: product.product_id,
+        product_name: product.product_name,
+        quantity: qty,
+        unit_price: product.selling_price,
+        line_total: qty * product.selling_price,
+      }]);
+    }
+    setCartProductId("");
+    setCartQty("1");
+  }
+
+  function handleRemoveFromCart(productId: string) {
+    setCart(cart.filter((c) => c.product_id !== productId));
+  }
+
+  async function handleCompleteSale() {
+    if (cart.length === 0) return;
+    setMessage("");
+
+    for (const item of cart) {
+      const product = products.find((p) => p.product_id === item.product_id);
+      if (!product || item.quantity > product.quantity_on_hand) {
+        setMessage(`Insufficient stock for ${item.product_name}`);
+        return;
+      }
+    }
+
+    const subtotal = cart.reduce((sum, c) => sum + c.line_total, 0);
+
+    const { data: sale, error: saleErr } = await supabase
+      .from("sales")
+      .insert({ subtotal, tax: 0, total: subtotal, status: "completed" })
+      .select("id")
+      .single();
+
+    if (saleErr || !sale) { console.error(saleErr); setMessage("Sale failed"); return; }
+
+    const { error: itemsErr } = await supabase
+      .from("sale_items")
+      .insert(cart.map((c) => ({
+        sale_id: sale.id,
+        product_id: c.product_id,
+        quantity: c.quantity,
+        unit_price: c.unit_price,
+        line_total: c.line_total,
+      })));
+
+    if (itemsErr) { console.error(itemsErr); setMessage("Sale items failed"); return; }
+
+    const { error: payErr } = await supabase
+      .from("payments")
+      .insert({ sale_id: sale.id, payment_method: paymentMethod, amount: subtotal });
+
+    if (payErr) { console.error(payErr); }
+
+    for (const item of cart) {
+      const product = products.find((p) => p.product_id === item.product_id);
+      if (!product) continue;
+
+      const quantityBefore = product.quantity_on_hand;
+      const quantityAfter = quantityBefore - item.quantity;
+
+      await supabase
+        .from("inventory")
+        .update({ quantity_on_hand: quantityAfter })
+        .eq("id", product.inventory_id);
+
+      await supabase
+        .from("inventory_transactions")
+        .insert({
+          business_id: product.business_id,
+          product_id: item.product_id,
+          transaction_type: "sale",
+          quantity_change: -item.quantity,
+          quantity_before: quantityBefore,
+          quantity_after: quantityAfter,
+          reason: `Sale ${sale.id.slice(0, 8)}`,
+        });
+    }
+
+    setCart([]);
+    setAmountTendered("");
+    setMessage("Sale completed");
+    await loadProducts();
+    await loadTransactions();
+    await loadSales();
   }
 
   async function handleCreatePO(e: React.FormEvent) {
@@ -644,6 +792,132 @@ function App() {
     <div style={{ padding: "40px" }}>
       <h1>Wegn-Store</h1>
 
+      <h2>Point of Sale</h2>
+
+      <form
+        onSubmit={handleAddToCart}
+        style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
+      >
+        <select
+          value={cartProductId}
+          onChange={(e) => setCartProductId(e.target.value)}
+          style={{ flex: "2 1 200px", padding: "8px" }}
+        >
+          <option value="">Select product...</option>
+          {products.filter((p) => p.quantity_on_hand > 0).map((p) => (
+            <option key={p.product_id} value={p.product_id}>
+              {p.product_name} — ${p.selling_price.toFixed(2)} (stock: {p.quantity_on_hand})
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min="1"
+          placeholder="Qty"
+          value={cartQty}
+          onChange={(e) => setCartQty(e.target.value)}
+          style={{ flex: "0 1 80px", padding: "8px" }}
+        />
+        <button type="submit" style={{ flex: "0 1 120px", padding: "8px" }}>
+          Add to Cart
+        </button>
+      </form>
+
+      {cart.length > 0 && (
+        <div style={{ marginBottom: "32px" }}>
+          <div style={{ overflowX: "auto", marginBottom: "12px" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Qty</th>
+                  <th>Unit Price</th>
+                  <th>Line Total</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {cart.map((item) => (
+                  <tr key={item.product_id}>
+                    <td>{item.product_name}</td>
+                    <td>{item.quantity}</td>
+                    <td>${item.unit_price.toFixed(2)}</td>
+                    <td>${item.line_total.toFixed(2)}</td>
+                    <td>
+                      <button onClick={() => handleRemoveFromCart(item.product_id)} style={{ padding: "2px 8px" }}>
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total</td>
+                  <td style={{ fontWeight: "bold" }}>
+                    ${cart.reduce((s, c) => s + c.line_total, 0).toFixed(2)}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontWeight: "bold" }}>Payment:</span>
+            <label style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                value="cash"
+                checked={paymentMethod === "cash"}
+                onChange={() => setPaymentMethod("cash")}
+              />{" "}Cash
+            </label>
+            <label style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                value="card"
+                checked={paymentMethod === "card"}
+                onChange={() => setPaymentMethod("card")}
+              />{" "}Card
+            </label>
+            {paymentMethod === "cash" && (
+              <>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Amount tendered"
+                  value={amountTendered}
+                  onChange={(e) => setAmountTendered(e.target.value)}
+                  style={{ width: "150px", padding: "8px" }}
+                />
+                {Number(amountTendered) >= cart.reduce((s, c) => s + c.line_total, 0) && amountTendered !== "" && (
+                  <span style={{ fontWeight: "bold", color: "#15803d" }}>
+                    Change: ${(Number(amountTendered) - cart.reduce((s, c) => s + c.line_total, 0)).toFixed(2)}
+                  </span>
+                )}
+              </>
+            )}
+            <button
+              onClick={handleCompleteSale}
+              style={{
+                padding: "10px 28px",
+                background: "#1d4ed8",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "15px",
+              }}
+            >
+              Complete Sale
+            </button>
+          </div>
+        </div>
+      )}
+
       <h2>Receive Inventory</h2>
 
       <form
@@ -833,6 +1107,19 @@ function App() {
           <div style={{ fontSize: "13px", color: "#666" }}>Total Inventory Value</div>
           <div style={{ fontSize: "28px", fontWeight: "bold" }}>
             ${products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0).toFixed(2)}
+          </div>
+        </div>
+        <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
+          <div style={{ fontSize: "13px", color: "#666" }}>Today's Revenue</div>
+          <div style={{ fontSize: "28px", fontWeight: "bold", color: "#1d4ed8" }}>
+            ${sales
+              .filter((s) => {
+                const d = new Date(s.created_at);
+                const now = new Date();
+                return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+              })
+              .reduce((sum, s) => sum + Number(s.total), 0)
+              .toFixed(2)}
           </div>
         </div>
       </div>
@@ -1243,6 +1530,37 @@ function App() {
         </table>
       </div>
 
+      <h2 style={{ marginTop: "40px" }}>Sales History</h2>
+
+      <div style={{ overflowX: "auto", marginBottom: "40px" }}>
+        <table border={1} cellPadding={10} style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th>Sale ID</th>
+              <th>Total</th>
+              <th>Tax</th>
+              <th>Status</th>
+              <th>Created At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sales.length === 0 ? (
+              <tr><td colSpan={5}>No sales yet</td></tr>
+            ) : (
+              sales.map((s) => (
+                <tr key={s.id}>
+                  <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
+                  <td>${Number(s.total).toFixed(2)}</td>
+                  <td>${Number(s.tax).toFixed(2)}</td>
+                  <td>{s.status}</td>
+                  <td>{new Date(s.created_at).toLocaleString()}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
       <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
 
       {/* 1. Inventory Valuation Report */}
@@ -1321,7 +1639,7 @@ function App() {
       {/* 3. Product Movement Report */}
       <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Product Movement</h3>
       <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {["all", "receiving", "damaged", "adjustment"].map((f) => (
+        {["all", "sale", "receiving", "damaged", "adjustment"].map((f) => (
           <button
             key={f}
             onClick={() => setMovementFilter(f)}
