@@ -132,6 +132,8 @@ function App() {
   const [amountTendered, setAmountTendered] = useState("");
   const [sales, setSales] = useState<Sale[]>([]);
   const [voidingId, setVoidingId] = useState("");
+  const [reorderSuppliers, setReorderSuppliers] = useState<Record<string, string>>({});
+  const [reorderQtys, setReorderQtys] = useState<Record<string, string>>({});
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   useEffect(() => {
@@ -574,6 +576,46 @@ function App() {
     await loadProducts();
     await loadTransactions();
     await loadSales();
+  }
+
+  async function handleCreateReorderPO(product: ProductStock) {
+    const supplierId = reorderSuppliers[product.product_id];
+    const qty = Number(reorderQtys[product.product_id] ?? (product.reorder_level - product.quantity_on_hand));
+    if (!supplierId || qty <= 0) { setMessage("Select a supplier and enter a quantity"); return; }
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const poNumber = `PO-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const unitCost = product.average_cost ?? 0;
+    const lineTotal = qty * unitCost;
+
+    const { data: po, error: poErr } = await supabase
+      .from("purchase_orders")
+      .insert({
+        business_id: businessId,
+        supplier_id: supplierId,
+        po_number: poNumber,
+        status: "draft",
+        subtotal: lineTotal,
+        notes: `Reorder: ${product.product_name}`,
+      })
+      .select("id")
+      .single();
+
+    if (poErr || !po) { console.error(poErr); setMessage("Failed to create PO"); return; }
+
+    await supabase.from("purchase_order_items").insert({
+      purchase_order_id: po.id,
+      product_id: product.product_id,
+      quantity: qty,
+      unit_cost: unitCost,
+      line_total: lineTotal,
+    });
+
+    setReorderSuppliers((prev) => { const n = { ...prev }; delete n[product.product_id]; return n; });
+    setReorderQtys((prev) => { const n = { ...prev }; delete n[product.product_id]; return n; });
+    setMessage(`Draft PO created: ${poNumber}`);
+    await loadPurchaseOrders();
   }
 
   async function handleCreatePO(e: React.FormEvent) {
@@ -1388,6 +1430,77 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      <h2 style={{ marginTop: "40px" }}>Reorder Center</h2>
+
+      {(() => {
+        const lowStock = products.filter((p) => p.quantity_on_hand <= p.reorder_level);
+        if (lowStock.length === 0) {
+          return <p style={{ color: "#16a34a" }}>All products are sufficiently stocked.</p>;
+        }
+        return (
+          <div style={{ overflowX: "auto", marginBottom: "32px" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Stock</th>
+                  <th>Reorder Level</th>
+                  <th>Shortage</th>
+                  <th>Supplier</th>
+                  <th>Order Qty</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lowStock.map((p) => (
+                  <tr key={p.product_id} style={{ backgroundColor: "#ffe5e5" }}>
+                    <td>{p.product_name}</td>
+                    <td>{p.quantity_on_hand}</td>
+                    <td>{p.reorder_level}</td>
+                    <td style={{ color: "red", fontWeight: "bold" }}>
+                      {p.reorder_level - p.quantity_on_hand}
+                    </td>
+                    <td>
+                      <select
+                        value={reorderSuppliers[p.product_id] ?? ""}
+                        onChange={(e) =>
+                          setReorderSuppliers((prev) => ({ ...prev, [p.product_id]: e.target.value }))
+                        }
+                        style={{ padding: "4px", width: "100%" }}
+                      >
+                        <option value="">Select supplier…</option>
+                        {suppliers.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="1"
+                        value={reorderQtys[p.product_id] ?? String(p.reorder_level - p.quantity_on_hand)}
+                        onChange={(e) =>
+                          setReorderQtys((prev) => ({ ...prev, [p.product_id]: e.target.value }))
+                        }
+                        style={{ width: "70px", padding: "4px" }}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleCreateReorderPO(p)}
+                        style={{ padding: "4px 12px", cursor: "pointer" }}
+                      >
+                        Create Draft PO
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
 
