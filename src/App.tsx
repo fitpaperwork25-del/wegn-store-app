@@ -176,6 +176,7 @@ function App() {
   const [newCusName, setNewCusName] = useState("");
   const [newCusPhone, setNewCusPhone] = useState("");
   const [newCusEmail, setNewCusEmail] = useState("");
+  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
 
   useEffect(() => {
     loadBusinessId();
@@ -1731,7 +1732,8 @@ function App() {
         <button type="submit" style={{ padding: "8px 20px" }}>Add Customer</button>
       </form>
 
-      <h3 style={{ marginBottom: "8px" }}>Customers</h3>
+      <h3 style={{ marginBottom: "4px" }}>Customers</h3>
+      <p style={{ fontSize: "12px", color: "#888", marginBottom: "8px" }}>Click a row to see purchase history</p>
       {(() => {
         const rows = customers.map((c) => {
           const custSales = sales.filter(s => s.customer_id === c.id && s.status === "completed");
@@ -1758,16 +1760,55 @@ function App() {
                 {rows.length === 0 ? (
                   <tr><td colSpan={6}>No customers yet</td></tr>
                 ) : (
-                  rows.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.name}</td>
-                      <td>{row.phone}</td>
-                      <td>{row.email ?? "—"}</td>
-                      <td>{row.visitCount}</td>
-                      <td>${row.totalSpend.toFixed(2)}</td>
-                      <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
-                    </tr>
-                  ))
+                  rows.map((row) => {
+                    const isExpanded = expandedCustomerId === row.id;
+                    const custSales = sales.filter(s => s.customer_id === row.id);
+                    return (
+                      <>
+                        <tr
+                          key={row.id}
+                          onClick={() => setExpandedCustomerId(isExpanded ? null : row.id)}
+                          style={{ cursor: "pointer", background: isExpanded ? "#f0f4ff" : undefined }}
+                        >
+                          <td>{isExpanded ? "▾" : "▸"} {row.name}</td>
+                          <td>{row.phone}</td>
+                          <td>{row.email ?? "—"}</td>
+                          <td>{row.visitCount}</td>
+                          <td>${row.totalSpend.toFixed(2)}</td>
+                          <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${row.id}-history`}>
+                            <td colSpan={6} style={{ background: "#f8f9ff", padding: "16px" }}>
+                              <strong>Purchase History</strong>
+                              {custSales.length === 0 ? (
+                                <p style={{ margin: "8px 0 0", color: "#888" }}>No sales recorded for this customer.</p>
+                              ) : (
+                                <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "8px" }}>
+                                  <thead>
+                                    <tr>
+                                      <th>Date</th>
+                                      <th>Total</th>
+                                      <th>Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {custSales.map(s => (
+                                      <tr key={s.id}>
+                                        <td>{new Date(s.created_at).toLocaleString()}</td>
+                                        <td>${Number(s.total).toFixed(2)}</td>
+                                        <td>{s.status}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })
                 )}
               </tbody>
             </table>
