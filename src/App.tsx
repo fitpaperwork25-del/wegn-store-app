@@ -43,6 +43,19 @@ type POItem = {
   created_at: string;
 };
 
+type ReceiptItem = {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+};
+
+type Receipt = {
+  sale: Sale;
+  items: ReceiptItem[];
+  paymentMethod: string;
+};
+
 type CartItem = {
   product_id: string;
   product_name: string;
@@ -119,6 +132,7 @@ function App() {
   const [amountTendered, setAmountTendered] = useState("");
   const [sales, setSales] = useState<Sale[]>([]);
   const [voidingId, setVoidingId] = useState("");
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   useEffect(() => {
     loadBusinessId();
@@ -412,6 +426,28 @@ function App() {
 
   function handleRemoveFromCart(productId: string) {
     setCart(cart.filter((c) => c.product_id !== productId));
+  }
+
+  async function handlePrintReceipt(sale: Sale) {
+    const { data: items, error: itemsErr } = await supabase
+      .from("sale_items")
+      .select("product_id, quantity, unit_price, line_total")
+      .eq("sale_id", sale.id);
+
+    if (itemsErr || !items) { console.error(itemsErr); return; }
+
+    const { data: payments } = await supabase
+      .from("payments")
+      .select("payment_method")
+      .eq("sale_id", sale.id)
+      .limit(1)
+      .single();
+
+    setReceipt({
+      sale,
+      items: items as ReceiptItem[],
+      paymentMethod: payments?.payment_method ?? "—",
+    });
   }
 
   async function handleVoidSale(saleId: string) {
@@ -1656,7 +1692,13 @@ function App() {
                   <td>${Number(s.tax).toFixed(2)}</td>
                   <td>{s.status}</td>
                   <td>{new Date(s.created_at).toLocaleString()}</td>
-                  <td>
+                  <td style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      onClick={() => handlePrintReceipt(s)}
+                      style={{ padding: "3px 10px", cursor: "pointer" }}
+                    >
+                      Print
+                    </button>
                     {s.status === "completed" && (
                       <button
                         onClick={() => handleVoidSale(s.id)}
@@ -1851,6 +1893,81 @@ function App() {
               </tfoot>
             </table>
           </div>
+        );
+      })()}
+
+      {receipt && (() => {
+        const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
+        return (
+          <>
+            <style>{`
+              @media print {
+                body > * { display: none !important; }
+                #receipt-modal { display: block !important; position: static !important; background: none !important; }
+                #receipt-print { box-shadow: none !important; margin: 0 !important; }
+                #receipt-actions { display: none !important; }
+              }
+            `}</style>
+            <div
+              id="receipt-modal"
+              style={{
+                position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+              }}
+              onClick={(e) => { if (e.target === e.currentTarget) setReceipt(null); }}
+            >
+              <div
+                id="receipt-print"
+                style={{
+                  background: "#fff", padding: "32px 28px", width: "320px",
+                  fontFamily: "monospace", fontSize: "13px", lineHeight: "1.6",
+                  boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
+                }}
+              >
+                <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", marginBottom: "4px" }}>WEGN-STORE</div>
+                <div style={{ textAlign: "center", borderBottom: "1px dashed #333", paddingBottom: "8px", marginBottom: "8px" }}>
+                  {receipt.sale.status === "voided" && (
+                    <div style={{ color: "#b91c1c", fontWeight: "bold" }}>** VOIDED **</div>
+                  )}
+                  <div>Sale: {receipt.sale.id.slice(0, 8)}</div>
+                  <div>{new Date(receipt.sale.created_at).toLocaleString()}</div>
+                </div>
+
+                {receipt.items.map((item, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+                    <span style={{ flex: 1 }}>{productMap[item.product_id] ?? item.product_id.slice(0, 8)} x{item.quantity}</span>
+                    <span>${Number(item.line_total).toFixed(2)}</span>
+                  </div>
+                ))}
+
+                <div style={{ borderTop: "1px dashed #333", marginTop: "8px", paddingTop: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Subtotal</span><span>${Number(receipt.sale.subtotal).toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Tax</span><span>${Number(receipt.sale.tax).toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "15px", marginTop: "4px" }}>
+                    <span>TOTAL</span><span>${Number(receipt.sale.total).toFixed(2)}</span>
+                  </div>
+                  <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod}</div>
+                </div>
+
+                <div style={{ textAlign: "center", borderTop: "1px dashed #333", marginTop: "12px", paddingTop: "8px" }}>
+                  Thank you!
+                </div>
+
+                <div id="receipt-actions" style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "center" }}>
+                  <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold" }}>
+                    Print
+                  </button>
+                  <button onClick={() => setReceipt(null)} style={{ padding: "8px 20px", cursor: "pointer" }}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
         );
       })()}
     </div>
