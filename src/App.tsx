@@ -54,6 +54,8 @@ type Receipt = {
   sale: Sale;
   items: ReceiptItem[];
   paymentMethod: string;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
 };
 
 type SaleItemRecord = {
@@ -160,6 +162,15 @@ type DrawerPaidOut = {
   created_at: string;
 };
 
+type LoyaltyTransaction = {
+  id: string;
+  customer_id: string;
+  sale_id: string | null;
+  points: number;
+  type: string;
+  created_at: string;
+};
+
 type BulkRow = {
   name: string;
   selling_price: string;
@@ -248,6 +259,8 @@ function App() {
   const [paidOutAmount, setPaidOutAmount] = useState("");
   const [paidOutReason, setPaidOutReason] = useState("");
   const [closingCount, setClosingCount] = useState("");
+  const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
+  const [posRedeemPoints, setPosRedeemPoints] = useState("");
   const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
   const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [bulkImporting, setBulkImporting] = useState(false);
@@ -261,6 +274,7 @@ function App() {
     loadSales();
     loadSaleItems();
     loadCustomers();
+    loadLoyaltyTransactions();
     loadDrawerSession();
   }, []);
 
@@ -606,6 +620,14 @@ function App() {
     setCustomers((data as Customer[]) || []);
   }
 
+  async function loadLoyaltyTransactions() {
+    const { data } = await supabase
+      .from('loyalty_transactions')
+      .select('id, customer_id, sale_id, points, type, created_at')
+      .order('created_at', { ascending: false });
+    setLoyaltyTransactions((data as LoyaltyTransaction[]) ?? []);
+  }
+
   function handleLookupCustomer() {
     const phone = posCustomerPhone.trim();
     if (!phone) return;
@@ -613,7 +635,10 @@ function App() {
     if (match) {
       setPosCustomerId(match.id);
       setPosCustomerName(match.name);
-      setMessage(`Customer: ${match.name}`);
+      const balance = loyaltyTransactions
+        .filter(lt => lt.customer_id === match.id)
+        .reduce((sum, lt) => sum + lt.points, 0);
+      setMessage(`Customer: ${match.name} — ${balance} pts`);
     } else {
       setPosCustomerId(null);
       setPosCustomerName("");
@@ -929,10 +954,16 @@ function App() {
       .limit(1)
       .single();
 
+    const saleLoyalty = loyaltyTransactions.filter(lt => lt.sale_id === sale.id);
+    const earnRow = saleLoyalty.find(lt => lt.type === 'earn');
+    const redeemRow = saleLoyalty.find(lt => lt.type === 'redeem');
+
     setReceipt({
       sale,
       items: items as ReceiptItem[],
       paymentMethod: payments?.payment_method ?? "—",
+      pointsEarned: earnRow ? earnRow.points : undefined,
+      pointsRedeemed: redeemRow ? Math.abs(redeemRow.points) : undefined,
     });
   }
 
@@ -1007,7 +1038,13 @@ function App() {
     const discountAmount = posDiscountType === "percent"
       ? Math.min(subtotal, subtotal * (discountVal / 100))
       : Math.min(subtotal, discountVal);
-    const finalTotal = Math.max(0, subtotal - discountAmount);
+    const customerLoyaltyBal = posCustomerId
+      ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
+      : 0;
+    const redeemPts = posCustomerId
+      ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), customerLoyaltyBal)
+      : 0;
+    const finalTotal = Math.max(0, subtotal - discountAmount - redeemPts / 100);
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
@@ -1060,6 +1097,28 @@ function App() {
         });
     }
 
+    if (posCustomerId) {
+      const earnedPoints = Math.floor(finalTotal);
+      if (earnedPoints > 0) {
+        const { error: earnErr } = await supabase.from('loyalty_transactions').insert({
+          customer_id: posCustomerId,
+          sale_id: sale.id,
+          points: earnedPoints,
+          type: 'earn',
+        });
+        if (earnErr) console.error('loyalty earn insert error:', earnErr);
+      }
+      if (redeemPts > 0) {
+        const { error: redeemErr } = await supabase.from('loyalty_transactions').insert({
+          customer_id: posCustomerId,
+          sale_id: sale.id,
+          points: -redeemPts,
+          type: 'redeem',
+        });
+        if (redeemErr) console.error('loyalty redeem insert error:', redeemErr);
+      }
+    }
+
     setCart([]);
     setAmountTendered("");
     setPosDiscountValue("");
@@ -1067,12 +1126,14 @@ function App() {
     setPosCustomerPhone("");
     setPosCustomerId(null);
     setPosCustomerName("");
+    setPosRedeemPoints("");
     setMessage("Sale completed");
     await loadProducts();
     await loadTransactions();
     await loadSales();
     await loadSaleItems();
     await loadCustomers();
+    await loadLoyaltyTransactions();
   }
 
   async function handleToggleEod() {
@@ -1561,7 +1622,13 @@ function App() {
           Lookup
         </button>
         {posCustomerName && (
-          <span style={{ color: "#15803d", fontWeight: "bold" }}>{posCustomerName}</span>
+          <span style={{ color: "#15803d", fontWeight: "bold" }}>
+            {posCustomerName}
+            {(() => {
+              const bal = loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0);
+              return ` — ${bal} pts`;
+            })()}
+          </span>
         )}
       </div>
 
@@ -1600,7 +1667,14 @@ function App() {
                   const discountAmt = posDiscountType === "percent"
                     ? Math.min(subtotal, subtotal * (discountVal / 100))
                     : Math.min(subtotal, discountVal);
-                  const finalTotal = Math.max(0, subtotal - discountAmt);
+                  const tfCustBal = posCustomerId
+                    ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
+                    : 0;
+                  const tfRedeemPts = posCustomerId
+                    ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), tfCustBal)
+                    : 0;
+                  const redeemDollar = tfRedeemPts / 100;
+                  const finalTotal = Math.max(0, subtotal - discountAmt - redeemDollar);
                   return (
                     <>
                       <tr>
@@ -1612,6 +1686,13 @@ function App() {
                         <tr>
                           <td colSpan={3} style={{ textAlign: "right", color: "#16a34a" }}>Discount</td>
                           <td style={{ color: "#16a34a" }}>−${discountAmt.toFixed(2)}</td>
+                          <td></td>
+                        </tr>
+                      )}
+                      {tfRedeemPts > 0 && (
+                        <tr>
+                          <td colSpan={3} style={{ textAlign: "right", color: "#7c3aed" }}>Points ({tfRedeemPts} pts)</td>
+                          <td style={{ color: "#7c3aed" }}>−${redeemDollar.toFixed(2)}</td>
                           <td></td>
                         </tr>
                       )}
@@ -1655,6 +1736,36 @@ function App() {
             )}
           </div>
 
+          {/* Redeem loyalty points */}
+          {posCustomerId && (() => {
+            const custBal = loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0);
+            const redeemVal = Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), custBal);
+            return (
+              <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
+                <span style={{ fontWeight: "bold", fontSize: "13px", color: "#7c3aed" }}>Redeem Points:</span>
+                <span style={{ fontSize: "12px", color: "#888" }}>{custBal} available · 100 pts = $1.00</span>
+                <input
+                  type="number"
+                  min="0"
+                  max={custBal}
+                  step="1"
+                  placeholder="e.g. 100"
+                  value={posRedeemPoints}
+                  onChange={(e) => setPosRedeemPoints(e.target.value)}
+                  style={{ width: "100px", padding: "6px 8px", fontSize: "13px" }}
+                />
+                {redeemVal > 0 && (
+                  <span style={{ fontSize: "13px", color: "#7c3aed" }}>= −${(redeemVal / 100).toFixed(2)}</span>
+                )}
+                {posRedeemPoints && (
+                  <button onClick={() => setPosRedeemPoints("")} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
           <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontWeight: "bold" }}>Payment:</span>
             <label style={{ cursor: "pointer" }}>
@@ -1679,7 +1790,13 @@ function App() {
               const discountAmt = posDiscountType === "percent"
                 ? Math.min(subtotal, subtotal * (discountVal / 100))
                 : Math.min(subtotal, discountVal);
-              const finalTotal = Math.max(0, subtotal - discountAmt);
+              const cashCustBal = posCustomerId
+                ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
+                : 0;
+              const cashRedeemPts = posCustomerId
+                ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), cashCustBal)
+                : 0;
+              const finalTotal = Math.max(0, subtotal - discountAmt - cashRedeemPts / 100);
               return (
                 <>
                   <input
@@ -2348,6 +2465,7 @@ function App() {
                 { label: "Total Customers", value: customers.length },
                 { label: "Store Avg Spend / Visit", value: `$${storeAvg.toFixed(2)}` },
                 { label: "Repeat Customers", value: repeatCount },
+                { label: "Total Points Outstanding", value: loyaltyTransactions.reduce((s, lt) => s + lt.points, 0) },
               ].map(card => (
                 <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "16px", minWidth: "160px", flex: 1 }}>
                   <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
@@ -2400,7 +2518,10 @@ function App() {
           const lastVisit = custSales.length > 0
             ? new Date(Math.max(...custSales.map(s => new Date(s.created_at).getTime())))
             : null;
-          return { ...c, visitCount: custSales.length, totalSpend, lastVisit };
+          const pointsBalance = loyaltyTransactions
+            .filter(lt => lt.customer_id === c.id)
+            .reduce((sum, lt) => sum + lt.points, 0);
+          return { ...c, visitCount: custSales.length, totalSpend, lastVisit, pointsBalance };
         });
         return (
           <div style={{ overflowX: "auto", marginBottom: "40px" }}>
@@ -2413,11 +2534,12 @@ function App() {
                   <th>Visits</th>
                   <th>Total Spend</th>
                   <th>Last Visit</th>
+                  <th>Points</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={6}>No customers yet</td></tr>
+                  <tr><td colSpan={7}>No customers yet</td></tr>
                 ) : (
                   rows.map((row) => {
                     const isExpanded = expandedCustomerId === row.id;
@@ -2435,10 +2557,11 @@ function App() {
                           <td>{row.visitCount}</td>
                           <td>${row.totalSpend.toFixed(2)}</td>
                           <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
+                          <td style={{ color: row.pointsBalance > 0 ? "#7c3aed" : "#888", fontWeight: row.pointsBalance > 0 ? "bold" : "normal" }}>{row.pointsBalance}</td>
                         </tr>
                         {isExpanded && (
                           <tr key={`${row.id}-history`}>
-                            <td colSpan={6} style={{ background: "#f8f9ff", padding: "16px" }}>
+                            <td colSpan={7} style={{ background: "#f8f9ff", padding: "16px" }}>
                               <strong>Purchase History</strong>
                               {custSales.length === 0 ? (
                                 <p style={{ margin: "8px 0 0", color: "#888" }}>No sales recorded for this customer.</p>
@@ -2471,6 +2594,31 @@ function App() {
                                   </tbody>
                                 </table>
                               )}
+                              <strong style={{ display: "block", marginTop: "16px" }}>Points History</strong>
+                              {(() => {
+                                const custLoyalty = loyaltyTransactions.filter(lt => lt.customer_id === row.id).slice(0, 20);
+                                return custLoyalty.length === 0 ? (
+                                  <p style={{ margin: "8px 0 0", color: "#888" }}>No points history yet.</p>
+                                ) : (
+                                  <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "8px", fontSize: "13px" }}>
+                                    <thead>
+                                      <tr><th>Date</th><th>Type</th><th>Points</th><th>Sale</th></tr>
+                                    </thead>
+                                    <tbody>
+                                      {custLoyalty.map(lt => (
+                                        <tr key={lt.id}>
+                                          <td>{new Date(lt.created_at).toLocaleString()}</td>
+                                          <td style={{ color: lt.type === 'earn' ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>{lt.type}</td>
+                                          <td style={{ color: lt.points > 0 ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>
+                                            {lt.points > 0 ? `+${lt.points}` : lt.points}
+                                          </td>
+                                          <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{lt.sale_id ? lt.sale_id.slice(0, 8) + '…' : '—'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                );
+                              })()}
                             </td>
                           </tr>
                         )}
@@ -3541,6 +3689,20 @@ function App() {
                   <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod}</div>
                 </div>
 
+                {(receipt.pointsEarned !== undefined || receipt.pointsRedeemed !== undefined) && (
+                  <div style={{ borderTop: "1px dashed #333", marginTop: "8px", paddingTop: "8px", fontSize: "12px" }}>
+                    {receipt.pointsRedeemed !== undefined && receipt.pointsRedeemed > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#7c3aed" }}>
+                        <span>Points Redeemed</span><span>−{receipt.pointsRedeemed} pts</span>
+                      </div>
+                    )}
+                    {receipt.pointsEarned !== undefined && receipt.pointsEarned > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#15803d" }}>
+                        <span>Points Earned</span><span>+{receipt.pointsEarned} pts</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div style={{ textAlign: "center", borderTop: "1px dashed #333", marginTop: "12px", paddingTop: "8px" }}>
                   Thank you!
                 </div>
