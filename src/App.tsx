@@ -33,6 +33,16 @@ type PurchaseOrder = {
   created_at: string;
 };
 
+type POItem = {
+  id: string;
+  purchase_order_id: string;
+  product_id: string;
+  quantity: number;
+  unit_cost: number;
+  line_total: number;
+  created_at: string;
+};
+
 type ProductStock = {
   inventory_id: string;
   business_id: string;
@@ -44,6 +54,7 @@ type ProductStock = {
   quantity_on_hand: number;
   reorder_level: number;
   status: string;
+  average_cost: number;
 };
 
 function App() {
@@ -51,6 +62,14 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [selectedPoId, setSelectedPoId] = useState("");
+  const [poItems, setPoItems] = useState<POItem[]>([]);
+  const [itemProductId, setItemProductId] = useState("");
+  const [itemQuantity, setItemQuantity] = useState("");
+  const [itemUnitCost, setItemUnitCost] = useState("");
+  const [receivingPoId, setReceivingPoId] = useState("");
+  const [receivingItems, setReceivingItems] = useState<POItem[]>([]);
+  const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poNotes, setPoNotes] = useState("");
   const [supName, setSupName] = useState("");
@@ -73,6 +92,7 @@ function App() {
   const [newReorderLevel, setNewReorderLevel] = useState("");
   const [newInitialStock, setNewInitialStock] = useState("");
   const [message, setMessage] = useState("");
+  const [movementFilter, setMovementFilter] = useState("all");
 
   useEffect(() => {
     loadBusinessId();
@@ -103,6 +123,182 @@ function App() {
     }
 
     setPurchaseOrders((data as PurchaseOrder[]) || []);
+  }
+
+  async function loadPOItems(poId: string) {
+    const { data, error } = await supabase
+      .from("purchase_order_items")
+      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .eq("purchase_order_id", poId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setPoItems((data as POItem[]) || []);
+  }
+
+  async function handleSelectPO(po: PurchaseOrder) {
+    if (selectedPoId === po.id) {
+      setSelectedPoId("");
+      setPoItems([]);
+      return;
+    }
+    setSelectedPoId(po.id);
+    setItemProductId("");
+    setItemQuantity("");
+    setItemUnitCost("");
+    await loadPOItems(po.id);
+  }
+
+  async function handleAddPOItem(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage("");
+
+    const qty = Number(itemQuantity);
+    const cost = Number(itemUnitCost);
+
+    if (!selectedPoId || !itemProductId || !qty || !cost) return;
+
+    const lineTotal = qty * cost;
+
+    const { error: insertError } = await supabase
+      .from("purchase_order_items")
+      .insert({
+        purchase_order_id: selectedPoId,
+        product_id: itemProductId,
+        quantity: qty,
+        unit_cost: cost,
+        line_total: lineTotal,
+      });
+
+    if (insertError) {
+      console.error(insertError);
+      return;
+    }
+
+    const { data: freshItems, error: itemsError } = await supabase
+      .from("purchase_order_items")
+      .select("line_total")
+      .eq("purchase_order_id", selectedPoId);
+
+    if (itemsError) {
+      console.error(itemsError);
+      return;
+    }
+
+    const newSubtotal = (freshItems || []).reduce(
+      (sum, item: any) => sum + Number(item.line_total),
+      0
+    );
+
+    const { error: updateError } = await supabase
+      .from("purchase_orders")
+      .update({ subtotal: newSubtotal })
+      .eq("id", selectedPoId);
+
+    if (updateError) {
+      console.error(updateError);
+      return;
+    }
+
+    setItemProductId("");
+    setItemQuantity("");
+    setItemUnitCost("");
+    await loadPOItems(selectedPoId);
+    await loadPurchaseOrders();
+  }
+
+  async function handleOpenReceive(po: PurchaseOrder) {
+    if (receivingPoId === po.id) {
+      setReceivingPoId("");
+      setReceivingItems([]);
+      setReceiveQtys({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("purchase_order_items")
+      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .eq("purchase_order_id", po.id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const items = (data as POItem[]) || [];
+    setReceivingPoId(po.id);
+    setReceivingItems(items);
+
+    const qtys: Record<string, string> = {};
+    items.forEach((item) => { qtys[item.id] = String(item.quantity); });
+    setReceiveQtys(qtys);
+  }
+
+  async function handleConfirmReceive() {
+    const po = purchaseOrders.find((p) => p.id === receivingPoId);
+    if (!po) return;
+
+    for (const item of receivingItems) {
+      const receiveQty = Number(receiveQtys[item.id] ?? 0);
+      if (receiveQty <= 0) continue;
+
+      const product = products.find((p) => p.product_id === item.product_id);
+      if (!product) continue;
+
+      const quantityBefore = product.quantity_on_hand;
+      const quantityAfter = quantityBefore + receiveQty;
+      const oldAvgCost = product.average_cost ?? 0;
+      const newAvgCost = (quantityBefore + receiveQty) > 0
+        ? ((quantityBefore * oldAvgCost) + (receiveQty * item.unit_cost)) / (quantityBefore + receiveQty)
+        : item.unit_cost;
+
+      const { error: invError } = await supabase
+        .from("inventory")
+        .update({ quantity_on_hand: quantityAfter })
+        .eq("id", product.inventory_id);
+
+      if (invError) { console.error(invError); continue; }
+
+      const { error: avgCostError } = await supabase
+        .from("products")
+        .update({ average_cost: newAvgCost })
+        .eq("id", item.product_id);
+
+      if (avgCostError) { console.error(avgCostError); }
+
+      const { error: txError } = await supabase
+        .from("inventory_transactions")
+        .insert({
+          business_id: product.business_id,
+          product_id: item.product_id,
+          transaction_type: "receiving",
+          quantity_change: receiveQty,
+          quantity_before: quantityBefore,
+          quantity_after: quantityAfter,
+          reason: `PO ${po.po_number}`,
+        });
+
+      if (txError) { console.error(txError); }
+    }
+
+    const { error: statusError } = await supabase
+      .from("purchase_orders")
+      .update({ status: "received" })
+      .eq("id", receivingPoId);
+
+    if (statusError) { console.error(statusError); }
+
+    setReceivingPoId("");
+    setReceivingItems([]);
+    setReceiveQtys({});
+    await loadProducts();
+    await loadPurchaseOrders();
+    await loadTransactions();
   }
 
   async function handleCreatePO(e: React.FormEvent) {
@@ -193,7 +389,8 @@ function App() {
           barcode,
           selling_price,
           reorder_level,
-          status
+          status,
+          average_cost
         )
       `);
 
@@ -217,6 +414,7 @@ function App() {
         quantity_on_hand: item.quantity_on_hand,
         reorder_level: item.products?.reorder_level ?? 10,
         status: item.products?.status,
+        average_cost: item.products?.average_cost ?? 0,
       })) || [];
 
     setProducts(formatted);
@@ -631,6 +829,12 @@ function App() {
           <div style={{ fontSize: "13px", color: "#666" }}>Total Suppliers</div>
           <div style={{ fontSize: "28px", fontWeight: "bold" }}>{suppliers.length}</div>
         </div>
+        <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
+          <div style={{ fontSize: "13px", color: "#666" }}>Total Inventory Value</div>
+          <div style={{ fontSize: "28px", fontWeight: "bold" }}>
+            ${products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0).toFixed(2)}
+          </div>
+        </div>
       </div>
 
       <h2>Products & Stock</h2>
@@ -647,6 +851,8 @@ function App() {
               <th>Reorder Level</th>
               <th>Alert</th>
               <th>Status</th>
+              <th>Avg Cost</th>
+              <th>Inventory Value</th>
             </tr>
           </thead>
 
@@ -665,6 +871,8 @@ function App() {
                     {isLowStock ? "LOW STOCK" : "OK"}
                   </td>
                   <td>{product.status}</td>
+                  <td>${product.average_cost.toFixed(2)}</td>
+                  <td>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</td>
                 </tr>
               );
             })}
@@ -810,27 +1018,192 @@ function App() {
                   <th>Subtotal</th>
                   <th>Notes</th>
                   <th>Created At</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {purchaseOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>No purchase orders found</td>
+                    <td colSpan={7}>No purchase orders found</td>
                   </tr>
                 ) : (
                   purchaseOrders.map((po) => (
-                    <tr key={po.id}>
+                    <tr key={po.id} style={{ backgroundColor: selectedPoId === po.id ? "#f0f4ff" : "inherit" }}>
                       <td>{po.po_number}</td>
                       <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
                       <td>{po.status}</td>
                       <td>${Number(po.subtotal ?? 0).toFixed(2)}</td>
                       <td>{po.notes || "-"}</td>
                       <td>{new Date(po.created_at).toLocaleString()}</td>
+                      <td style={{ display: "flex", gap: "6px" }}>
+                        <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px" }}>
+                          {selectedPoId === po.id ? "Close" : "View/Edit"}
+                        </button>
+                        {po.status !== "received" && (
+                          <button
+                            onClick={() => handleOpenReceive(po)}
+                            style={{ padding: "4px 10px", background: receivingPoId === po.id ? "#d1fae5" : undefined }}
+                          >
+                            {receivingPoId === po.id ? "Cancel" : "Receive"}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        );
+      })()}
+
+      {selectedPoId && (() => {
+        const po = purchaseOrders.find((p) => p.id === selectedPoId);
+        const productMap = Object.fromEntries(
+          products.map((p) => [p.product_id, p.product_name])
+        );
+        return (
+          <div style={{ marginTop: "32px", padding: "20px", border: "1px solid #ccc", borderRadius: "8px", marginBottom: "32px" }}>
+            <h3 style={{ margin: "0 0 16px" }}>
+              PO Detail — {po?.po_number}
+            </h3>
+
+            <form
+              onSubmit={handleAddPOItem}
+              style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
+            >
+              <select
+                value={itemProductId}
+                onChange={(e) => setItemProductId(e.target.value)}
+                style={{ flex: "2 1 200px", padding: "8px" }}
+              >
+                <option value="">Select product...</option>
+                {products.map((p) => (
+                  <option key={p.product_id} value={p.product_id}>
+                    {p.product_name}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="number"
+                min="0"
+                placeholder="Quantity"
+                value={itemQuantity}
+                onChange={(e) => setItemQuantity(e.target.value)}
+                style={{ flex: "1 1 120px", padding: "8px" }}
+              />
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Unit Cost"
+                value={itemUnitCost}
+                onChange={(e) => setItemUnitCost(e.target.value)}
+                style={{ flex: "1 1 120px", padding: "8px" }}
+              />
+
+              <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
+                Add Item
+              </button>
+            </form>
+
+            <div style={{ overflowX: "auto" }}>
+              <table border={1} cellPadding={10} style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                    <th>Unit Cost</th>
+                    <th>Line Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {poItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>No items yet</td>
+                    </tr>
+                  ) : (
+                    poItems.map((item) => (
+                      <tr key={item.id}>
+                        <td>{productMap[item.product_id] ?? "Unknown"}</td>
+                        <td>{item.quantity}</td>
+                        <td>${Number(item.unit_cost).toFixed(2)}</td>
+                        <td>${Number(item.line_total).toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {poItems.length > 0 && (
+              <p style={{ textAlign: "right", fontWeight: "bold", marginTop: "8px" }}>
+                Subtotal: ${poItems.reduce((sum, i) => sum + Number(i.line_total), 0).toFixed(2)}
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+      {receivingPoId && (() => {
+        const po = purchaseOrders.find((p) => p.id === receivingPoId);
+        const productMap = Object.fromEntries(
+          products.map((p) => [p.product_id, p.product_name])
+        );
+        return (
+          <div style={{ marginTop: "32px", padding: "20px", border: "2px solid #16a34a", borderRadius: "8px", marginBottom: "32px" }}>
+            <h3 style={{ margin: "0 0 16px", color: "#15803d" }}>
+              Receive Inventory — {po?.po_number}
+            </h3>
+
+            <div style={{ overflowX: "auto", marginBottom: "16px" }}>
+              <table border={1} cellPadding={10} style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Ordered Qty</th>
+                    <th>Receive Qty</th>
+                    <th>Unit Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receivingItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>No line items on this PO</td>
+                    </tr>
+                  ) : (
+                    receivingItems.map((item) => (
+                      <tr key={item.id}>
+                        <td>{productMap[item.product_id] ?? "Unknown"}</td>
+                        <td>{item.quantity}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            value={receiveQtys[item.id] ?? ""}
+                            onChange={(e) =>
+                              setReceiveQtys((prev) => ({ ...prev, [item.id]: e.target.value }))
+                            }
+                            style={{ width: "80px", padding: "4px" }}
+                          />
+                        </td>
+                        <td>${Number(item.unit_cost).toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              onClick={handleConfirmReceive}
+              disabled={receivingItems.length === 0}
+              style={{ padding: "10px 24px", background: "#16a34a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
+            >
+              Confirm Receive
+            </button>
           </div>
         );
       })()}
@@ -869,6 +1242,186 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
+
+      {/* 1. Inventory Valuation Report */}
+      <h3 style={{ marginTop: "24px", marginBottom: "8px" }}>Inventory Valuation</h3>
+      <div style={{ overflowX: "auto" }}>
+        <table border={1} cellPadding={10} style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Stock</th>
+              <th>Avg Cost</th>
+              <th>Inventory Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.length === 0 ? (
+              <tr><td colSpan={4}>No products found</td></tr>
+            ) : (
+              products.map((p) => (
+                <tr key={p.product_id}>
+                  <td>{p.product_name}</td>
+                  <td>{p.quantity_on_hand}</td>
+                  <td>${p.average_cost.toFixed(2)}</td>
+                  <td>${(p.quantity_on_hand * p.average_cost).toFixed(2)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total Inventory Value</td>
+              <td style={{ fontWeight: "bold" }}>
+                ${products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0).toFixed(2)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* 2. Low Stock Report */}
+      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Low Stock Report</h3>
+      {(() => {
+        const lowStock = products.filter(p => p.quantity_on_hand <= p.reorder_level);
+        return (
+          <div style={{ overflowX: "auto" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Current Stock</th>
+                  <th>Reorder Level</th>
+                  <th>Shortage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lowStock.length === 0 ? (
+                  <tr><td colSpan={4}>No low stock items</td></tr>
+                ) : (
+                  lowStock.map((p) => (
+                    <tr key={p.product_id} style={{ backgroundColor: "#ffe5e5" }}>
+                      <td>{p.product_name}</td>
+                      <td>{p.quantity_on_hand}</td>
+                      <td>{p.reorder_level}</td>
+                      <td style={{ color: "red", fontWeight: "bold" }}>
+                        {p.reorder_level - p.quantity_on_hand}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {/* 3. Product Movement Report */}
+      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Product Movement</h3>
+      <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {["all", "receiving", "damaged", "adjustment"].map((f) => (
+          <button
+            key={f}
+            onClick={() => setMovementFilter(f)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "4px",
+              border: "1px solid #ccc",
+              cursor: "pointer",
+              backgroundColor: movementFilter === f ? "#333" : "#fff",
+              color: movementFilter === f ? "#fff" : "#333",
+              fontWeight: movementFilter === f ? "bold" : "normal",
+            }}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+      {(() => {
+        const filtered = movementFilter === "all"
+          ? transactions
+          : transactions.filter(tx => tx.transaction_type === movementFilter);
+        return (
+          <div style={{ overflowX: "auto" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Product</th>
+                  <th>Type</th>
+                  <th>Change</th>
+                  <th>Before</th>
+                  <th>After</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={6}>No transactions</td></tr>
+                ) : (
+                  filtered.map((tx) => (
+                    <tr key={tx.id}>
+                      <td>{new Date(tx.created_at).toLocaleString()}</td>
+                      <td>{tx.products?.name}</td>
+                      <td>{tx.transaction_type}</td>
+                      <td style={{ color: tx.quantity_change < 0 ? "red" : "green", fontWeight: "bold" }}>
+                        {tx.quantity_change > 0 ? `+${tx.quantity_change}` : tx.quantity_change}
+                      </td>
+                      <td>{tx.quantity_before}</td>
+                      <td>{tx.quantity_after}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {/* 4. Purchase Order Report */}
+      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Purchase Order Report</h3>
+      {(() => {
+        const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
+        const totalPO = purchaseOrders.reduce((sum, po) => sum + po.subtotal, 0);
+        return (
+          <div style={{ overflowX: "auto" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>PO Number</th>
+                  <th>Supplier</th>
+                  <th>Status</th>
+                  <th>Subtotal</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchaseOrders.length === 0 ? (
+                  <tr><td colSpan={5}>No purchase orders found</td></tr>
+                ) : (
+                  purchaseOrders.map((po) => (
+                    <tr key={po.id}>
+                      <td>{po.po_number}</td>
+                      <td>{supplierMap[po.supplier_id] ?? po.supplier_id}</td>
+                      <td>{po.status}</td>
+                      <td>${po.subtotal.toFixed(2)}</td>
+                      <td>{new Date(po.created_at).toLocaleString()}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total PO Value</td>
+                  <td style={{ fontWeight: "bold" }}>${totalPO.toFixed(2)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        );
+      })()}
     </div>
   );
 }
