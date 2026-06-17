@@ -126,6 +126,17 @@ type ReturnLineItem = {
   return_qty: number;
 };
 
+type StockCountLine = {
+  product_id: string;
+  inventory_id: string;
+  business_id: string;
+  product_name: string;
+  sku: string | null;
+  barcode: string | null;
+  system_qty: number;
+  counted_qty: number;
+};
+
 type BulkRow = {
   name: string;
   selling_price: string;
@@ -201,6 +212,9 @@ function App() {
   const [returnLines, setReturnLines] = useState<ReturnLineItem[]>([]);
   const [returnReason, setReturnReason] = useState("");
   const [returnLoading, setReturnLoading] = useState(false);
+  const [stockCountLines, setStockCountLines] = useState<StockCountLine[]>([]);
+  const [stockCountActive, setStockCountActive] = useState(false);
+  const [stockCountLoading, setStockCountLoading] = useState(false);
   const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
   const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [bulkImporting, setBulkImporting] = useState(false);
@@ -297,6 +311,68 @@ function App() {
     await loadProducts();
     await loadTransactions();
     await loadSales();
+  }
+
+  function handleStartCount() {
+    const lines: StockCountLine[] = products.map(p => ({
+      product_id: p.product_id,
+      inventory_id: p.inventory_id,
+      business_id: p.business_id,
+      product_name: p.product_name,
+      sku: p.sku,
+      barcode: p.barcode,
+      system_qty: p.quantity_on_hand,
+      counted_qty: p.quantity_on_hand,
+    }));
+    setStockCountLines(lines);
+    setStockCountActive(true);
+  }
+
+  async function handleConfirmCount() {
+    if (stockCountLines.length === 0) return;
+    setStockCountLoading(true);
+    const bid = stockCountLines[0].business_id;
+    const { data: sc, error: scErr } = await supabase.from('stock_counts').insert({
+      business_id: bid,
+      status: 'completed',
+      notes: `Stock take on ${new Date().toLocaleString()}`,
+      completed_at: new Date().toISOString(),
+    }).select('id').single();
+    if (scErr || !sc) {
+      setMessage('Failed to save stock count: ' + scErr?.message);
+      setStockCountLoading(false);
+      return;
+    }
+    let varianceCount = 0;
+    for (const line of stockCountLines) {
+      const variance = line.counted_qty - line.system_qty;
+      await supabase.from('stock_count_items').insert({
+        stock_count_id: sc.id,
+        product_id: line.product_id,
+        system_qty: line.system_qty,
+        counted_qty: line.counted_qty,
+        variance,
+      });
+      if (variance !== 0) {
+        varianceCount++;
+        await supabase.from('inventory').update({ quantity_on_hand: line.counted_qty }).eq('id', line.inventory_id);
+        await supabase.from('inventory_transactions').insert({
+          business_id: line.business_id,
+          product_id: line.product_id,
+          transaction_type: 'correction',
+          quantity_change: variance,
+          quantity_before: line.system_qty,
+          quantity_after: line.counted_qty,
+          reason: `Stock take count adjustment (count #${sc.id.slice(0, 8)})`,
+        });
+      }
+    }
+    setStockCountActive(false);
+    setStockCountLines([]);
+    setStockCountLoading(false);
+    setMessage(`Stock count completed — ${varianceCount} variance(s) corrected.`);
+    await loadProducts();
+    await loadTransactions();
   }
 
   function downloadCsvTemplate() {
@@ -2984,6 +3060,103 @@ function App() {
           </>
         );
       })()}
+
+      {/* Stock Take / Inventory Count */}
+      <h2>Stock Take / Inventory Count</h2>
+      {!stockCountActive ? (
+        <div style={{ marginBottom: "24px" }}>
+          <p style={{ color: "#555", marginBottom: "12px", fontSize: "14px" }}>
+            Count all products on the shelf and correct any discrepancies between
+            the system quantity and the physical count.
+          </p>
+          <button
+            onClick={handleStartCount}
+            disabled={products.length === 0}
+            style={{ padding: "9px 22px", fontWeight: "bold", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px" }}
+          >
+            Start Stock Count ({products.length} products)
+          </button>
+        </div>
+      ) : (
+        <div style={{ marginBottom: "32px" }}>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
+            <strong>Active Count — {stockCountLines.length} products</strong>
+            <span style={{ fontSize: "13px", color: "#666" }}>
+              Variances: {stockCountLines.filter(l => l.counted_qty !== l.system_qty).length}
+            </span>
+            <button
+              onClick={() => { setStockCountActive(false); setStockCountLines([]); }}
+              style={{ padding: "5px 14px", cursor: "pointer", marginLeft: "auto" }}
+            >
+              Cancel
+            </button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+              <thead>
+                <tr style={{ background: "#f3f4f6" }}>
+                  <th style={{ textAlign: "left" }}>Product</th>
+                  <th>SKU</th>
+                  <th>Barcode</th>
+                  <th>System Qty</th>
+                  <th>Counted Qty</th>
+                  <th>Variance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockCountLines.map((line, idx) => {
+                  const variance = line.counted_qty - line.system_qty;
+                  return (
+                    <tr key={line.product_id} style={{ background: variance !== 0 ? "#fefce8" : "inherit" }}>
+                      <td>{line.product_name}</td>
+                      <td style={{ color: "#888" }}>{line.sku ?? "—"}</td>
+                      <td style={{ color: "#888" }}>{line.barcode ?? "—"}</td>
+                      <td style={{ textAlign: "center" }}>{line.system_qty}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.counted_qty}
+                          onChange={(e) => {
+                            const val = Math.max(0, Number(e.target.value));
+                            setStockCountLines(prev => prev.map((l, i) => i === idx ? { ...l, counted_qty: val } : l));
+                          }}
+                          style={{ width: "70px", padding: "4px 6px", textAlign: "center" }}
+                        />
+                      </td>
+                      <td style={{
+                        textAlign: "center",
+                        fontWeight: variance !== 0 ? "bold" : "normal",
+                        color: variance > 0 ? "#16a34a" : variance < 0 ? "#dc2626" : "#888",
+                      }}>
+                        {variance > 0 ? `+${variance}` : variance}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "14px", flexWrap: "wrap" }}>
+            <button
+              onClick={handleConfirmCount}
+              disabled={stockCountLoading}
+              style={{
+                padding: "9px 24px", fontWeight: "bold", cursor: stockCountLoading ? "not-allowed" : "pointer",
+                background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px",
+              }}
+            >
+              {stockCountLoading ? "Saving…" : `Confirm Count (${stockCountLines.filter(l => l.counted_qty !== l.system_qty).length} variance(s))`}
+            </button>
+            <button
+              onClick={() => { setStockCountActive(false); setStockCountLines([]); }}
+              style={{ padding: "9px 18px", cursor: "pointer", borderRadius: "6px" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {receipt && (() => {
         const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
