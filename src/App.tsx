@@ -117,6 +117,17 @@ type ProductStock = {
   average_cost: number;
 };
 
+type BulkRow = {
+  name: string;
+  selling_price: string;
+  sku: string;
+  barcode: string;
+  cost_price: string;
+  reorder_level: string;
+  initial_stock: string;
+  status: 'valid' | 'missing_name' | 'missing_price' | 'invalid_price' | 'duplicate_barcode';
+};
+
 function App() {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -176,6 +187,9 @@ function App() {
   const [newCusPhone, setNewCusPhone] = useState("");
   const [newCusEmail, setNewCusEmail] = useState("");
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
+  const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
+  const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
+  const [bulkImporting, setBulkImporting] = useState(false);
 
   useEffect(() => {
     loadBusinessId();
@@ -203,6 +217,103 @@ function App() {
       .select("sale_id, product_id, quantity, unit_price, line_total");
     if (error) { console.error(error); return; }
     setSaleItems((data as SaleItemRecord[]) || []);
+  }
+
+  function downloadCsvTemplate() {
+    const headers = 'name,selling_price,sku,barcode,cost_price,reorder_level,initial_stock';
+    const example = 'Example Product,2.99,SKU-001,123456789,1.50,10,50';
+    const blob = new Blob([headers + '\n' + example], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'product_import_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    setBulkPreview([]);
+    setBulkResults(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = (evt.target?.result as string) ?? '';
+      const lines = text.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
+      if (lines.length < 2) return;
+      const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+      const idx = (name: string) => headers.indexOf(name);
+      const existingBarcodes = new Set(products.map(p => p.barcode).filter(Boolean));
+      const rows: BulkRow[] = lines.slice(1).map(line => {
+        const cells = line.split(',').map(c => c.trim());
+        const get = (col: string) => cells[idx(col)] ?? '';
+        const name = get('name');
+        const selling_price = get('selling_price');
+        const barcode = get('barcode');
+        let status: BulkRow['status'] = 'valid';
+        if (!name) status = 'missing_name';
+        else if (!selling_price) status = 'missing_price';
+        else if (isNaN(Number(selling_price)) || Number(selling_price) <= 0) status = 'invalid_price';
+        else if (barcode && existingBarcodes.has(barcode)) status = 'duplicate_barcode';
+        return {
+          name, selling_price,
+          sku: get('sku'),
+          barcode,
+          cost_price: get('cost_price'),
+          reorder_level: get('reorder_level'),
+          initial_stock: get('initial_stock'),
+          status,
+        };
+      });
+      setBulkPreview(rows);
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleBulkImport() {
+    const validRows = bulkPreview.filter(r => r.status === 'valid');
+    if (validRows.length === 0) return;
+    setBulkImporting(true);
+    let imported = 0, skipped = 0, failed = 0;
+    for (const row of bulkPreview) {
+      if (row.status !== 'valid') { skipped++; continue; }
+      const initialStock = Number(row.initial_stock) || 0;
+      const costPrice = Number(row.cost_price) || null;
+      const { data: prod, error: prodErr } = await supabase.from('products').insert({
+        business_id: businessId,
+        name: row.name,
+        sku: row.sku || null,
+        barcode: row.barcode || null,
+        cost_price: costPrice,
+        selling_price: Number(row.selling_price),
+        reorder_level: Number(row.reorder_level) || 10,
+        average_cost: costPrice ?? 0,
+        status: 'active',
+      }).select('id').single();
+      if (prodErr || !prod) { failed++; continue; }
+      const { error: invErr } = await supabase.from('inventory').insert({
+        business_id: businessId,
+        product_id: prod.id,
+        quantity_on_hand: initialStock,
+      });
+      if (invErr) { failed++; continue; }
+      if (initialStock > 0) {
+        await supabase.from('inventory_transactions').insert({
+          business_id: businessId,
+          product_id: prod.id,
+          transaction_type: 'receiving',
+          quantity_change: initialStock,
+          quantity_before: 0,
+          quantity_after: initialStock,
+          reason: 'Bulk import initial stock',
+        });
+      }
+      imported++;
+    }
+    setBulkResults({ imported, skipped, failed });
+    setBulkImporting(false);
+    setBulkPreview([]);
+    await loadProducts();
   }
 
   async function loadCustomers() {
@@ -1414,6 +1525,102 @@ function App() {
           Add Product
         </button>
       </form>
+
+      <h2 style={{ marginTop: "40px" }}>Bulk Import Products</h2>
+
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
+        <button onClick={downloadCsvTemplate} style={{ padding: "8px 16px" }}>
+          Download CSV Template
+        </button>
+        <input
+          type="file"
+          accept=".csv"
+          onChange={handleCsvUpload}
+          style={{ padding: "4px" }}
+        />
+      </div>
+
+      {bulkPreview.length > 0 && (
+        <>
+          <div style={{ overflowX: "auto", marginBottom: "12px" }}>
+            <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Name</th>
+                  <th>Selling Price</th>
+                  <th>SKU</th>
+                  <th>Barcode</th>
+                  <th>Cost Price</th>
+                  <th>Reorder Level</th>
+                  <th>Initial Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bulkPreview.map((row, i) => {
+                  const statusColor: Record<BulkRow['status'], string> = {
+                    valid: '#15803d',
+                    missing_name: '#b91c1c',
+                    missing_price: '#b91c1c',
+                    invalid_price: '#b91c1c',
+                    duplicate_barcode: '#92400e',
+                  };
+                  const statusLabel: Record<BulkRow['status'], string> = {
+                    valid: '✓ Valid',
+                    missing_name: '✗ Missing name',
+                    missing_price: '✗ Missing price',
+                    invalid_price: '✗ Invalid price',
+                    duplicate_barcode: '⚠ Duplicate barcode',
+                  };
+                  return (
+                    <tr key={i} style={{ background: row.status === 'valid' ? undefined : '#fff7f7' }}>
+                      <td style={{ color: statusColor[row.status], fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                        {statusLabel[row.status]}
+                      </td>
+                      <td>{row.name || '—'}</td>
+                      <td>{row.selling_price || '—'}</td>
+                      <td>{row.sku || '—'}</td>
+                      <td>{row.barcode || '—'}</td>
+                      <td>{row.cost_price || '—'}</td>
+                      <td>{row.reorder_level || '—'}</td>
+                      <td>{row.initial_stock || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "24px" }}>
+            <span style={{ fontSize: "13px", color: "#666" }}>
+              {bulkPreview.filter(r => r.status === 'valid').length} valid &nbsp;·&nbsp;
+              {bulkPreview.filter(r => r.status !== 'valid').length} will be skipped
+            </span>
+            <button
+              onClick={handleBulkImport}
+              disabled={bulkImporting || bulkPreview.filter(r => r.status === 'valid').length === 0}
+              style={{
+                padding: "8px 24px",
+                background: bulkPreview.filter(r => r.status === 'valid').length === 0 ? '#ccc' : '#1d4ed8',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: bulkPreview.filter(r => r.status === 'valid').length === 0 ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              {bulkImporting ? 'Importing…' : 'Import Products'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {bulkResults && (
+        <div style={{ marginBottom: "24px", padding: "16px", border: "1px solid #ccc", borderRadius: "8px", display: "flex", gap: "32px" }}>
+          <div><span style={{ fontSize: "13px", color: "#666" }}>Imported</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#15803d" }}>{bulkResults.imported}</div></div>
+          <div><span style={{ fontSize: "13px", color: "#666" }}>Skipped</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#92400e" }}>{bulkResults.skipped}</div></div>
+          <div><span style={{ fontSize: "13px", color: "#666" }}>Failed</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#b91c1c" }}>{bulkResults.failed}</div></div>
+        </div>
+      )}
 
       <h2>Dashboard</h2>
 
