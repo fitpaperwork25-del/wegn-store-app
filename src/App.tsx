@@ -1554,6 +1554,54 @@ function App() {
         );
       })()}
 
+      <h2 style={{ marginTop: "40px" }}>Supplier Performance</h2>
+
+      {(() => {
+        const stats = suppliers.map((s) => {
+          const pos = purchaseOrders.filter((po) => po.supplier_id === s.id);
+          const received = pos.filter((po) => po.status === "received");
+          const drafts = pos.filter((po) => po.status === "draft");
+          const totalSpend = received.reduce((sum, po) => sum + Number(po.subtotal), 0);
+          const lastPO = pos.length > 0
+            ? new Date(Math.max(...pos.map((po) => new Date(po.created_at).getTime())))
+            : null;
+          return { name: s.name, totalPOs: pos.length, receivedPOs: received.length, draftPOs: drafts.length, totalSpend, lastPO };
+        });
+
+        return (
+          <div style={{ overflowX: "auto", marginBottom: "40px" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Supplier</th>
+                  <th>Total POs</th>
+                  <th>Received</th>
+                  <th>Draft</th>
+                  <th>Total Spend (received)</th>
+                  <th>Last Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.length === 0 ? (
+                  <tr><td colSpan={6}>No suppliers found</td></tr>
+                ) : (
+                  stats.map((row) => (
+                    <tr key={row.name}>
+                      <td>{row.name}</td>
+                      <td>{row.totalPOs}</td>
+                      <td>{row.receivedPOs}</td>
+                      <td>{row.draftPOs}</td>
+                      <td>${row.totalSpend.toFixed(2)}</td>
+                      <td>{row.lastPO ? row.lastPO.toLocaleDateString() : "—"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
       <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
 
       <form
