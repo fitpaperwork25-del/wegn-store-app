@@ -263,6 +263,12 @@ function App() {
   const [posRedeemPoints, setPosRedeemPoints] = useState("");
   const [analyticsRange, setAnalyticsRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
   const [allPayments, setAllPayments] = useState<EodPayment[]>([]);
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
+  const [editSupName, setEditSupName] = useState("");
+  const [editSupContact, setEditSupContact] = useState("");
+  const [editSupPhone, setEditSupPhone] = useState("");
+  const [editSupEmail, setEditSupEmail] = useState("");
+  const [editSupNotes, setEditSupNotes] = useState("");
   const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
   const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [bulkImporting, setBulkImporting] = useState(false);
@@ -1296,6 +1302,51 @@ function App() {
     await loadSuppliers();
   }
 
+  function handleStartEditSupplier(s: Supplier) {
+    setEditingSupplierId(s.id);
+    setEditSupName(s.name);
+    setEditSupContact(s.contact_name ?? "");
+    setEditSupPhone(s.phone ?? "");
+    setEditSupEmail(s.email ?? "");
+    setEditSupNotes(s.notes ?? "");
+  }
+
+  function handleCancelEditSupplier() {
+    setEditingSupplierId(null);
+  }
+
+  async function handleSaveSupplier() {
+    if (!editingSupplierId || !editSupName.trim()) return;
+    const { error } = await supabase.from("suppliers").update({
+      name: editSupName.trim(),
+      contact_name: editSupContact.trim() || null,
+      phone: editSupPhone.trim() || null,
+      email: editSupEmail.trim() || null,
+      notes: editSupNotes.trim() || null,
+    }).eq("id", editingSupplierId);
+    if (error) { console.error(error); setMessage("Update failed"); return; }
+    setEditingSupplierId(null);
+    setMessage("Supplier updated");
+    await loadSuppliers();
+  }
+
+  async function handleToggleSupplierStatus(s: Supplier) {
+    const newStatus = s.status === "active" ? "inactive" : "active";
+    const { error } = await supabase.from("suppliers").update({ status: newStatus }).eq("id", s.id);
+    if (error) { console.error(error); setMessage("Status update failed"); return; }
+    await loadSuppliers();
+  }
+
+  async function handleDeleteSupplier(id: string, name: string) {
+    const hasPOs = purchaseOrders.some(po => po.supplier_id === id);
+    if (hasPOs) { setMessage(`Cannot delete "${name}" — they have existing purchase orders.`); return; }
+    const { error } = await supabase.from("suppliers").delete().eq("id", id);
+    if (error) { console.error(error); setMessage("Delete failed"); return; }
+    setMessage(`Supplier "${name}" deleted`);
+    await loadSuppliers();
+  }
+
+
   async function loadProducts() {
     const { data, error } = await supabase
       .from("inventory")
@@ -2261,24 +2312,97 @@ function App() {
               <th>Email</th>
               <th>Notes</th>
               <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {suppliers.length === 0 ? (
-              <tr>
-                <td colSpan={6}>No suppliers found</td>
-              </tr>
+              <tr><td colSpan={7}>No suppliers found</td></tr>
             ) : (
-              suppliers.map((s) => (
-                <tr key={s.id}>
-                  <td>{s.name}</td>
-                  <td>{s.contact_name}</td>
-                  <td>{s.phone}</td>
-                  <td>{s.email}</td>
-                  <td>{s.notes}</td>
-                  <td>{s.status}</td>
-                </tr>
-              ))
+              suppliers.map((s) => {
+                const inactive = s.status !== "active";
+                const isEditing = editingSupplierId === s.id;
+                return (
+                  <React.Fragment key={s.id}>
+                    <tr style={inactive ? { backgroundColor: "#f5f5f5", color: "#999" } : {}}>
+                      <td>{s.name}</td>
+                      <td>{s.contact_name ?? "—"}</td>
+                      <td>{s.phone ?? "—"}</td>
+                      <td>{s.email ?? "—"}</td>
+                      <td>{s.notes ?? "—"}</td>
+                      <td>
+                        <span style={{
+                          fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
+                          background: inactive ? "#e5e7eb" : "#dcfce7",
+                          color: inactive ? "#6b7280" : "#15803d",
+                        }}>{s.status}</span>
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <button
+                          onClick={() => isEditing ? handleCancelEditSupplier() : handleStartEditSupplier(s)}
+                          style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer",
+                            background: isEditing ? "#f3f4f6" : undefined }}
+                        >{isEditing ? "Cancel" : "Edit"}</button>
+                        <button
+                          onClick={() => handleToggleSupplierStatus(s)}
+                          style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer",
+                            color: inactive ? "#15803d" : "#b45309" }}
+                        >{inactive ? "Activate" : "Deactivate"}</button>
+                        <button
+                          onClick={() => handleDeleteSupplier(s.id, s.name)}
+                          style={{ padding: "3px 10px", cursor: "pointer", color: "#b91c1c" }}
+                        >Delete</button>
+                      </td>
+                    </tr>
+                    {isEditing && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "#f0f4ff", padding: "16px", border: "1px solid #c7d2fe" }}>
+                          <strong style={{ color: "#3730a3", display: "block", marginBottom: "10px" }}>
+                            Edit Supplier — {s.name}
+                          </strong>
+                          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                            <input
+                              type="text" placeholder="Supplier Name *" value={editSupName}
+                              onChange={(e) => setEditSupName(e.target.value)}
+                              style={{ flex: "2 1 180px", padding: "7px 10px" }}
+                            />
+                            <input
+                              type="text" placeholder="Contact Person" value={editSupContact}
+                              onChange={(e) => setEditSupContact(e.target.value)}
+                              style={{ flex: "1 1 150px", padding: "7px 10px" }}
+                            />
+                            <input
+                              type="text" placeholder="Phone" value={editSupPhone}
+                              onChange={(e) => setEditSupPhone(e.target.value)}
+                              style={{ flex: "1 1 120px", padding: "7px 10px" }}
+                            />
+                            <input
+                              type="email" placeholder="Email" value={editSupEmail}
+                              onChange={(e) => setEditSupEmail(e.target.value)}
+                              style={{ flex: "1 1 170px", padding: "7px 10px" }}
+                            />
+                            <input
+                              type="text" placeholder="Notes" value={editSupNotes}
+                              onChange={(e) => setEditSupNotes(e.target.value)}
+                              style={{ flex: "2 1 180px", padding: "7px 10px" }}
+                            />
+                            <button
+                              onClick={handleSaveSupplier}
+                              disabled={!editSupName.trim()}
+                              style={{ padding: "7px 18px", cursor: "pointer", fontWeight: "bold",
+                                background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}
+                            >Save</button>
+                            <button
+                              onClick={handleCancelEditSupplier}
+                              style={{ padding: "7px 14px", cursor: "pointer" }}
+                            >Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -2323,7 +2447,7 @@ function App() {
                         style={{ padding: "4px", width: "100%" }}
                       >
                         <option value="">Select supplier…</option>
-                        {suppliers.map((s) => (
+                        {suppliers.filter(s => s.status === "active").map((s) => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>
@@ -2660,7 +2784,7 @@ function App() {
           style={{ flex: "2 1 200px", padding: "8px" }}
         >
           <option value="">Select supplier...</option>
-          {suppliers.map((s) => (
+          {suppliers.filter(s => s.status === "active").map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
