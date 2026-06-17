@@ -56,6 +56,19 @@ type Receipt = {
   paymentMethod: string;
 };
 
+type EodItem = {
+  sale_id: string;
+  product_id: string;
+  quantity: number;
+  line_total: number;
+};
+
+type EodPayment = {
+  sale_id: string;
+  payment_method: string;
+  amount: number;
+};
+
 type CartItem = {
   product_id: string;
   product_name: string;
@@ -134,6 +147,9 @@ function App() {
   const [voidingId, setVoidingId] = useState("");
   const [reorderSuppliers, setReorderSuppliers] = useState<Record<string, string>>({});
   const [reorderQtys, setReorderQtys] = useState<Record<string, string>>({});
+  const [showEod, setShowEod] = useState(false);
+  const [eodItems, setEodItems] = useState<EodItem[]>([]);
+  const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   useEffect(() => {
@@ -576,6 +592,42 @@ function App() {
     await loadProducts();
     await loadTransactions();
     await loadSales();
+  }
+
+  async function handleToggleEod() {
+    if (showEod) { setShowEod(false); return; }
+
+    const today = new Date();
+    const isToday = (d: string) => {
+      const dt = new Date(d);
+      return dt.getFullYear() === today.getFullYear() &&
+        dt.getMonth() === today.getMonth() &&
+        dt.getDate() === today.getDate();
+    };
+
+    const todaySaleIds = sales
+      .filter((s) => s.status === "completed" && isToday(s.created_at))
+      .map((s) => s.id);
+
+    if (todaySaleIds.length > 0) {
+      const { data: items } = await supabase
+        .from("sale_items")
+        .select("sale_id, product_id, quantity, line_total")
+        .in("sale_id", todaySaleIds);
+
+      const { data: payments } = await supabase
+        .from("payments")
+        .select("sale_id, payment_method, amount")
+        .in("sale_id", todaySaleIds);
+
+      setEodItems((items as EodItem[]) || []);
+      setEodPayments((payments as EodPayment[]) || []);
+    } else {
+      setEodItems([]);
+      setEodPayments([]);
+    }
+
+    setShowEod(true);
   }
 
   async function handleCreateReorderPO(product: ProductStock) {
@@ -1828,6 +1880,115 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      <button
+        onClick={handleToggleEod}
+        style={{ marginBottom: "24px", padding: "9px 22px", cursor: "pointer", fontWeight: "bold", background: showEod ? "#333" : "#fff", color: showEod ? "#fff" : "#333", border: "1px solid #333", borderRadius: "6px" }}
+      >
+        {showEod ? "Hide Summary" : "End-of-Day Summary"}
+      </button>
+
+      {showEod && (() => {
+        const today = new Date();
+        const isToday = (d: string) => {
+          const dt = new Date(d);
+          return dt.getFullYear() === today.getFullYear() && dt.getMonth() === today.getMonth() && dt.getDate() === today.getDate();
+        };
+        const todaySales = sales.filter((s) => s.status === "completed" && isToday(s.created_at));
+        const voidedToday = sales.filter((s) => s.status === "voided" && isToday(s.created_at)).length;
+        const grossRevenue = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
+        const itemsSold = eodItems.reduce((sum, i) => sum + i.quantity, 0);
+        const cashTotal = eodPayments.filter((p) => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0);
+        const cardTotal = eodPayments.filter((p) => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0);
+
+        const productTotals: Record<string, { units: number; revenue: number }> = {};
+        for (const item of eodItems) {
+          if (!productTotals[item.product_id]) productTotals[item.product_id] = { units: 0, revenue: 0 };
+          productTotals[item.product_id].units += item.quantity;
+          productTotals[item.product_id].revenue += Number(item.line_total);
+        }
+        const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
+        const topProducts = Object.entries(productTotals)
+          .map(([pid, v]) => ({ name: productMap[pid] ?? pid.slice(0, 8), ...v }))
+          .sort((a, b) => b.units - a.units);
+
+        return (
+          <div style={{ border: "1px solid #333", borderRadius: "8px", padding: "24px", marginBottom: "32px" }}>
+            <h3 style={{ margin: "0 0 20px" }}>
+              End-of-Day Summary — {today.toLocaleDateString()}
+            </h3>
+
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
+              {[
+                { label: "Transactions", value: String(todaySales.length) },
+                { label: "Gross Revenue", value: `$${grossRevenue.toFixed(2)}` },
+                { label: "Items Sold", value: String(itemsSold) },
+                { label: "Cash", value: `$${cashTotal.toFixed(2)}` },
+                { label: "Card", value: `$${cardTotal.toFixed(2)}` },
+              ].map((card) => (
+                <div key={card.label} style={{ padding: "12px 20px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "120px" }}>
+                  <div style={{ fontSize: "12px", color: "#666" }}>{card.label}</div>
+                  <div style={{ fontSize: "24px", fontWeight: "bold" }}>{card.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <h4 style={{ margin: "0 0 8px" }}>Top Products Today</h4>
+            <div style={{ overflowX: "auto", marginBottom: "20px" }}>
+              <table border={1} cellPadding={8} style={{ width: "100%" }}>
+                <thead>
+                  <tr><th>Product</th><th>Units Sold</th><th>Revenue</th></tr>
+                </thead>
+                <tbody>
+                  {topProducts.length === 0 ? (
+                    <tr><td colSpan={3}>No items sold today</td></tr>
+                  ) : (
+                    topProducts.map((p, i) => (
+                      <tr key={i}>
+                        <td>{p.name}</td>
+                        <td>{p.units}</td>
+                        <td>${p.revenue.toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h4 style={{ margin: "0 0 8px" }}>Sales Breakdown</h4>
+            <div style={{ overflowX: "auto", marginBottom: "12px" }}>
+              <table border={1} cellPadding={8} style={{ width: "100%" }}>
+                <thead>
+                  <tr><th>Time</th><th>Sale ID</th><th>Total</th><th>Payment</th></tr>
+                </thead>
+                <tbody>
+                  {todaySales.length === 0 ? (
+                    <tr><td colSpan={4}>No sales today</td></tr>
+                  ) : (
+                    todaySales.map((s) => {
+                      const method = eodPayments.find((p) => p.sale_id === s.id)?.payment_method ?? "—";
+                      return (
+                        <tr key={s.id}>
+                          <td>{new Date(s.created_at).toLocaleTimeString()}</td>
+                          <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
+                          <td>${Number(s.total).toFixed(2)}</td>
+                          <td>{method}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {voidedToday > 0 && (
+              <p style={{ color: "#999", fontSize: "13px", margin: 0 }}>
+                {voidedToday} voided sale(s) excluded from summary.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
 
