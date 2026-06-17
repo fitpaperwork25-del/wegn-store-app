@@ -138,6 +138,28 @@ type StockCountLine = {
   counted_qty: number;
 };
 
+type DrawerSession = {
+  id: string;
+  business_id: string;
+  status: string;
+  opening_float: number;
+  opened_at: string;
+  closed_at: string | null;
+  closing_count: number | null;
+  expected_cash: number | null;
+  over_short: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+type DrawerPaidOut = {
+  id: string;
+  drawer_session_id: string;
+  amount: number;
+  reason: string | null;
+  created_at: string;
+};
+
 type BulkRow = {
   name: string;
   selling_price: string;
@@ -218,6 +240,14 @@ function App() {
   const [stockCountLines, setStockCountLines] = useState<StockCountLine[]>([]);
   const [stockCountActive, setStockCountActive] = useState(false);
   const [stockCountLoading, setStockCountLoading] = useState(false);
+  const [drawerSession, setDrawerSession] = useState<DrawerSession | null>(null);
+  const [drawerPaidOuts, setDrawerPaidOuts] = useState<DrawerPaidOut[]>([]);
+  const [drawerCashSales, setDrawerCashSales] = useState(0);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [openingFloat, setOpeningFloat] = useState("");
+  const [paidOutAmount, setPaidOutAmount] = useState("");
+  const [paidOutReason, setPaidOutReason] = useState("");
+  const [closingCount, setClosingCount] = useState("");
   const [bulkPreview, setBulkPreview] = useState<BulkRow[]>([]);
   const [bulkResults, setBulkResults] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [bulkImporting, setBulkImporting] = useState(false);
@@ -231,6 +261,7 @@ function App() {
     loadSales();
     loadSaleItems();
     loadCustomers();
+    loadDrawerSession();
   }, []);
 
   async function loadBusinessId() {
@@ -376,6 +407,97 @@ function App() {
     setMessage(`Stock count completed — ${varianceCount} variance(s) corrected.`);
     await loadProducts();
     await loadTransactions();
+  }
+
+  async function loadDrawerSession() {
+    const { data } = await supabase
+      .from('drawer_sessions')
+      .select('*')
+      .eq('status', 'open')
+      .limit(1)
+      .maybeSingle();
+    setDrawerSession(data ?? null);
+    if (data) {
+      const { data: pos } = await supabase
+        .from('drawer_paid_outs')
+        .select('*')
+        .eq('drawer_session_id', data.id)
+        .order('created_at', { ascending: false });
+      setDrawerPaidOuts((pos as DrawerPaidOut[]) ?? []);
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('payment_method', 'cash')
+        .gte('created_at', data.opened_at);
+      const total = (payments ?? []).reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+      setDrawerCashSales(total);
+    } else {
+      setDrawerPaidOuts([]);
+      setDrawerCashSales(0);
+    }
+  }
+
+  async function handleOpenDrawer(e: React.FormEvent) {
+    e.preventDefault();
+    const float = Number(openingFloat);
+    if (isNaN(float) || float < 0 || !businessId) return;
+    setDrawerLoading(true);
+    const { data, error } = await supabase
+      .from('drawer_sessions')
+      .insert({ business_id: businessId, opening_float: float, status: 'open', opened_at: new Date().toISOString() })
+      .select('*')
+      .single();
+    if (error) { setMessage('Failed to open drawer: ' + error.message); setDrawerLoading(false); return; }
+    setDrawerSession(data as DrawerSession);
+    setDrawerPaidOuts([]);
+    setDrawerCashSales(0);
+    setOpeningFloat('');
+    setDrawerLoading(false);
+    setMessage('Cash drawer opened');
+  }
+
+  async function handlePaidOut(e: React.FormEvent) {
+    e.preventDefault();
+    if (!drawerSession) return;
+    const amount = Number(paidOutAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    setDrawerLoading(true);
+    const { error } = await supabase
+      .from('drawer_paid_outs')
+      .insert({ drawer_session_id: drawerSession.id, amount, reason: paidOutReason || null });
+    if (error) { setMessage('Paid out failed: ' + error.message); setDrawerLoading(false); return; }
+    setPaidOutAmount('');
+    setPaidOutReason('');
+    setDrawerLoading(false);
+    setMessage('Paid out recorded');
+    const { data: pos } = await supabase
+      .from('drawer_paid_outs').select('*')
+      .eq('drawer_session_id', drawerSession.id)
+      .order('created_at', { ascending: false });
+    setDrawerPaidOuts((pos as DrawerPaidOut[]) ?? []);
+  }
+
+  async function handleCloseDrawer(e: React.FormEvent) {
+    e.preventDefault();
+    if (!drawerSession) return;
+    const counted = Number(closingCount);
+    if (isNaN(counted) || counted < 0) return;
+    setDrawerLoading(true);
+    const totalPaidOuts = drawerPaidOuts.reduce((sum, p) => sum + Number(p.amount), 0);
+    const expectedCash = Number(drawerSession.opening_float) + drawerCashSales - totalPaidOuts;
+    const overShort = counted - expectedCash;
+    const { error } = await supabase
+      .from('drawer_sessions')
+      .update({ status: 'closed', closed_at: new Date().toISOString(), closing_count: counted, expected_cash: expectedCash, over_short: overShort })
+      .eq('id', drawerSession.id);
+    if (error) { setMessage('Failed to close drawer: ' + error.message); setDrawerLoading(false); return; }
+    setDrawerSession(null);
+    setDrawerPaidOuts([]);
+    setDrawerCashSales(0);
+    setClosingCount('');
+    setDrawerLoading(false);
+    const sign = overShort >= 0 ? 'Over' : 'Short';
+    setMessage(`Drawer closed — Expected: $${expectedCash.toFixed(2)} | Counted: $${counted.toFixed(2)} | ${sign}: $${Math.abs(overShort).toFixed(2)}`);
   }
 
   function downloadCsvTemplate() {
@@ -2756,6 +2878,137 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      {/* Cash Drawer Management */}
+      <h2>Cash Drawer</h2>
+
+      {!drawerSession ? (
+        <div style={{ marginBottom: "32px" }}>
+          <p style={{ color: "#555", fontSize: "14px", marginBottom: "12px" }}>No drawer is currently open.</p>
+          <form onSubmit={handleOpenDrawer} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Opening float ($)"
+              value={openingFloat}
+              onChange={(e) => setOpeningFloat(e.target.value)}
+              style={{ padding: "8px", width: "180px" }}
+              required
+            />
+            <button
+              type="submit"
+              disabled={drawerLoading || !openingFloat}
+              style={{ padding: "8px 22px", fontWeight: "bold", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
+            >
+              Open Drawer
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div style={{ border: "1px solid #16a34a", borderRadius: "8px", padding: "20px", marginBottom: "32px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+            <strong style={{ color: "#15803d", fontSize: "16px" }}>Drawer Open</strong>
+            <span style={{ fontSize: "13px", color: "#888" }}>Opened: {new Date(drawerSession.opened_at).toLocaleString()}</span>
+          </div>
+
+          {/* Session summary cards */}
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
+            {[
+              { label: "Opening Float", value: `$${Number(drawerSession.opening_float).toFixed(2)}` },
+              { label: "Cash Sales", value: `$${drawerCashSales.toFixed(2)}` },
+              { label: "Paid Outs", value: `−$${drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0).toFixed(2)}` },
+              { label: "Expected Cash", value: `$${(Number(drawerSession.opening_float) + drawerCashSales - drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0)).toFixed(2)}`, bold: true },
+            ].map(card => (
+              <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "12px 16px", minWidth: "140px" }}>
+                <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
+                <div style={{ fontSize: "20px", fontWeight: card.bold ? "bold" : "normal" }}>{card.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Paid out form */}
+          <h4 style={{ margin: "0 0 8px" }}>Record Paid Out</h4>
+          <form onSubmit={handlePaidOut} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "16px" }}>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="Amount"
+              value={paidOutAmount}
+              onChange={(e) => setPaidOutAmount(e.target.value)}
+              style={{ padding: "7px", width: "120px" }}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Reason (e.g. safe drop)"
+              value={paidOutReason}
+              onChange={(e) => setPaidOutReason(e.target.value)}
+              style={{ padding: "7px", flex: "1 1 180px" }}
+            />
+            <button
+              type="submit"
+              disabled={drawerLoading || !paidOutAmount}
+              style={{ padding: "7px 18px", cursor: "pointer", borderRadius: "5px" }}
+            >
+              Record Paid Out
+            </button>
+          </form>
+
+          {/* Paid outs log */}
+          {drawerPaidOuts.length > 0 && (
+            <div style={{ marginBottom: "16px" }}>
+              <strong style={{ fontSize: "13px" }}>Paid Outs This Session</strong>
+              <table border={1} cellPadding={6} style={{ width: "100%", marginTop: "6px", fontSize: "13px" }}>
+                <thead><tr><th>Time</th><th>Amount</th><th>Reason</th></tr></thead>
+                <tbody>
+                  {drawerPaidOuts.map(po => (
+                    <tr key={po.id}>
+                      <td>{new Date(po.created_at).toLocaleTimeString()}</td>
+                      <td>${Number(po.amount).toFixed(2)}</td>
+                      <td>{po.reason ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Close drawer form */}
+          <h4 style={{ margin: "0 0 8px" }}>Close Drawer</h4>
+          <form onSubmit={handleCloseDrawer} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Counted cash ($)"
+              value={closingCount}
+              onChange={(e) => setClosingCount(e.target.value)}
+              style={{ padding: "7px", width: "160px" }}
+              required
+            />
+            {closingCount && (() => {
+              const counted = Number(closingCount);
+              const totalPo = drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0);
+              const expected = Number(drawerSession.opening_float) + drawerCashSales - totalPo;
+              const os = counted - expected;
+              return (
+                <span style={{ fontWeight: "bold", color: os >= 0 ? "#15803d" : "#dc2626" }}>
+                  {os >= 0 ? `Over $${os.toFixed(2)}` : `Short $${Math.abs(os).toFixed(2)}`}
+                </span>
+              );
+            })()}
+            <button
+              type="submit"
+              disabled={drawerLoading || !closingCount}
+              style={{ padding: "7px 18px", fontWeight: "bold", background: "#b91c1c", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}
+            >
+              {drawerLoading ? "Closing…" : "Close Drawer"}
+            </button>
+          </form>
+        </div>
+      )}
 
       <button
         onClick={handleToggleEod}
