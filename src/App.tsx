@@ -118,6 +118,7 @@ function App() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
   const [amountTendered, setAmountTendered] = useState("");
   const [sales, setSales] = useState<Sale[]>([]);
+  const [voidingId, setVoidingId] = useState("");
 
   useEffect(() => {
     loadBusinessId();
@@ -411,6 +412,59 @@ function App() {
 
   function handleRemoveFromCart(productId: string) {
     setCart(cart.filter((c) => c.product_id !== productId));
+  }
+
+  async function handleVoidSale(saleId: string) {
+    const sale = sales.find((s) => s.id === saleId);
+    if (!sale || sale.status !== "completed") return;
+    if (!window.confirm(`Void sale $${Number(sale.total).toFixed(2)}? This will reverse inventory.`)) return;
+
+    setMessage("");
+
+    const { data: items, error: itemsErr } = await supabase
+      .from("sale_items")
+      .select("product_id, quantity, unit_price")
+      .eq("sale_id", saleId);
+
+    if (itemsErr || !items) { console.error(itemsErr); setMessage("Void failed"); return; }
+
+    const { error: statusErr } = await supabase
+      .from("sales")
+      .update({ status: "voided" })
+      .eq("id", saleId);
+
+    if (statusErr) { console.error(statusErr); setMessage("Void failed"); return; }
+
+    for (const item of items) {
+      const product = products.find((p) => p.product_id === item.product_id);
+      if (!product) continue;
+
+      const quantityBefore = product.quantity_on_hand;
+      const quantityAfter = quantityBefore + item.quantity;
+
+      await supabase
+        .from("inventory")
+        .update({ quantity_on_hand: quantityAfter })
+        .eq("id", product.inventory_id);
+
+      await supabase
+        .from("inventory_transactions")
+        .insert({
+          business_id: product.business_id,
+          product_id: item.product_id,
+          transaction_type: "void",
+          quantity_change: item.quantity,
+          quantity_before: quantityBefore,
+          quantity_after: quantityAfter,
+          reason: `Void sale ${saleId.slice(0, 8)}`,
+        });
+    }
+
+    setVoidingId("");
+    setMessage("Sale voided");
+    await loadProducts();
+    await loadTransactions();
+    await loadSales();
   }
 
   async function handleCompleteSale() {
@@ -1588,19 +1642,31 @@ function App() {
               <th>Tax</th>
               <th>Status</th>
               <th>Created At</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {sales.length === 0 ? (
-              <tr><td colSpan={5}>No sales yet</td></tr>
+              <tr><td colSpan={6}>No sales yet</td></tr>
             ) : (
               sales.map((s) => (
-                <tr key={s.id}>
+                <tr key={s.id} style={{ backgroundColor: s.status === "voided" ? "#f5f5f5" : "inherit", color: s.status === "voided" ? "#999" : "inherit" }}>
                   <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
                   <td>${Number(s.total).toFixed(2)}</td>
                   <td>${Number(s.tax).toFixed(2)}</td>
                   <td>{s.status}</td>
                   <td>{new Date(s.created_at).toLocaleString()}</td>
+                  <td>
+                    {s.status === "completed" && (
+                      <button
+                        onClick={() => handleVoidSale(s.id)}
+                        disabled={voidingId === s.id}
+                        style={{ padding: "3px 10px", color: "#b91c1c", cursor: "pointer" }}
+                      >
+                        Void
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))
             )}
