@@ -88,7 +88,6 @@ type CartItem = {
 type Sale = {
   id: string;
   customer_id: string | null;
-  customer_name: string | null;
   subtotal: number;
   tax: number;
   total: number;
@@ -250,7 +249,7 @@ function App() {
   async function loadSales() {
     const { data, error } = await supabase
       .from("sales")
-      .select("id, customer_id, customer_name, subtotal, tax, total, status, created_at")
+      .select("id, customer_id, subtotal, tax, total, status, created_at")
       .order("created_at", { ascending: false })
       .limit(20);
     if (error) { console.error(error); return; }
