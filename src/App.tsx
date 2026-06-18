@@ -4015,11 +4015,11 @@ function App() {
 
       </div>{/* end reports */}
 
-      {/* ── POS TAB (3) ── */}
-      <div style={{ display: activeTab === 'pos' ? '' : 'none' }}>
+      {/* ── EMPLOYEES TAB (2) ── */}
+      <div style={{ display: activeTab === 'employees' ? '' : 'none' }}>
 
       {/* Cash Drawer Management */}
-      <h2>Cash Drawer</h2>
+      <h2 style={{ marginTop: "40px" }}>Cash Drawer</h2>
 
       {!drawerSession ? (
         <div style={{ marginBottom: "32px" }}>
@@ -4296,7 +4296,7 @@ function App() {
         );
       })()}
 
-      </div>{/* end pos */}
+      </div>{/* end employees */}
 
       {/* ── REPORTS TAB (2) ── */}
       <div style={{ display: activeTab === 'reports' ? '' : 'none' }}>
