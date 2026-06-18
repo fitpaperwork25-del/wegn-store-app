@@ -140,9 +140,9 @@ code {
 
 /* Desktop logo — larger and prominent */
 .app-logo {
-  height: 72px;
+  height: 96px;
   width: auto;
-  max-width: 240px;
+  max-width: 280px;
   object-fit: contain;
   display: block;
 }
@@ -248,4 +248,132 @@ code {
     flex: 1 1 100% !important;
     min-width: 0 !important;
   }
+
+  .pos-card {
+    padding: 12px;
+  }
+
+  .pos-barcode-input {
+    padding: 11px 12px;
+    font-size: 15px;
+  }
 }
+
+/* ─────────────────────────────────────────────
+   POS screen
+   ───────────────────────────────────────────── */
+
+/* Inputs card */
+.pos-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-bottom: 28px;
+}
+
+/* Barcode scan field */
+.pos-barcode-input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  color: #0f172a;
+  background: #f8fafc;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pos-barcode-input:focus {
+  outline: none;
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.08);
+  background: #fff;
+}
+.pos-barcode-input::placeholder {
+  color: #94a3b8;
+}
+
+/* Add to Cart CTA */
+.pos-add-btn {
+  padding: 10px 18px;
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.pos-add-btn:hover {
+  background: #15803d;
+}
+
+/* ─────────────────────────────────────────────
+   Sales History table
+   ───────────────────────────────────────────── */
+
+.sh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.sh-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+}
+.sh-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.sh-table tbody tr:hover td {
+  background: #eff6ff;
+}
+.sh-table tbody .sh-row-voided td {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+.sh-table tbody .sh-row-returned td {
+  background: #faf5ff;
+}
+
+/* Status pill */
+.status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sp-completed { background: #dcfce7; color: #15803d; }
+.sp-voided    { background: #f1f5f9; color: #64748b; }
+.sp-returned  { background: #ede9fe; color: #7c3aed; }
+
+/* Action buttons */
+.sh-btn {
+  padding: 4px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.1s;
+}
+.sh-btn:hover { opacity: 0.8; }
+.sh-btn-print  { background: #fff; border: 1px solid #cbd5e1; color: #475569; }
+.sh-btn-void   { background: #fff; border: 1px solid #fca5a5; color: #b91c1c; }
+.sh-btn-return { background: #fff; border: 1px solid #c4b5fd; color: #7c3aed; }

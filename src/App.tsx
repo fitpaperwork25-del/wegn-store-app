@@ -2003,6 +2003,7 @@ function App() {
 
       <h2>Point of Sale</h2>
 
+      <div className="pos-card">
       <input
         type="text"
         autoFocus
@@ -2010,7 +2011,7 @@ function App() {
         value={barcodeInput}
         onChange={(e) => setBarcodeInput(e.target.value)}
         onKeyDown={handleBarcodeSubmit}
-        style={{ width: "100%", padding: "10px", marginBottom: "12px", fontSize: "15px", boxSizing: "border-box" }}
+        className="pos-barcode-input"
       />
 
       <form
@@ -2037,7 +2038,7 @@ function App() {
           onChange={(e) => setCartQty(e.target.value)}
           style={{ flex: "0 1 80px", padding: "8px" }}
         />
-        <button type="submit" style={{ flex: "0 1 120px", padding: "8px" }}>
+        <button type="submit" className="pos-add-btn" style={{ flex: "0 1 120px" }}>
           Add to Cart
         </button>
       </form>
@@ -2084,6 +2085,7 @@ function App() {
             })()}
           </span>
         )}
+      </div>
       </div>
 
       {cart.length > 0 && (
@@ -3764,7 +3766,7 @@ function App() {
       )}
 
       <div style={{ overflowX: "auto", marginBottom: "40px" }}>
-        <table border={1} cellPadding={10} style={{ width: "100%" }}>
+        <table border={0} cellPadding={0} className="sh-table">
           <thead>
             <tr>
               <th>Sale ID</th>
@@ -3786,32 +3788,30 @@ function App() {
                 if (salesCashierFilter === "none") return !s.cashier_id;
                 return s.cashier_id === salesCashierFilter;
               }).map((s) => {
-                const rowStyle = s.status === "voided" || s.status === "returned"
-                  ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
-                const statusColor = s.status === "returned" ? "#7c3aed" : s.status === "voided" ? "#999" : "inherit";
                 const cashierName = s.cashier_id ? (employees.find(e => e.id === s.cashier_id)?.name ?? s.cashier_id.slice(0, 8)) : "—";
+                const rowClass = s.status === "voided" ? "sh-row-voided" : s.status === "returned" ? "sh-row-returned" : "";
                 return (
                   <React.Fragment key={s.id}>
-                    <tr style={rowStyle}>
+                    <tr className={rowClass}>
                       <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
                       <td>${Number(s.total).toFixed(2)}</td>
                       <td>${Number(s.tax).toFixed(2)}</td>
-                      <td style={{ color: statusColor, fontWeight: s.status === "returned" ? "bold" : "inherit" }}>{s.status}</td>
-                      <td style={{ color: "#555" }}>{cashierName}</td>
+                      <td><span className={`status-pill sp-${s.status}`}>{s.status}</span></td>
+                      <td>{cashierName}</td>
                       <td>{new Date(s.created_at).toLocaleString()}</td>
                       <td style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                        <button onClick={() => handlePrintReceipt(s)} style={{ padding: "3px 10px", cursor: "pointer" }}>Print</button>
+                        <button onClick={() => handlePrintReceipt(s)} className="sh-btn sh-btn-print">Print</button>
                         {s.status === "completed" && (
                           <button
                             onClick={() => handleVoidSale(s.id)}
                             disabled={voidingId === s.id}
-                            style={{ padding: "3px 10px", color: "#b91c1c", cursor: "pointer" }}
+                            className="sh-btn sh-btn-void"
                           >Void</button>
                         )}
                         {(s.status === "completed" || s.status === "returned") && (
                           <button
                             onClick={() => handleOpenReturn(s)}
-                            style={{ padding: "3px 10px", color: "#7c3aed", cursor: "pointer" }}
+                            className="sh-btn sh-btn-return"
                           >Return</button>
                         )}
                       </td>
