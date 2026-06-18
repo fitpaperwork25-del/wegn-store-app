@@ -295,9 +295,18 @@ function App() {
   const [editProdBarcode, setEditProdBarcode] = useState("");
   const [editProdPrice, setEditProdPrice] = useState("");
   const [editProdReorder, setEditProdReorder] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [businessPhone, setBusinessPhone] = useState("");
+  const [businessEmail, setBusinessEmail] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [editingBusiness, setEditingBusiness] = useState(false);
+  const [editBizName, setEditBizName] = useState("");
+  const [editBizPhone, setEditBizPhone] = useState("");
+  const [editBizEmail, setEditBizEmail] = useState("");
+  const [editBizAddress, setEditBizAddress] = useState("");
 
   useEffect(() => {
-    loadBusinessId();
+    loadBusiness();
     loadProducts();
     loadTransactions();
     loadSuppliers();
@@ -311,13 +320,37 @@ function App() {
     loadEmployees();
   }, []);
 
-  async function loadBusinessId() {
+  async function loadBusiness() {
     const { data } = await supabase
       .from("businesses")
-      .select("id")
+      .select("id, name, phone, email, address")
       .limit(1)
       .single();
-    if (data) setBusinessId(data.id);
+    if (data) {
+      setBusinessId(data.id);
+      setBusinessName(data.name ?? "");
+      setBusinessPhone(data.phone ?? "");
+      setBusinessEmail(data.email ?? "");
+      setBusinessAddress(data.address ?? "");
+    }
+  }
+
+  async function handleSaveBusiness(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editBizName.trim() || !businessId) return;
+    const { error } = await supabase
+      .from("businesses")
+      .update({
+        name: editBizName.trim(),
+        phone: editBizPhone.trim() || null,
+        email: editBizEmail.trim() || null,
+        address: editBizAddress.trim() || null,
+      })
+      .eq("id", businessId);
+    if (error) { console.error(error); setMessage("Failed to update business: " + error.message); return; }
+    setEditingBusiness(false);
+    setMessage("Business profile updated");
+    await loadBusiness();
   }
 
   async function loadSaleItems() {
@@ -4296,6 +4329,67 @@ function App() {
         </table>
       </div>
 
+      <h2 style={{ marginTop: "40px" }}>Business Profile / Store Settings</h2>
+
+      {!editingBusiness ? (
+        <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "20px", maxWidth: "480px", marginBottom: "16px" }}>
+          <p style={{ margin: "0 0 8px" }}><strong>Name:</strong> {businessName || "—"}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Phone:</strong> {businessPhone || "—"}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Email:</strong> {businessEmail || "—"}</p>
+          <p style={{ margin: "0 0 16px" }}><strong>Address:</strong> {businessAddress || "—"}</p>
+          <button
+            onClick={() => {
+              setEditBizName(businessName);
+              setEditBizPhone(businessPhone);
+              setEditBizEmail(businessEmail);
+              setEditBizAddress(businessAddress);
+              setEditingBusiness(true);
+            }}
+            style={{ padding: "8px 20px", cursor: "pointer" }}
+          >Edit</button>
+        </div>
+      ) : (
+        <form
+          onSubmit={handleSaveBusiness}
+          style={{ maxWidth: "480px", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}
+        >
+          <strong>Edit Business Profile</strong>
+          <input
+            type="text"
+            placeholder="Business name *"
+            value={editBizName}
+            onChange={(e) => setEditBizName(e.target.value)}
+            required
+            style={{ padding: "8px" }}
+          />
+          <input
+            type="text"
+            placeholder="Phone"
+            value={editBizPhone}
+            onChange={(e) => setEditBizPhone(e.target.value)}
+            style={{ padding: "8px" }}
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={editBizEmail}
+            onChange={(e) => setEditBizEmail(e.target.value)}
+            style={{ padding: "8px" }}
+          />
+          <input
+            type="text"
+            placeholder="Address"
+            value={editBizAddress}
+            onChange={(e) => setEditBizAddress(e.target.value)}
+            style={{ padding: "8px" }}
+          />
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="submit" style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
+            <button type="button" onClick={() => setEditingBusiness(false)} style={{ padding: "8px 20px", cursor: "pointer" }}>Cancel</button>
+          </div>
+        </form>
+      )}
+
       {receipt && (() => {
         const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
         return (
@@ -4324,7 +4418,13 @@ function App() {
                   boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
                 }}
               >
-                <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", marginBottom: "4px" }}>WEGN-STORE</div>
+                <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", marginBottom: "4px" }}>{businessName || "WEGN-STORE"}</div>
+                {(businessPhone || businessAddress) && (
+                  <div style={{ textAlign: "center", fontSize: "12px", color: "#555", marginBottom: "4px" }}>
+                    {businessPhone && <div>{businessPhone}</div>}
+                    {businessAddress && <div>{businessAddress}</div>}
+                  </div>
+                )}
                 <div style={{ textAlign: "center", borderBottom: "1px dashed #333", paddingBottom: "8px", marginBottom: "8px" }}>
                   {receipt.sale.status === "voided" && (
                     <div style={{ color: "#b91c1c", fontWeight: "bold" }}>** VOIDED **</div>
