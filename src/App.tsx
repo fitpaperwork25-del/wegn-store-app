@@ -325,11 +325,13 @@ function App() {
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessEmail, setBusinessEmail] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
+  const [businessTaxRate, setBusinessTaxRate] = useState(0);
   const [editingBusiness, setEditingBusiness] = useState(false);
   const [editBizName, setEditBizName] = useState("");
   const [editBizPhone, setEditBizPhone] = useState("");
   const [editBizEmail, setEditBizEmail] = useState("");
   const [editBizAddress, setEditBizAddress] = useState("");
+  const [editBizTaxRate, setEditBizTaxRate] = useState("");
 
   const [activeTab, setActiveTab] = useState<string>('pos');
 
@@ -352,7 +354,7 @@ function App() {
   async function loadBusiness() {
     const { data } = await supabase
       .from("businesses")
-      .select("id, name, phone, email, address")
+      .select("id, name, phone, email, address, tax_rate")
       .limit(1)
       .single();
     if (data) {
@@ -361,12 +363,14 @@ function App() {
       setBusinessPhone(data.phone ?? "");
       setBusinessEmail(data.email ?? "");
       setBusinessAddress(data.address ?? "");
+      setBusinessTaxRate(Number(data.tax_rate ?? 0));
     }
   }
 
   async function handleSaveBusiness(e: React.FormEvent) {
     e.preventDefault();
     if (!editBizName.trim() || !businessId) return;
+    const parsedTaxRate = Math.min(100, Math.max(0, parseFloat(editBizTaxRate) || 0));
     const { error } = await supabase
       .from("businesses")
       .update({
@@ -374,6 +378,7 @@ function App() {
         phone: editBizPhone.trim() || null,
         email: editBizEmail.trim() || null,
         address: editBizAddress.trim() || null,
+        tax_rate: parsedTaxRate,
       })
       .eq("id", businessId);
     if (error) { console.error(error); setMessage("Failed to update business: " + error.message); return; }
@@ -1253,17 +1258,20 @@ function App() {
     const discountAmount = posDiscountType === "percent"
       ? Math.min(subtotal, subtotal * (discountVal / 100))
       : Math.min(subtotal, discountVal);
+    const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+    const taxAmount = Math.round(discountedSubtotal * (businessTaxRate / 100) * 100) / 100;
     const customerLoyaltyBal = posCustomerId
       ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
       : 0;
     const redeemPts = posCustomerId
       ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), customerLoyaltyBal)
       : 0;
-    const finalTotal = Math.max(0, subtotal - discountAmount - redeemPts / 100);
+    const redeemDollar = redeemPts / 100;
+    const finalTotal = Math.max(0, discountedSubtotal + taxAmount - redeemDollar);
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .insert({ subtotal, tax: 0, discount_amount: discountAmount, total: finalTotal, status: "completed", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
+      .insert({ subtotal, tax: taxAmount, discount_amount: discountAmount, total: finalTotal, status: "completed", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
       .select("id")
       .single();
 
@@ -1313,7 +1321,7 @@ function App() {
     }
 
     if (posCustomerId) {
-      const earnedPoints = Math.floor(finalTotal);
+      const earnedPoints = Math.floor(Math.max(0, discountedSubtotal - redeemDollar));
       if (earnedPoints > 0) {
         const { error: earnErr } = await supabase.from('loyalty_transactions').insert({
           customer_id: posCustomerId,
@@ -2083,6 +2091,8 @@ function App() {
                   const discountAmt = posDiscountType === "percent"
                     ? Math.min(subtotal, subtotal * (discountVal / 100))
                     : Math.min(subtotal, discountVal);
+                  const tfDiscountedSubtotal = Math.max(0, subtotal - discountAmt);
+                  const tfTaxAmt = Math.round(tfDiscountedSubtotal * (businessTaxRate / 100) * 100) / 100;
                   const tfCustBal = posCustomerId
                     ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
                     : 0;
@@ -2090,7 +2100,7 @@ function App() {
                     ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), tfCustBal)
                     : 0;
                   const redeemDollar = tfRedeemPts / 100;
-                  const finalTotal = Math.max(0, subtotal - discountAmt - redeemDollar);
+                  const finalTotal = Math.max(0, tfDiscountedSubtotal + tfTaxAmt - redeemDollar);
                   return (
                     <>
                       <tr>
@@ -2102,6 +2112,13 @@ function App() {
                         <tr>
                           <td colSpan={3} style={{ textAlign: "right", color: "#16a34a" }}>Discount</td>
                           <td style={{ color: "#16a34a" }}>−${discountAmt.toFixed(2)}</td>
+                          <td></td>
+                        </tr>
+                      )}
+                      {tfTaxAmt > 0 && (
+                        <tr>
+                          <td colSpan={3} style={{ textAlign: "right", color: "#b45309" }}>Tax ({businessTaxRate}%)</td>
+                          <td style={{ color: "#b45309" }}>${tfTaxAmt.toFixed(2)}</td>
                           <td></td>
                         </tr>
                       )}
@@ -2206,13 +2223,15 @@ function App() {
               const discountAmt = posDiscountType === "percent"
                 ? Math.min(subtotal, subtotal * (discountVal / 100))
                 : Math.min(subtotal, discountVal);
+              const cashDiscountedSubtotal = Math.max(0, subtotal - discountAmt);
+              const cashTaxAmt = Math.round(cashDiscountedSubtotal * (businessTaxRate / 100) * 100) / 100;
               const cashCustBal = posCustomerId
                 ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
                 : 0;
               const cashRedeemPts = posCustomerId
                 ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), cashCustBal)
                 : 0;
-              const finalTotal = Math.max(0, subtotal - discountAmt - cashRedeemPts / 100);
+              const finalTotal = Math.max(0, cashDiscountedSubtotal + cashTaxAmt - cashRedeemPts / 100);
               return (
                 <>
                   <input
@@ -3868,6 +3887,7 @@ function App() {
         const avgTx = txCount > 0 ? revenue / txCount : 0;
         const itemsSold = periodItems.reduce((sum, i) => sum + i.quantity, 0);
         const discounts = periodSales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
+        const taxCollected = periodSales.reduce((sum, s) => sum + Number(s.tax), 0);
 
         const cashTotal = periodPayments.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0);
         const cardTotal = periodPayments.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0);
@@ -3930,6 +3950,7 @@ function App() {
                 { label: "Avg Transaction", value: `$${avgTx.toFixed(2)}` },
                 { label: "Items Sold", value: String(itemsSold) },
                 { label: "Discounts Given", value: `$${discounts.toFixed(2)}`, color: discounts > 0 ? "#b45309" : undefined },
+                { label: "Tax Collected", value: `$${taxCollected.toFixed(2)}`, color: taxCollected > 0 ? "#b45309" : undefined },
               ].map(card => (
                 <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "14px 20px", minWidth: "140px", flex: 1 }}>
                   <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
@@ -4876,13 +4897,15 @@ function App() {
           <p style={{ margin: "0 0 8px" }}><strong>Name:</strong> {businessName || "—"}</p>
           <p style={{ margin: "0 0 8px" }}><strong>Phone:</strong> {businessPhone || "—"}</p>
           <p style={{ margin: "0 0 8px" }}><strong>Email:</strong> {businessEmail || "—"}</p>
-          <p style={{ margin: "0 0 16px" }}><strong>Address:</strong> {businessAddress || "—"}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Address:</strong> {businessAddress || "—"}</p>
+          <p style={{ margin: "0 0 16px" }}><strong>Tax Rate:</strong> {businessTaxRate}%</p>
           <button
             onClick={() => {
               setEditBizName(businessName);
               setEditBizPhone(businessPhone);
               setEditBizEmail(businessEmail);
               setEditBizAddress(businessAddress);
+              setEditBizTaxRate(String(businessTaxRate));
               setEditingBusiness(true);
             }}
             style={{ padding: "8px 20px", cursor: "pointer" }}
@@ -4923,6 +4946,19 @@ function App() {
             onChange={(e) => setEditBizAddress(e.target.value)}
             style={{ padding: "8px" }}
           />
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="Tax rate %"
+              value={editBizTaxRate}
+              onChange={(e) => setEditBizTaxRate(e.target.value)}
+              style={{ padding: "8px", width: "150px" }}
+            />
+            <span style={{ fontSize: "13px", color: "#64748b" }}>% Sales tax (0 = no tax)</span>
+          </div>
           <div style={{ display: "flex", gap: "8px" }}>
             <button type="submit" style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
             <button type="button" onClick={() => setEditingBusiness(false)} style={{ padding: "8px 20px", cursor: "pointer" }}>Cancel</button>
