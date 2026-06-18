@@ -1403,6 +1403,48 @@ function App() {
     await loadPurchaseOrders();
   }
 
+  async function handleDeletePO(po: PurchaseOrder) {
+    const { error: itemsError } = await supabase
+      .from("purchase_order_items")
+      .delete()
+      .eq("purchase_order_id", po.id);
+    if (itemsError) { console.error(itemsError); setMessage("Failed to delete PO items"); return; }
+    const { error: poError } = await supabase
+      .from("purchase_orders")
+      .delete()
+      .eq("id", po.id);
+    if (poError) { console.error(poError); setMessage("Failed to delete purchase order"); return; }
+    if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); }
+    setMessage(`PO ${po.po_number} deleted`);
+    await loadPurchaseOrders();
+  }
+
+  async function handleCancelPO(po: PurchaseOrder) {
+    const { error } = await supabase
+      .from("purchase_orders")
+      .update({ status: "cancelled" })
+      .eq("id", po.id);
+    if (error) { console.error(error); setMessage("Failed to cancel purchase order"); return; }
+    if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); }
+    setMessage(`PO ${po.po_number} cancelled`);
+    await loadPurchaseOrders();
+  }
+
+  async function handleRemovePOItem(itemId: string) {
+    const { error } = await supabase
+      .from("purchase_order_items")
+      .delete()
+      .eq("id", itemId);
+    if (error) { console.error(error); setMessage("Failed to remove item"); return; }
+    const remaining = poItems.filter((i) => i.id !== itemId);
+    setPoItems(remaining);
+    const newSubtotal = remaining.reduce((sum, i) => sum + Number(i.line_total), 0);
+    await supabase.from("purchase_orders").update({ subtotal: newSubtotal }).eq("id", selectedPoId);
+    await loadPurchaseOrders();
+  }
+
   async function loadSuppliers() {
     const { data, error } = await supabase
       .from("suppliers")
@@ -3181,29 +3223,56 @@ function App() {
                     <td colSpan={7}>No purchase orders found</td>
                   </tr>
                 ) : (
-                  purchaseOrders.map((po) => (
-                    <tr key={po.id} style={{ backgroundColor: selectedPoId === po.id ? "#f0f4ff" : "inherit" }}>
-                      <td>{po.po_number}</td>
-                      <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
-                      <td>{po.status}</td>
-                      <td>${Number(po.subtotal ?? 0).toFixed(2)}</td>
-                      <td>{po.notes || "-"}</td>
-                      <td>{new Date(po.created_at).toLocaleString()}</td>
-                      <td style={{ display: "flex", gap: "6px" }}>
-                        <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px" }}>
-                          {selectedPoId === po.id ? "Close" : "View/Edit"}
-                        </button>
-                        {po.status !== "received" && (
-                          <button
-                            onClick={() => handleOpenReceive(po)}
-                            style={{ padding: "4px 10px", background: receivingPoId === po.id ? "#d1fae5" : undefined }}
-                          >
-                            {receivingPoId === po.id ? "Cancel" : "Receive"}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  purchaseOrders.map((po) => {
+                    const isDraft = po.status === "draft";
+                    const isCancelled = po.status === "cancelled";
+                    const badgeStyle: React.CSSProperties = {
+                      fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
+                      background: isDraft ? "#fef3c7" : isCancelled ? "#e5e7eb" : "#dcfce7",
+                      color: isDraft ? "#92400e" : isCancelled ? "#6b7280" : "#15803d",
+                    };
+                    return (
+                      <tr key={po.id} style={{ backgroundColor: isCancelled ? "#f9fafb" : selectedPoId === po.id ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
+                        <td>{po.po_number}</td>
+                        <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
+                        <td><span style={badgeStyle}>{po.status}</span></td>
+                        <td>${Number(po.subtotal ?? 0).toFixed(2)}</td>
+                        <td>{po.notes || "-"}</td>
+                        <td>{new Date(po.created_at).toLocaleString()}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          {!isCancelled && (
+                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px" }}>
+                              {selectedPoId === po.id ? "Close" : "View/Edit"}
+                            </button>
+                          )}
+                          {isDraft && (
+                            <button
+                              onClick={() => handleOpenReceive(po)}
+                              style={{ padding: "4px 10px", marginRight: "4px", background: receivingPoId === po.id ? "#d1fae5" : undefined }}
+                            >
+                              {receivingPoId === po.id ? "Cancel" : "Receive"}
+                            </button>
+                          )}
+                          {isDraft && (
+                            <button
+                              onClick={() => handleCancelPO(po)}
+                              style={{ padding: "4px 10px", marginRight: "4px" }}
+                            >
+                              Cancel PO
+                            </button>
+                          )}
+                          {isDraft && (
+                            <button
+                              onClick={() => handleDeletePO(po)}
+                              style={{ padding: "4px 10px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -3213,6 +3282,7 @@ function App() {
 
       {selectedPoId && (() => {
         const po = purchaseOrders.find((p) => p.id === selectedPoId);
+        const isDraftPO = po?.status === "draft";
         const productMap = Object.fromEntries(
           products.map((p) => [p.product_id, p.product_name])
         );
@@ -3220,48 +3290,57 @@ function App() {
           <div style={{ marginTop: "32px", padding: "20px", border: "1px solid #ccc", borderRadius: "8px", marginBottom: "32px" }}>
             <h3 style={{ margin: "0 0 16px" }}>
               PO Detail — {po?.po_number}
+              {po && (
+                <span style={{
+                  marginLeft: "12px", fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
+                  background: isDraftPO ? "#fef3c7" : po.status === "cancelled" ? "#e5e7eb" : "#dcfce7",
+                  color: isDraftPO ? "#92400e" : po.status === "cancelled" ? "#6b7280" : "#15803d",
+                }}>{po.status}</span>
+              )}
             </h3>
 
-            <form
-              onSubmit={handleAddPOItem}
-              style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
-            >
-              <select
-                value={itemProductId}
-                onChange={(e) => setItemProductId(e.target.value)}
-                style={{ flex: "2 1 200px", padding: "8px" }}
+            {isDraftPO && (
+              <form
+                onSubmit={handleAddPOItem}
+                style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
               >
-                <option value="">Select product...</option>
-                {products.map((p) => (
-                  <option key={p.product_id} value={p.product_id}>
-                    {p.product_name}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={itemProductId}
+                  onChange={(e) => setItemProductId(e.target.value)}
+                  style={{ flex: "2 1 200px", padding: "8px" }}
+                >
+                  <option value="">Select product...</option>
+                  {products.map((p) => (
+                    <option key={p.product_id} value={p.product_id}>
+                      {p.product_name}
+                    </option>
+                  ))}
+                </select>
 
-              <input
-                type="number"
-                min="0"
-                placeholder="Quantity"
-                value={itemQuantity}
-                onChange={(e) => setItemQuantity(e.target.value)}
-                style={{ flex: "1 1 120px", padding: "8px" }}
-              />
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Quantity"
+                  value={itemQuantity}
+                  onChange={(e) => setItemQuantity(e.target.value)}
+                  style={{ flex: "1 1 120px", padding: "8px" }}
+                />
 
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Unit Cost"
-                value={itemUnitCost}
-                onChange={(e) => setItemUnitCost(e.target.value)}
-                style={{ flex: "1 1 120px", padding: "8px" }}
-              />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Unit Cost"
+                  value={itemUnitCost}
+                  onChange={(e) => setItemUnitCost(e.target.value)}
+                  style={{ flex: "1 1 120px", padding: "8px" }}
+                />
 
-              <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-                Add Item
-              </button>
-            </form>
+                <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
+                  Add Item
+                </button>
+              </form>
+            )}
 
             <div style={{ overflowX: "auto" }}>
               <table border={1} cellPadding={10} style={{ width: "100%" }}>
@@ -3271,12 +3350,13 @@ function App() {
                     <th>Quantity</th>
                     <th>Unit Cost</th>
                     <th>Line Total</th>
+                    {isDraftPO && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {poItems.length === 0 ? (
                     <tr>
-                      <td colSpan={4}>No items yet</td>
+                      <td colSpan={isDraftPO ? 5 : 4}>No items yet</td>
                     </tr>
                   ) : (
                     poItems.map((item) => (
@@ -3285,6 +3365,16 @@ function App() {
                         <td>{item.quantity}</td>
                         <td>${Number(item.unit_cost).toFixed(2)}</td>
                         <td>${Number(item.line_total).toFixed(2)}</td>
+                        {isDraftPO && (
+                          <td>
+                            <button
+                              onClick={() => handleRemovePOItem(item.id)}
+                              style={{ padding: "2px 8px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px", cursor: "pointer" }}
+                            >
+                              ×
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}
