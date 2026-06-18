@@ -104,6 +104,7 @@ type Customer = {
   name: string;
   phone: string;
   email: string | null;
+  status: string;
   created_at: string;
 };
 
@@ -255,6 +256,10 @@ function App() {
   const [newCusPhone, setNewCusPhone] = useState("");
   const [newCusEmail, setNewCusEmail] = useState("");
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+  const [editCusName, setEditCusName] = useState("");
+  const [editCusPhone, setEditCusPhone] = useState("");
+  const [editCusEmail, setEditCusEmail] = useState("");
   const [returningSaleId, setReturningSaleId] = useState<string | null>(null);
   const [returnLines, setReturnLines] = useState<ReturnLineItem[]>([]);
   const [returnReason, setReturnReason] = useState("");
@@ -680,7 +685,7 @@ function App() {
   async function loadCustomers() {
     const { data, error } = await supabase
       .from("customers")
-      .select("id, name, phone, email, created_at")
+      .select("id, name, phone, email, status, created_at")
       .order("created_at", { ascending: false });
     if (error) { console.error(error); return; }
     setCustomers((data as Customer[]) || []);
@@ -697,7 +702,7 @@ function App() {
   function handleLookupCustomer() {
     const phone = posCustomerPhone.trim();
     if (!phone) return;
-    const match = customers.find(c => c.phone === phone);
+    const match = customers.find(c => c.phone === phone && c.status === "active");
     if (match) {
       setPosCustomerId(match.id);
       setPosCustomerName(match.name);
@@ -726,6 +731,33 @@ function App() {
     setNewCusPhone("");
     setNewCusEmail("");
     setMessage("Customer added");
+    await loadCustomers();
+  }
+
+  async function handleEditCustomer(e: React.FormEvent, customerId: string) {
+    e.preventDefault();
+    if (!editCusName.trim() || !editCusPhone.trim()) return;
+    const { error } = await supabase
+      .from("customers")
+      .update({ name: editCusName.trim(), phone: editCusPhone.trim(), email: editCusEmail.trim() || null })
+      .eq("id", customerId);
+    if (error) { console.error(error); setMessage("Failed to update customer: " + error.message); return; }
+    setEditingCustomerId(null);
+    setMessage("Customer updated");
+    await loadCustomers();
+  }
+
+  async function handleToggleCustomerStatus(customer: Customer) {
+    const newStatus = customer.status === "active" ? "inactive" : "active";
+    const { error } = await supabase.from("customers").update({ status: newStatus }).eq("id", customer.id);
+    if (error) { console.error(error); setMessage("Status update failed"); return; }
+    if (posCustomerId === customer.id && newStatus === "inactive") {
+      setPosCustomerId(null);
+      setPosCustomerName("");
+      setMessage("Customer deactivated — removed from current sale");
+    } else {
+      setMessage(newStatus === "active" ? "Customer activated" : "Customer deactivated");
+    }
     await loadCustomers();
   }
 
@@ -2901,37 +2933,81 @@ function App() {
                   <th>Name</th>
                   <th>Phone</th>
                   <th>Email</th>
+                  <th>Status</th>
                   <th>Visits</th>
                   <th>Total Spend</th>
                   <th>Last Visit</th>
                   <th>Points</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={7}>No customers yet</td></tr>
+                  <tr><td colSpan={9}>No customers yet</td></tr>
                 ) : (
                   rows.map((row) => {
                     const isExpanded = expandedCustomerId === row.id;
+                    const isEditing = editingCustomerId === row.id;
+                    const inactive = row.status !== "active";
                     const custSales = sales.filter(s => s.customer_id === row.id);
                     return (
-                      <>
+                      <React.Fragment key={row.id}>
                         <tr
-                          key={row.id}
-                          onClick={() => setExpandedCustomerId(isExpanded ? null : row.id)}
-                          style={{ cursor: "pointer", background: isExpanded ? "#f0f4ff" : undefined }}
+                          onClick={() => { if (!isEditing) setExpandedCustomerId(isExpanded ? null : row.id); }}
+                          style={{
+                            cursor: isEditing ? "default" : "pointer",
+                            background: isExpanded ? "#f0f4ff" : inactive ? "#f5f5f5" : undefined,
+                            color: inactive ? "#999" : undefined,
+                          }}
                         >
                           <td>{isExpanded ? "▾" : "▸"} {row.name}</td>
                           <td>{row.phone}</td>
                           <td>{row.email ?? "—"}</td>
+                          <td>
+                            <span style={{
+                              fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
+                              background: inactive ? "#e5e7eb" : "#dcfce7",
+                              color: inactive ? "#6b7280" : "#15803d",
+                            }}>{row.status}</span>
+                          </td>
                           <td>{row.visitCount}</td>
                           <td>${row.totalSpend.toFixed(2)}</td>
                           <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
                           <td style={{ color: row.pointsBalance > 0 ? "#7c3aed" : "#888", fontWeight: row.pointsBalance > 0 ? "bold" : "normal" }}>{row.pointsBalance}</td>
+                          <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => {
+                                if (isEditing) { setEditingCustomerId(null); return; }
+                                setEditingCustomerId(row.id);
+                                setEditCusName(row.name);
+                                setEditCusPhone(row.phone);
+                                setEditCusEmail(row.email ?? "");
+                              }}
+                              style={{ marginRight: "6px", padding: "3px 10px", cursor: "pointer" }}
+                            >{isEditing ? "Cancel" : "Edit"}</button>
+                            <button
+                              onClick={() => handleToggleCustomerStatus(row)}
+                              style={{ padding: "3px 10px", cursor: "pointer" }}
+                            >{inactive ? "Activate" : "Deactivate"}</button>
+                          </td>
                         </tr>
-                        {isExpanded && (
-                          <tr key={`${row.id}-history`}>
-                            <td colSpan={7} style={{ background: "#f8f9ff", padding: "16px" }}>
+                        {isEditing && (
+                          <tr>
+                            <td colSpan={9} style={{ background: "#f9fafb", padding: "16px" }}>
+                              <form onSubmit={(e) => handleEditCustomer(e, row.id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                                <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Customer — {row.name}</strong>
+                                <input type="text" placeholder="Name *" value={editCusName} onChange={(e) => setEditCusName(e.target.value)} required style={{ flex: "2 1 160px", padding: "7px" }} />
+                                <input type="text" placeholder="Phone *" value={editCusPhone} onChange={(e) => setEditCusPhone(e.target.value)} required style={{ flex: "1 1 130px", padding: "7px" }} />
+                                <input type="email" placeholder="Email" value={editCusEmail} onChange={(e) => setEditCusEmail(e.target.value)} style={{ flex: "1 1 180px", padding: "7px" }} />
+                                <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
+                                <button type="button" onClick={() => setEditingCustomerId(null)} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
+                              </form>
+                            </td>
+                          </tr>
+                        )}
+                        {isExpanded && !isEditing && (
+                          <tr>
+                            <td colSpan={9} style={{ background: "#f8f9ff", padding: "16px" }}>
                               <strong>Purchase History</strong>
                               {custSales.length === 0 ? (
                                 <p style={{ margin: "8px 0 0", color: "#888" }}>No sales recorded for this customer.</p>
@@ -2992,7 +3068,7 @@ function App() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </React.Fragment>
                     );
                   })
                 )}
