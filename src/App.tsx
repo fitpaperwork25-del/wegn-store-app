@@ -1616,9 +1616,6 @@ function App() {
         )
       `);
 
-    console.log("DATA:", data);
-    console.log("ERROR:", error);
-
     if (error) {
       console.error(error);
       return;
@@ -1647,9 +1644,6 @@ function App() {
       .from("inventory_transactions")
       .select("id, created_at, transaction_type, quantity_change, quantity_before, quantity_after, product_id")
       .order("created_at", { ascending: false });
-
-    console.log("TX DATA", txData);
-    console.log("TX ERROR", txError);
 
     if (txError) {
       console.error(txError);
@@ -1839,22 +1833,15 @@ function App() {
 
   async function handleAdjust(e: React.FormEvent) {
     e.preventDefault();
-    console.log("HANDLE ADJUST FIRED");
     setMessage("");
 
     const qty = Number(adjustQuantity);
 
-    console.log("GUARD CHECK", { adjustProductId, adjustQuantity, qty, isNaN: isNaN(qty) });
-
     if (!adjustProductId || !adjustQuantity || isNaN(qty)) {
-      console.log("GUARD BLOCKED — returning early");
       return;
     }
 
     const product = products.find((p) => p.product_id === adjustProductId);
-
-    console.log("ADJUST PRODUCT", product);
-    console.log("ADJUST QTY", qty);
 
     if (!product) {
       return;
@@ -1862,8 +1849,6 @@ function App() {
 
     const reductionTypes = ["damaged", "expired", "lost"];
     const delta = reductionTypes.includes(adjustType) ? -Math.abs(qty) : qty;
-
-    console.log("ADJUST DELTA", delta);
 
     const quantityBefore = product.quantity_on_hand;
     const quantityAfter = quantityBefore + delta;
@@ -1880,8 +1865,6 @@ function App() {
         reason: adjustReason || null,
       });
 
-    console.log("ADJUST INSERT ERROR", txError);
-
     if (txError) {
       console.error(txError);
       return;
@@ -1891,8 +1874,6 @@ function App() {
       .from("inventory")
       .update({ quantity_on_hand: quantityAfter })
       .eq("id", product.inventory_id);
-
-    console.log("ADJUST UPDATE ERROR", updateError);
 
     if (updateError) {
       console.error(updateError);
@@ -1908,9 +1889,17 @@ function App() {
 
   return (
     <div style={{ padding: "40px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: "24px", paddingBottom: "16px", borderBottom: "2px solid #e2e8f0", gap: "16px" }}>
-        <h1 style={{ margin: "0", fontSize: "22px", fontWeight: "bold", color: "#0f172a" }}>Wegn-Store</h1>
-        <nav style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: "24px", paddingBottom: "20px", borderBottom: "2px solid #e2e8f0", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <img
+            src="/logo.png"
+            alt="Wegn-Store"
+            style={{ height: "44px", width: "auto", borderRadius: "8px", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+          <span style={{ fontSize: "20px", fontWeight: "700", color: "#0f172a", letterSpacing: "-0.01em" }}>Wegn-Store</span>
+        </div>
+        <nav style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
           {([
             ['dashboard', 'Dashboard'],
             ['pos', 'POS'],
@@ -1925,15 +1914,17 @@ function App() {
               key={key}
               onClick={() => setActiveTab(key)}
               style={{
-                padding: "8px 16px",
-                background: activeTab === key ? "#1d4ed8" : "#f1f5f9",
-                color: activeTab === key ? "#fff" : "#475569",
+                padding: "8px 14px",
+                background: activeTab === key ? "#1d4ed8" : "transparent",
+                color: activeTab === key ? "#fff" : "#64748b",
                 border: "1px solid",
-                borderColor: activeTab === key ? "#1d4ed8" : "#e2e8f0",
+                borderColor: activeTab === key ? "#1d4ed8" : "transparent",
                 borderRadius: "6px",
                 cursor: "pointer",
-                fontWeight: activeTab === key ? "bold" : "normal",
+                fontWeight: activeTab === key ? "600" : "normal",
                 fontSize: "14px",
+                transition: "background 0.15s, color 0.15s, border-color 0.15s",
+                boxShadow: activeTab === key ? "0 1px 4px rgba(29,78,216,0.2)" : "none",
               }}
             >
               {label}
@@ -2284,7 +2275,7 @@ function App() {
       </form>
 
 
-      <h2>Adjust Inventory</h2>
+      <h2 style={{ marginTop: "40px" }}>Adjust Inventory</h2>
 
       <form
         onSubmit={handleAdjust}
@@ -2298,10 +2289,7 @@ function App() {
       >
         <select
           value={adjustProductId}
-          onChange={(e) => {
-            setAdjustProductId(e.target.value);
-            console.log("SELECTED PRODUCT ID", e.target.value);
-          }}
+          onChange={(e) => setAdjustProductId(e.target.value)}
           style={{ flex: "1 1 200px", padding: "8px" }}
         >
           <option value="">Select product...</option>
@@ -2344,7 +2332,7 @@ function App() {
         </button>
       </form>
 
-      <h2>Add Product</h2>
+      <h2 style={{ marginTop: "40px" }}>Add Product</h2>
 
       <form
         onSubmit={handleAddProduct}
@@ -2521,7 +2509,10 @@ function App() {
       {/* ── DASHBOARD TAB ── */}
       <div style={{ display: activeTab === 'dashboard' ? '' : 'none' }}>
 
-      <h2 style={{ marginBottom: "24px" }}>Dashboard</h2>
+      <h2 style={{ marginBottom: "4px" }}>Dashboard</h2>
+      <p style={{ margin: "0 0 24px", fontSize: "13px", color: "#94a3b8" }}>
+        {businessName || "Wegn-Store"} &mdash; {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      </p>
 
       {(() => {
         const today = new Date();
@@ -2645,7 +2636,7 @@ function App() {
       {/* ── INVENTORY TAB (2) ── */}
       <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
 
-      <h2>Products & Stock</h2>
+      <h2 style={{ marginTop: "40px" }}>Products & Stock</h2>
 
       <div style={{ overflowX: "auto" }}>
         <table border={1} cellPadding={10} style={{ width: "100%" }}>
@@ -4570,7 +4561,7 @@ function App() {
       <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
 
       {/* Stock Take / Inventory Count */}
-      <h2>Stock Take / Inventory Count</h2>
+      <h2 style={{ marginTop: "40px" }}>Stock Take / Inventory Count</h2>
       {!stockCountActive ? (
         <div style={{ marginBottom: "24px" }}>
           <p style={{ color: "#555", marginBottom: "12px", fontSize: "14px" }}>
