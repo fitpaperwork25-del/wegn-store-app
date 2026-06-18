@@ -225,6 +225,7 @@ function App() {
   const [receivingPoId, setReceivingPoId] = useState("");
   const [receivingItems, setReceivingItems] = useState<POItem[]>([]);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
+  const [isConfirmingReceive, setIsConfirmingReceive] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poNotes, setPoNotes] = useState("");
   const [supName, setSupName] = useState("");
@@ -1002,6 +1003,8 @@ function App() {
   async function handleConfirmReceive() {
     const po = purchaseOrders.find((p) => p.id === receivingPoId);
     if (!po) return;
+    if (isConfirmingReceive) return;
+    setIsConfirmingReceive(true);
 
     for (const item of receivingItems) {
       const receiveQty = Number(receiveQtys[item.id] ?? 0);
@@ -1053,6 +1056,7 @@ function App() {
 
     if (statusError) { console.error(statusError); }
 
+    setIsConfirmingReceive(false);
     setReceivingPoId("");
     setReceivingItems([]);
     setReceiveQtys({});
@@ -3671,7 +3675,7 @@ function App() {
 
             <button
               onClick={handleConfirmReceive}
-              disabled={receivingItems.length === 0}
+              disabled={receivingItems.length === 0 || isConfirmingReceive}
               style={{ padding: "10px 24px", background: "#16a34a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
             >
               Confirm Receive
