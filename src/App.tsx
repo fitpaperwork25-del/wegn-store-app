@@ -1935,14 +1935,13 @@ function App() {
   return (
     <div style={{ padding: "40px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: "24px", paddingBottom: "20px", borderBottom: "2px solid #e2e8f0", gap: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center" }}>
           <img
             src="/logo.png"
             alt="Wegn-Store"
-            style={{ height: "44px", width: "auto", borderRadius: "8px", display: "block" }}
+            style={{ height: "clamp(40px, 5vw, 64px)", width: "auto", maxWidth: "200px", objectFit: "contain", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
           />
-          <span style={{ fontSize: "20px", fontWeight: "700", color: "#0f172a", letterSpacing: "-0.01em" }}>Wegn-Store</span>
         </div>
         <nav style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
           {([
@@ -5020,7 +5019,12 @@ function App() {
                   boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
                 }}
               >
-                <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", marginBottom: "4px" }}>{businessName || "WEGN-STORE"}</div>
+                <div style={{ textAlign: "center", marginBottom: "6px" }}>
+                  <img src="/logo.png" alt="Wegn-Store" style={{ height: "56px", width: "auto", maxWidth: "160px", objectFit: "contain" }} />
+                </div>
+                {businessName && (
+                  <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", marginBottom: "4px" }}>{businessName}</div>
+                )}
                 {(businessPhone || businessAddress) && (
                   <div style={{ textAlign: "center", fontSize: "12px", color: "#555", marginBottom: "4px" }}>
                     {businessPhone && <div>{businessPhone}</div>}
