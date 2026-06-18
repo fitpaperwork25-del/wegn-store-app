@@ -1292,7 +1292,7 @@ function App() {
         line_total: c.line_total,
       })));
 
-    if (itemsErr) { console.error(itemsErr); setMessage({ text: "Sale items failed", type: "error" }); return; }
+    if (itemsErr) { console.error(itemsErr); await supabase.from("sales").delete().eq("id", sale.id); setMessage({ text: "Sale items failed. Sale was not saved.", type: "error" }); return; }
 
     const { error: payErr } = await supabase
       .from("payments")
