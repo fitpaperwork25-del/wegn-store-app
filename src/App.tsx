@@ -443,7 +443,38 @@ function App() {
         reason: `Return for sale ${returningSaleId.slice(0, 8)}${returnReason ? ': ' + returnReason : ''}`,
       });
     }
-    await supabase.from('sales').update({ status: 'returned' }).eq('id', returningSaleId);
+    // Only mark fully returned when every line across the sale is exhausted
+    const origSaleItems = saleItems.filter(si => si.sale_id === returningSaleId);
+    const allFullyReturned = origSaleItems.every(si => {
+      const line = returnLines.find(l => l.product_id === si.product_id);
+      if (!line) return true; // was already fully returned in a prior batch
+      return (line.already_returned + line.return_qty) >= si.quantity;
+    });
+    if (allFullyReturned) {
+      await supabase.from('sales').update({ status: 'returned' }).eq('id', returningSaleId);
+    }
+
+    // Loyalty reversal — reverse earned points once per sale, prevent duplicate
+    const returnedSale = sales.find(s => s.id === returningSaleId);
+    if (returnedSale?.customer_id) {
+      const alreadyReversed = loyaltyTransactions.some(
+        lt => lt.sale_id === returningSaleId && lt.type === 'earn' && lt.points < 0
+      );
+      if (!alreadyReversed) {
+        const totalEarned = loyaltyTransactions
+          .filter(lt => lt.sale_id === returningSaleId && lt.type === 'earn' && lt.points > 0)
+          .reduce((sum, lt) => sum + lt.points, 0);
+        if (totalEarned > 0) {
+          await supabase.from('loyalty_transactions').insert({
+            customer_id: returnedSale.customer_id,
+            sale_id: returningSaleId,
+            points: -totalEarned,
+            type: 'earn',
+          });
+        }
+      }
+    }
+
     setReturningSaleId(null);
     setReturnLines([]);
     setReturnReason("");
@@ -452,6 +483,7 @@ function App() {
     await loadProducts();
     await loadTransactions();
     await loadSales();
+    await loadLoyaltyTransactions();
   }
 
   function handleStartCount() {
@@ -3544,17 +3576,17 @@ function App() {
                       <td style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <button onClick={() => handlePrintReceipt(s)} style={{ padding: "3px 10px", cursor: "pointer" }}>Print</button>
                         {s.status === "completed" && (
-                          <>
-                            <button
-                              onClick={() => handleVoidSale(s.id)}
-                              disabled={voidingId === s.id}
-                              style={{ padding: "3px 10px", color: "#b91c1c", cursor: "pointer" }}
-                            >Void</button>
-                            <button
-                              onClick={() => handleOpenReturn(s)}
-                              style={{ padding: "3px 10px", color: "#7c3aed", cursor: "pointer" }}
-                            >Return</button>
-                          </>
+                          <button
+                            onClick={() => handleVoidSale(s.id)}
+                            disabled={voidingId === s.id}
+                            style={{ padding: "3px 10px", color: "#b91c1c", cursor: "pointer" }}
+                          >Void</button>
+                        )}
+                        {(s.status === "completed" || s.status === "returned") && (
+                          <button
+                            onClick={() => handleOpenReturn(s)}
+                            style={{ padding: "3px 10px", color: "#7c3aed", cursor: "pointer" }}
+                          >Return</button>
                         )}
                       </td>
                     </tr>
