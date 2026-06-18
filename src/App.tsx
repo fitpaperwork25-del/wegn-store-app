@@ -247,7 +247,7 @@ function App() {
   const [newSellingPrice, setNewSellingPrice] = useState("");
   const [newReorderLevel, setNewReorderLevel] = useState("");
   const [newInitialStock, setNewInitialStock] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [movementFilter, setMovementFilter] = useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -396,9 +396,9 @@ function App() {
         tax_rate: parsedTaxRate,
       })
       .eq("id", businessId);
-    if (error) { console.error(error); setMessage("Failed to update business: " + error.message); return; }
+    if (error) { console.error(error); setMessage({ text: "Failed to update business: " + error.message, type: "error" }); return; }
     setEditingBusiness(false);
-    setMessage("Business profile updated");
+    setMessage({ text: "Business profile updated", type: "success" });
     await loadBusiness();
   }
 
@@ -501,7 +501,7 @@ function App() {
     setReturnLines([]);
     setReturnReason("");
     setReturnLoading(false);
-    setMessage("Return processed");
+    setMessage({ text: "Return processed", type: "success" });
     await loadProducts();
     await loadTransactions();
     await loadSales();
@@ -534,7 +534,7 @@ function App() {
       completed_at: new Date().toISOString(),
     }).select('id').single();
     if (scErr || !sc) {
-      setMessage('Failed to save stock count: ' + scErr?.message);
+      setMessage({ text: 'Failed to save stock count: ' + scErr?.message, type: "error" });
       setStockCountLoading(false);
       return;
     }
@@ -565,7 +565,7 @@ function App() {
     setStockCountActive(false);
     setStockCountLines([]);
     setStockCountLoading(false);
-    setMessage(`Stock count completed — ${varianceCount} variance(s) corrected.`);
+    setMessage({ text: `Stock count completed — ${varianceCount} variance(s) corrected.`, type: "success" });
     await loadProducts();
     await loadTransactions();
     await loadStockCounts();
@@ -619,12 +619,12 @@ function App() {
       .insert({ business_id: businessId, opening_float: float, status: 'open', opened_at: new Date().toISOString(), cashier_id: activeCashierId || null })
       .select('*')
       .single();
-    if (error) { setMessage('Failed to open drawer: ' + error.message); setDrawerLoading(false); return; }
+    if (error) { setMessage({ text: 'Failed to open drawer: ' + error.message, type: "error" }); setDrawerLoading(false); return; }
     setDrawerSession(data as DrawerSession);
     setDrawerPaidOuts([]);
     setOpeningFloat('');
     setDrawerLoading(false);
-    setMessage('Cash drawer opened');
+    setMessage({ text: 'Cash drawer opened', type: "success" });
   }
 
   async function handlePaidOut(e: React.FormEvent) {
@@ -636,11 +636,11 @@ function App() {
     const { error } = await supabase
       .from('drawer_paid_outs')
       .insert({ drawer_session_id: drawerSession.id, amount, reason: paidOutReason || null });
-    if (error) { setMessage('Paid out failed: ' + error.message); setDrawerLoading(false); return; }
+    if (error) { setMessage({ text: 'Paid out failed: ' + error.message, type: "error" }); setDrawerLoading(false); return; }
     setPaidOutAmount('');
     setPaidOutReason('');
     setDrawerLoading(false);
-    setMessage('Paid out recorded');
+    setMessage({ text: 'Paid out recorded', type: "success" });
     const { data: pos } = await supabase
       .from('drawer_paid_outs').select('*')
       .eq('drawer_session_id', drawerSession.id)
@@ -661,13 +661,13 @@ function App() {
       .from('drawer_sessions')
       .update({ status: 'closed', closed_at: new Date().toISOString(), closing_count: counted, expected_cash: expectedCash, over_short: overShort })
       .eq('id', drawerSession.id);
-    if (error) { setMessage('Failed to close drawer: ' + error.message); setDrawerLoading(false); return; }
+    if (error) { setMessage({ text: 'Failed to close drawer: ' + error.message, type: "error" }); setDrawerLoading(false); return; }
     setDrawerSession(null);
     setDrawerPaidOuts([]);
     setClosingCount('');
     setDrawerLoading(false);
     const sign = overShort >= 0 ? 'Over' : 'Short';
-    setMessage(`Drawer closed — Expected: $${expectedCash.toFixed(2)} | Counted: $${counted.toFixed(2)} | ${sign}: $${Math.abs(overShort).toFixed(2)}`);
+    setMessage({ text: `Drawer closed — Expected: $${expectedCash.toFixed(2)} | Counted: $${counted.toFixed(2)} | ${sign}: $${Math.abs(overShort).toFixed(2)}`, type: "success" });
   }
 
   function downloadCsvTemplate() {
@@ -794,28 +794,28 @@ function App() {
       const balance = loyaltyTransactions
         .filter(lt => lt.customer_id === match.id)
         .reduce((sum, lt) => sum + lt.points, 0);
-      setMessage(`Customer: ${match.name} — ${balance} pts`);
+      setMessage({ text: `Customer: ${match.name} — ${balance} pts`, type: "success" });
     } else {
       setPosCustomerId(null);
       setPosCustomerName("");
-      setMessage(`No customer found for ${phone} — sale will be anonymous`);
+      setMessage({ text: `No customer found for ${phone} — sale will be anonymous`, type: "error" });
     }
   }
 
   async function handleAddCustomer(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
     if (!newCusName || !newCusPhone) return;
     const { error } = await supabase.from("customers").insert({
       name: newCusName,
       phone: newCusPhone,
       email: newCusEmail || null,
     });
-    if (error) { console.error(error); setMessage("Failed to add customer: " + error.message); return; }
+    if (error) { console.error(error); setMessage({ text: "Failed to add customer: " + error.message, type: "error" }); return; }
     setNewCusName("");
     setNewCusPhone("");
     setNewCusEmail("");
-    setMessage("Customer added");
+    setMessage({ text: "Customer added", type: "success" });
     await loadCustomers();
   }
 
@@ -826,22 +826,22 @@ function App() {
       .from("customers")
       .update({ name: editCusName.trim(), phone: editCusPhone.trim(), email: editCusEmail.trim() || null })
       .eq("id", customerId);
-    if (error) { console.error(error); setMessage("Failed to update customer: " + error.message); return; }
+    if (error) { console.error(error); setMessage({ text: "Failed to update customer: " + error.message, type: "error" }); return; }
     setEditingCustomerId(null);
-    setMessage("Customer updated");
+    setMessage({ text: "Customer updated", type: "success" });
     await loadCustomers();
   }
 
   async function handleToggleCustomerStatus(customer: Customer) {
     const newStatus = customer.status === "active" ? "inactive" : "active";
     const { error } = await supabase.from("customers").update({ status: newStatus }).eq("id", customer.id);
-    if (error) { console.error(error); setMessage("Status update failed"); return; }
+    if (error) { console.error(error); setMessage({ text: "Status update failed", type: "error" }); return; }
     if (posCustomerId === customer.id && newStatus === "inactive") {
       setPosCustomerId(null);
       setPosCustomerName("");
-      setMessage("Customer deactivated — removed from current sale");
+      setMessage({ text: "Customer deactivated — removed from current sale", type: "success" });
     } else {
-      setMessage(newStatus === "active" ? "Customer activated" : "Customer deactivated");
+      setMessage({ text: newStatus === "active" ? "Customer activated" : "Customer deactivated", type: "success" });
     }
     await loadCustomers();
   }
@@ -915,7 +915,7 @@ function App() {
 
   async function handleAddPOItem(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
 
     const qty = Number(itemQuantity);
     const cost = Number(itemUnitCost);
@@ -1069,14 +1069,14 @@ function App() {
     if (!code) return;
 
     const product = products.find((p) => p.barcode === code);
-    if (!product) { setMessage(`Barcode not recognised: ${code}`); return; }
-    if (product.status !== "active") { setMessage("Product is inactive and cannot be sold."); return; }
-    if (product.quantity_on_hand <= 0) { setMessage(`${product.product_name} is out of stock`); return; }
+    if (!product) { setMessage({ text: `Barcode not recognised: ${code}`, type: "error" }); return; }
+    if (product.status !== "active") { setMessage({ text: "Product is inactive and cannot be sold.", type: "error" }); return; }
+    if (product.quantity_on_hand <= 0) { setMessage({ text: `${product.product_name} is out of stock`, type: "error" }); return; }
 
     const existing = cart.find((c) => c.product_id === product.product_id);
     const alreadyInCart = existing?.quantity ?? 0;
     if (alreadyInCart + 1 > product.quantity_on_hand) {
-      setMessage(`Not enough stock for ${product.product_name}`);
+      setMessage({ text: `Not enough stock for ${product.product_name}`, type: "error" });
       return;
     }
 
@@ -1095,12 +1095,12 @@ function App() {
         line_total: product.selling_price,
       }]);
     }
-    setMessage("");
+    setMessage(null);
   }
 
   function handleAddToCart(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
     if (!cartProductId) return;
     const qty = Number(cartQty);
     if (!qty || qty <= 0) return;
@@ -1111,7 +1111,7 @@ function App() {
     const existing = cart.find((c) => c.product_id === cartProductId);
     const alreadyInCart = existing?.quantity ?? 0;
     if (alreadyInCart + qty > product.quantity_on_hand) {
-      setMessage(`Not enough stock. Available: ${product.quantity_on_hand}`);
+      setMessage({ text: `Not enough stock. Available: ${product.quantity_on_hand}`, type: "error" });
       return;
     }
 
@@ -1171,21 +1171,21 @@ function App() {
     if (!sale || sale.status !== "completed") return;
     if (!window.confirm(`Void sale $${Number(sale.total).toFixed(2)}? This will reverse inventory.`)) return;
 
-    setMessage("");
+    setMessage(null);
 
     const { data: items, error: itemsErr } = await supabase
       .from("sale_items")
       .select("product_id, quantity, unit_price")
       .eq("sale_id", saleId);
 
-    if (itemsErr || !items) { console.error(itemsErr); setMessage("Void failed"); return; }
+    if (itemsErr || !items) { console.error(itemsErr); setMessage({ text: "Void failed", type: "error" }); return; }
 
     const { error: statusErr } = await supabase
       .from("sales")
       .update({ status: "voided" })
       .eq("id", saleId);
 
-    if (statusErr) { console.error(statusErr); setMessage("Void failed"); return; }
+    if (statusErr) { console.error(statusErr); setMessage({ text: "Void failed", type: "error" }); return; }
 
     for (const item of items) {
       const product = products.find((p) => p.product_id === item.product_id);
@@ -1233,7 +1233,7 @@ function App() {
     }
 
     setVoidingId("");
-    setMessage("Sale voided");
+    setMessage({ text: "Sale voided", type: "success" });
     await loadProducts();
     await loadTransactions();
     await loadSales();
@@ -1243,17 +1243,17 @@ function App() {
 
   async function handleCompleteSale() {
     if (cart.length === 0) return;
-    setMessage("");
+    setMessage(null);
 
     if (employees.filter(e => e.status === "active").length > 0 && !activeCashierId) {
-      setMessage("Select a cashier before completing the sale");
+      setMessage({ text: "Select a cashier before completing the sale", type: "error" });
       return;
     }
 
     for (const item of cart) {
       const product = products.find((p) => p.product_id === item.product_id);
       if (!product || item.quantity > product.quantity_on_hand) {
-        setMessage(`Insufficient stock for ${item.product_name}`);
+        setMessage({ text: `Insufficient stock for ${item.product_name}`, type: "error" });
         return;
       }
     }
@@ -1280,7 +1280,7 @@ function App() {
       .select("id")
       .single();
 
-    if (saleErr || !sale) { console.error(saleErr); setMessage("Sale failed"); return; }
+    if (saleErr || !sale) { console.error(saleErr); setMessage({ text: "Sale failed", type: "error" }); return; }
 
     const { error: itemsErr } = await supabase
       .from("sale_items")
@@ -1292,7 +1292,7 @@ function App() {
         line_total: c.line_total,
       })));
 
-    if (itemsErr) { console.error(itemsErr); setMessage("Sale items failed"); return; }
+    if (itemsErr) { console.error(itemsErr); setMessage({ text: "Sale items failed", type: "error" }); return; }
 
     const { error: payErr } = await supabase
       .from("payments")
@@ -1355,7 +1355,7 @@ function App() {
     setPosCustomerId(null);
     setPosCustomerName("");
     setPosRedeemPoints("");
-    setMessage("Sale completed");
+    setMessage({ text: "Sale completed", type: "success" });
     await loadProducts();
     await loadTransactions();
     await loadSales();
@@ -1404,7 +1404,7 @@ function App() {
   async function handleCreateReorderPO(product: ProductStock) {
     const supplierId = reorderSuppliers[product.product_id];
     const qty = Number(reorderQtys[product.product_id] ?? (product.reorder_level - product.quantity_on_hand));
-    if (!supplierId || qty <= 0) { setMessage("Select a supplier and enter a quantity"); return; }
+    if (!supplierId || qty <= 0) { setMessage({ text: "Select a supplier and enter a quantity", type: "error" }); return; }
 
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -1425,7 +1425,7 @@ function App() {
       .select("id")
       .single();
 
-    if (poErr || !po) { console.error(poErr); setMessage("Failed to create PO"); return; }
+    if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
 
     await supabase.from("purchase_order_items").insert({
       purchase_order_id: po.id,
@@ -1437,13 +1437,13 @@ function App() {
 
     setReorderSuppliers((prev) => { const n = { ...prev }; delete n[product.product_id]; return n; });
     setReorderQtys((prev) => { const n = { ...prev }; delete n[product.product_id]; return n; });
-    setMessage(`Draft PO created: ${poNumber}`);
+    setMessage({ text: `Draft PO created: ${poNumber}`, type: "success" });
     await loadPurchaseOrders();
   }
 
   async function handleCreatePO(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
 
     if (!poSupplierId) return;
 
@@ -1467,7 +1467,7 @@ function App() {
 
     setPoSupplierId("");
     setPoNotes("");
-    setMessage("Purchase order created successfully");
+    setMessage({ text: "Purchase order created successfully", type: "success" });
     await loadPurchaseOrders();
   }
 
@@ -1476,15 +1476,15 @@ function App() {
       .from("purchase_order_items")
       .delete()
       .eq("purchase_order_id", po.id);
-    if (itemsError) { console.error(itemsError); setMessage("Failed to delete PO items"); return; }
+    if (itemsError) { console.error(itemsError); setMessage({ text: "Failed to delete PO items", type: "error" }); return; }
     const { error: poError } = await supabase
       .from("purchase_orders")
       .delete()
       .eq("id", po.id);
-    if (poError) { console.error(poError); setMessage("Failed to delete purchase order"); return; }
+    if (poError) { console.error(poError); setMessage({ text: "Failed to delete purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
     if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); }
-    setMessage(`PO ${po.po_number} deleted`);
+    setMessage({ text: `PO ${po.po_number} deleted`, type: "success" });
     await loadPurchaseOrders();
   }
 
@@ -1493,10 +1493,10 @@ function App() {
       .from("purchase_orders")
       .update({ status: "cancelled" })
       .eq("id", po.id);
-    if (error) { console.error(error); setMessage("Failed to cancel purchase order"); return; }
+    if (error) { console.error(error); setMessage({ text: "Failed to cancel purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
     if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); }
-    setMessage(`PO ${po.po_number} cancelled`);
+    setMessage({ text: `PO ${po.po_number} cancelled`, type: "success" });
     await loadPurchaseOrders();
   }
 
@@ -1505,7 +1505,7 @@ function App() {
       .from("purchase_order_items")
       .delete()
       .eq("id", itemId);
-    if (error) { console.error(error); setMessage("Failed to remove item"); return; }
+    if (error) { console.error(error); setMessage({ text: "Failed to remove item", type: "error" }); return; }
     const remaining = poItems.filter((i) => i.id !== itemId);
     setPoItems(remaining);
     const newSubtotal = remaining.reduce((sum, i) => sum + Number(i.line_total), 0);
@@ -1529,7 +1529,7 @@ function App() {
 
   async function handleAddSupplier(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
 
     if (!supName) return;
 
@@ -1553,7 +1553,7 @@ function App() {
     setSupPhone("");
     setSupEmail("");
     setSupNotes("");
-    setMessage("Supplier added successfully");
+    setMessage({ text: "Supplier added successfully", type: "success" });
     await loadSuppliers();
   }
 
@@ -1579,25 +1579,25 @@ function App() {
       email: editSupEmail.trim() || null,
       notes: editSupNotes.trim() || null,
     }).eq("id", editingSupplierId);
-    if (error) { console.error(error); setMessage("Update failed"); return; }
+    if (error) { console.error(error); setMessage({ text: "Update failed", type: "error" }); return; }
     setEditingSupplierId(null);
-    setMessage("Supplier updated");
+    setMessage({ text: "Supplier updated", type: "success" });
     await loadSuppliers();
   }
 
   async function handleToggleSupplierStatus(s: Supplier) {
     const newStatus = s.status === "active" ? "inactive" : "active";
     const { error } = await supabase.from("suppliers").update({ status: newStatus }).eq("id", s.id);
-    if (error) { console.error(error); setMessage("Status update failed"); return; }
+    if (error) { console.error(error); setMessage({ text: "Status update failed", type: "error" }); return; }
     await loadSuppliers();
   }
 
   async function handleDeleteSupplier(id: string, name: string) {
     const hasPOs = purchaseOrders.some(po => po.supplier_id === id);
-    if (hasPOs) { setMessage(`Cannot delete "${name}" — they have existing purchase orders.`); return; }
+    if (hasPOs) { setMessage({ text: `Cannot delete "${name}" — they have existing purchase orders.`, type: "error" }); return; }
     const { error } = await supabase.from("suppliers").delete().eq("id", id);
-    if (error) { console.error(error); setMessage("Delete failed"); return; }
-    setMessage(`Supplier "${name}" deleted`);
+    if (error) { console.error(error); setMessage({ text: "Delete failed", type: "error" }); return; }
+    setMessage({ text: `Supplier "${name}" deleted`, type: "success" });
     await loadSuppliers();
   }
 
@@ -1610,23 +1610,23 @@ function App() {
       role: newEmpRole,
       status: "active",
     });
-    if (error) { console.error(error); setMessage("Failed to add employee: " + error.message); return; }
+    if (error) { console.error(error); setMessage({ text: "Failed to add employee: " + error.message, type: "error" }); return; }
     setNewEmpName("");
     setNewEmpRole("cashier");
-    setMessage("Employee added");
+    setMessage({ text: "Employee added", type: "success" });
     await loadEmployees();
   }
 
   async function handleToggleEmployeeStatus(emp: Employee) {
     const newStatus = emp.status === "active" ? "inactive" : "active";
     const { error } = await supabase.from("employees").update({ status: newStatus }).eq("id", emp.id);
-    if (error) { console.error(error); setMessage("Status update failed"); return; }
+    if (error) { console.error(error); setMessage({ text: "Status update failed", type: "error" }); return; }
     if (activeCashierId === emp.id && newStatus === "inactive") {
       setActiveCashierId(null);
       setActiveCashierName("");
-      setMessage("Employee deactivated — cashier deselected");
+      setMessage({ text: "Employee deactivated — cashier deselected", type: "success" });
     } else {
-      setMessage(newStatus === "active" ? "Employee activated" : "Employee deactivated");
+      setMessage({ text: newStatus === "active" ? "Employee activated" : "Employee deactivated", type: "success" });
     }
     await loadEmployees();
   }
@@ -1715,7 +1715,7 @@ function App() {
 
   async function handleAddProduct(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
 
     if (!newName || !newSellingPrice || !newInitialStock) return;
 
@@ -1781,7 +1781,7 @@ function App() {
     setNewReorderLevel("");
     setNewInitialStock("");
     setBarcodeAutoFill("");
-    setMessage("Product added successfully");
+    setMessage({ text: "Product added successfully", type: "success" });
     await loadProducts();
     await loadTransactions();
   }
@@ -1799,9 +1799,9 @@ function App() {
         reorder_level: editProdReorder ? Number(editProdReorder) : 10,
       })
       .eq("id", productId);
-    if (error) { console.error(error); setMessage("Failed to update product: " + error.message); return; }
+    if (error) { console.error(error); setMessage({ text: "Failed to update product: " + error.message, type: "error" }); return; }
     setEditingProductId(null);
-    setMessage("Product updated");
+    setMessage({ text: "Product updated", type: "success" });
     await loadProducts();
   }
 
@@ -1811,14 +1811,14 @@ function App() {
       .from("products")
       .update({ status: newStatus })
       .eq("id", product.product_id);
-    if (error) { console.error(error); setMessage("Status update failed"); return; }
-    setMessage(newStatus === "active" ? "Product activated" : "Product deactivated");
+    if (error) { console.error(error); setMessage({ text: "Status update failed", type: "error" }); return; }
+    setMessage({ text: newStatus === "active" ? "Product activated" : "Product deactivated", type: "success" });
     await loadProducts();
   }
 
   async function handleReceive(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
 
     const quantity = Number(receiveQuantity);
 
@@ -1860,14 +1860,14 @@ function App() {
     }
 
     setReceiveQuantity("");
-    setMessage("Inventory received successfully");
+    setMessage({ text: "Inventory received successfully", type: "success" });
     await loadProducts();
     await loadTransactions();
   }
 
   async function handleAdjust(e: React.FormEvent) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null);
 
     const qty = Number(adjustQuantity);
 
@@ -1916,7 +1916,7 @@ function App() {
 
     setAdjustQuantity("");
     setAdjustReason("");
-    setMessage("Inventory adjusted successfully");
+    setMessage({ text: "Inventory adjusted successfully", type: "success" });
     await loadProducts();
     await loadTransactions();
   }
@@ -1968,8 +1968,14 @@ function App() {
       </div>
 
       {message && (
-        <div style={{ padding: "10px 16px", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "6px", fontSize: "14px", marginBottom: "16px" }}>
-          {message}
+        <div style={{
+          padding: "10px 16px",
+          background: message.type === "error" ? "#fef2f2" : "#f0fdf4",
+          color: message.type === "error" ? "#b91c1c" : "#15803d",
+          border: `1px solid ${message.type === "error" ? "#fecaca" : "#bbf7d0"}`,
+          borderRadius: "6px", fontSize: "14px", marginBottom: "16px",
+        }}>
+          {message.text}
         </div>
       )}
 
