@@ -2521,43 +2521,124 @@ function App() {
       {/* ── DASHBOARD TAB ── */}
       <div style={{ display: activeTab === 'dashboard' ? '' : 'none' }}>
 
-      <h2>Dashboard</h2>
+      <h2 style={{ marginBottom: "24px" }}>Dashboard</h2>
 
-      <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", marginBottom: "24px" }}>
-        <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
-          <div style={{ fontSize: "13px", color: "#666" }}>Total Products</div>
-          <div style={{ fontSize: "28px", fontWeight: "bold" }}>{products.length}</div>
-        </div>
-        <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
-          <div style={{ fontSize: "13px", color: "#666" }}>Low Stock Items</div>
-          <div style={{ fontSize: "28px", fontWeight: "bold", color: products.filter(p => p.quantity_on_hand < p.reorder_level).length > 0 ? "red" : "inherit" }}>
-            {products.filter(p => p.quantity_on_hand < p.reorder_level).length}
-          </div>
-        </div>
-        <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
-          <div style={{ fontSize: "13px", color: "#666" }}>Total Suppliers</div>
-          <div style={{ fontSize: "28px", fontWeight: "bold" }}>{suppliers.length}</div>
-        </div>
-        <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
-          <div style={{ fontSize: "13px", color: "#666" }}>Total Inventory Value</div>
-          <div style={{ fontSize: "28px", fontWeight: "bold" }}>
-            ${products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0).toFixed(2)}
-          </div>
-        </div>
-        <div style={{ padding: "16px 24px", border: "1px solid #ccc", borderRadius: "8px", minWidth: "140px" }}>
-          <div style={{ fontSize: "13px", color: "#666" }}>Today's Revenue</div>
-          <div style={{ fontSize: "28px", fontWeight: "bold", color: "#1d4ed8" }}>
-            ${sales
-              .filter((s) => {
-                const d = new Date(s.created_at);
-                const now = new Date();
-                return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-              })
-              .reduce((sum, s) => sum + Number(s.total), 0)
-              .toFixed(2)}
-          </div>
-        </div>
-      </div>
+      {(() => {
+        const today = new Date();
+        const todaySales = sales.filter(s => {
+          const d = new Date(s.created_at);
+          return s.status === 'completed' &&
+            d.getFullYear() === today.getFullYear() &&
+            d.getMonth() === today.getMonth() &&
+            d.getDate() === today.getDate();
+        });
+        const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
+        const txnCount = todaySales.length;
+        const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
+        const lowStockCount = products.filter(p => p.quantity_on_hand < p.reorder_level).length;
+        const openPoCount = purchaseOrders.filter(po => po.status === 'draft' || po.status === 'ordered').length;
+        const activeCustomerCount = customers.filter(c => c.status === 'active').length;
+        const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
+        const recentSales = [...sales]
+          .filter(s => s.status === 'completed')
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5);
+
+        const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
+        const cardRow: React.CSSProperties = { display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "32px" };
+        const cardBase = (accent: string): React.CSSProperties => ({
+          padding: "16px 20px", background: "#fff", border: "1px solid #e2e8f0",
+          borderLeft: `4px solid ${accent}`, borderRadius: "8px",
+          minWidth: "160px", flex: "1 1 160px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        });
+
+        return (
+          <>
+            {/* ── Today's Operations ── */}
+            <div style={sLabel}>Today's Operations</div>
+            <div style={cardRow}>
+              <div style={cardBase("#1d4ed8")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Revenue Today</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>${revenueToday.toFixed(2)}</div>
+              </div>
+              <div style={cardBase("#16a34a")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Transactions</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{txnCount}</div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>{txnCount === 1 ? "sale" : "sales"} today</div>
+              </div>
+              <div style={cardBase("#4f46e5")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Average Sale</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{txnCount > 0 ? `$${avgSale.toFixed(2)}` : "—"}</div>
+              </div>
+              <div style={cardBase(lowStockCount > 0 ? "#dc2626" : "#16a34a")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Low Stock Items</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: lowStockCount > 0 ? "#dc2626" : "#0f172a" }}>{lowStockCount}</div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>{lowStockCount > 0 ? "need reorder" : "all stocked"}</div>
+              </div>
+            </div>
+
+            {/* ── Business Status ── */}
+            <div style={sLabel}>Business Status</div>
+            <div style={cardRow}>
+              <div style={cardBase(drawerSession ? "#16a34a" : "#64748b")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Cash Drawer</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: drawerSession ? "#15803d" : "#475569" }}>{drawerSession ? "OPEN" : "CLOSED"}</div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                  {drawerSession ? `Since ${new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
+                </div>
+              </div>
+              <div style={cardBase(openPoCount > 0 ? "#ea580c" : "#64748b")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Open Purchase Orders</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{openPoCount}</div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>{openPoCount > 0 ? "pending" : "none pending"}</div>
+              </div>
+              <div style={cardBase("#0d9488")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Active Customers</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{activeCustomerCount}</div>
+              </div>
+              <div style={cardBase("#7c3aed")}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Loyalty Points</div>
+                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{pointsOutstanding.toLocaleString()}</div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>outstanding</div>
+              </div>
+            </div>
+
+            {/* ── Recent Sales ── */}
+            <div style={sLabel}>Recent Sales</div>
+            {recentSales.length === 0 ? (
+              <p style={{ color: "#94a3b8", fontSize: "14px", margin: "0" }}>No completed sales yet.</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Sale #</th>
+                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Total</th>
+                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Cashier</th>
+                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentSales.map((s, i) => {
+                      const cashierName = s.cashier_id
+                        ? (employees.find(e => e.id === s.cashier_id)?.name ?? s.cashier_id.slice(0, 8))
+                        : "—";
+                      return (
+                        <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                          <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>{s.id.slice(0, 8)}…</td>
+                          <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>${Number(s.total).toFixed(2)}</td>
+                          <td style={{ padding: "10px 14px", color: "#64748b" }}>{cashierName}</td>
+                          <td style={{ padding: "10px 14px", color: "#94a3b8" }}>{new Date(s.created_at).toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       </div>{/* end dashboard */}
 
