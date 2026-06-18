@@ -290,7 +290,6 @@ function App() {
   const [countItemsMap, setCountItemsMap] = useState<Record<string, StockCountItemDetail[]>>({});
   const [drawerSession, setDrawerSession] = useState<DrawerSession | null>(null);
   const [drawerPaidOuts, setDrawerPaidOuts] = useState<DrawerPaidOut[]>([]);
-  const [drawerCashSales, setDrawerCashSales] = useState(0);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [openingFloat, setOpeningFloat] = useState("");
   const [paidOutAmount, setPaidOutAmount] = useState("");
@@ -350,6 +349,22 @@ function App() {
     loadEmployees();
     loadStockCounts();
   }, []);
+
+  // Derived from allPayments + sales so it stays current after every sale/void/return.
+  // Filters to completed sales only (excludes voided/returned) scoped to current drawer session.
+  const drawerCashSales = drawerSession
+    ? (() => {
+        const openedAt = new Date(drawerSession.opened_at);
+        const validIds = new Set(
+          sales
+            .filter(s => s.status === 'completed' && new Date(s.created_at) >= openedAt)
+            .map(s => s.id)
+        );
+        return allPayments
+          .filter(p => p.payment_method === 'cash' && validIds.has(p.sale_id))
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+      })()
+    : 0;
 
   async function loadBusiness() {
     const { data } = await supabase
@@ -589,16 +604,8 @@ function App() {
         .eq('drawer_session_id', data.id)
         .order('created_at', { ascending: false });
       setDrawerPaidOuts((pos as DrawerPaidOut[]) ?? []);
-      const { data: payments } = await supabase
-        .from('payments')
-        .select('amount')
-        .eq('payment_method', 'cash')
-        .gte('created_at', data.opened_at);
-      const total = (payments ?? []).reduce((sum: number, p: any) => sum + Number(p.amount), 0);
-      setDrawerCashSales(total);
     } else {
       setDrawerPaidOuts([]);
-      setDrawerCashSales(0);
     }
   }
 
@@ -615,7 +622,6 @@ function App() {
     if (error) { setMessage('Failed to open drawer: ' + error.message); setDrawerLoading(false); return; }
     setDrawerSession(data as DrawerSession);
     setDrawerPaidOuts([]);
-    setDrawerCashSales(0);
     setOpeningFloat('');
     setDrawerLoading(false);
     setMessage('Cash drawer opened');
@@ -658,7 +664,6 @@ function App() {
     if (error) { setMessage('Failed to close drawer: ' + error.message); setDrawerLoading(false); return; }
     setDrawerSession(null);
     setDrawerPaidOuts([]);
-    setDrawerCashSales(0);
     setClosingCount('');
     setDrawerLoading(false);
     const sign = overShort >= 0 ? 'Over' : 'Short';
