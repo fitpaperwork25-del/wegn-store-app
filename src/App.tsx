@@ -1202,12 +1202,33 @@ function App() {
         });
     }
 
+    // Loyalty reversal — reverse earned points once per void, prevent duplicate
+    if (sale.customer_id) {
+      const alreadyReversed = loyaltyTransactions.some(
+        lt => lt.sale_id === saleId && lt.type === 'earn' && lt.points < 0
+      );
+      if (!alreadyReversed) {
+        const totalEarned = loyaltyTransactions
+          .filter(lt => lt.sale_id === saleId && lt.type === 'earn' && lt.points > 0)
+          .reduce((sum, lt) => sum + lt.points, 0);
+        if (totalEarned > 0) {
+          await supabase.from('loyalty_transactions').insert({
+            customer_id: sale.customer_id,
+            sale_id: saleId,
+            points: -totalEarned,
+            type: 'earn',
+          });
+        }
+      }
+    }
+
     setVoidingId("");
     setMessage("Sale voided");
     await loadProducts();
     await loadTransactions();
     await loadSales();
     await loadSaleItems();
+    await loadLoyaltyTransactions();
   }
 
   async function handleCompleteSale() {
