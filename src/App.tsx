@@ -331,6 +331,8 @@ function App() {
   const [editBizEmail, setEditBizEmail] = useState("");
   const [editBizAddress, setEditBizAddress] = useState("");
 
+  const [activeTab, setActiveTab] = useState<string>('pos');
+
   useEffect(() => {
     loadBusiness();
     loadProducts();
@@ -1906,7 +1908,48 @@ function App() {
 
   return (
     <div style={{ padding: "40px" }}>
-      <h1>Wegn-Store</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: "24px", paddingBottom: "16px", borderBottom: "2px solid #e2e8f0", gap: "16px" }}>
+        <h1 style={{ margin: "0", fontSize: "22px", fontWeight: "bold", color: "#0f172a" }}>Wegn-Store</h1>
+        <nav style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+          {([
+            ['dashboard', 'Dashboard'],
+            ['pos', 'POS'],
+            ['inventory', 'Inventory'],
+            ['purchasing', 'Purchasing'],
+            ['customers', 'Customers'],
+            ['employees', 'Employees'],
+            ['reports', 'Reports'],
+            ['settings', 'Settings'],
+          ] as [string, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              style={{
+                padding: "8px 16px",
+                background: activeTab === key ? "#1d4ed8" : "#f1f5f9",
+                color: activeTab === key ? "#fff" : "#475569",
+                border: "1px solid",
+                borderColor: activeTab === key ? "#1d4ed8" : "#e2e8f0",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: activeTab === key ? "bold" : "normal",
+                fontSize: "14px",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {message && (
+        <div style={{ padding: "10px 16px", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "6px", fontSize: "14px", marginBottom: "16px" }}>
+          {message}
+        </div>
+      )}
+
+      {/* ── POS TAB ── */}
+      <div style={{ display: activeTab === 'pos' ? '' : 'none' }}>
 
       <h2>Point of Sale</h2>
 
@@ -2196,6 +2239,11 @@ function App() {
         </div>
       )}
 
+      </div>{/* end pos */}
+
+      {/* ── INVENTORY TAB ── */}
+      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
+
       <h2>Receive Inventory</h2>
 
       <form
@@ -2235,7 +2283,6 @@ function App() {
         </button>
       </form>
 
-      {message && <p>{message}</p>}
 
       <h2>Adjust Inventory</h2>
 
@@ -2469,6 +2516,11 @@ function App() {
         </div>
       )}
 
+      </div>{/* end inventory */}
+
+      {/* ── DASHBOARD TAB ── */}
+      <div style={{ display: activeTab === 'dashboard' ? '' : 'none' }}>
+
       <h2>Dashboard</h2>
 
       <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", marginBottom: "24px" }}>
@@ -2506,6 +2558,11 @@ function App() {
           </div>
         </div>
       </div>
+
+      </div>{/* end dashboard */}
+
+      {/* ── INVENTORY TAB (2) ── */}
+      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
 
       <h2>Products & Stock</h2>
 
@@ -2632,6 +2689,11 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      </div>{/* end inventory */}
+
+      {/* ── PURCHASING TAB ── */}
+      <div style={{ display: activeTab === 'purchasing' ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Suppliers</h2>
 
@@ -2909,6 +2971,11 @@ function App() {
           </div>
         );
       })()}
+
+      </div>{/* end purchasing */}
+
+      {/* ── CUSTOMERS TAB ── */}
+      <div style={{ display: activeTab === 'customers' ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Customer Management</h2>
 
@@ -3192,6 +3259,11 @@ function App() {
           </div>
         );
       })()}
+
+      </div>{/* end customers */}
+
+      {/* ── PURCHASING TAB (2) ── */}
+      <div style={{ display: activeTab === 'purchasing' ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
 
@@ -3484,6 +3556,11 @@ function App() {
         );
       })()}
 
+      </div>{/* end purchasing */}
+
+      {/* ── INVENTORY TAB (3) ── */}
+      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
+
       <h2 style={{ marginTop: "40px" }}>Transaction History</h2>
 
       <div style={{ overflowX: "auto" }}>
@@ -3518,6 +3595,11 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      </div>{/* end inventory */}
+
+      {/* ── POS TAB (2) ── */}
+      <div style={{ display: activeTab === 'pos' ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Sales History</h2>
 
@@ -3659,6 +3741,11 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      </div>{/* end pos */}
+
+      {/* ── REPORTS TAB ── */}
+      <div style={{ display: activeTab === 'reports' ? '' : 'none' }}>
 
       {/* Sales Analytics Dashboard */}
       <h2 style={{ marginTop: "40px" }}>Sales Analytics</h2>
@@ -3844,6 +3931,11 @@ function App() {
           </>
         );
       })()}
+
+      </div>{/* end reports */}
+
+      {/* ── POS TAB (3) ── */}
+      <div style={{ display: activeTab === 'pos' ? '' : 'none' }}>
 
       {/* Cash Drawer Management */}
       <h2>Cash Drawer</h2>
@@ -4123,6 +4215,11 @@ function App() {
         );
       })()}
 
+      </div>{/* end pos */}
+
+      {/* ── REPORTS TAB (2) ── */}
+      <div style={{ display: activeTab === 'reports' ? '' : 'none' }}>
+
       <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
 
       {/* 1. Inventory Valuation Report */}
@@ -4386,6 +4483,11 @@ function App() {
         );
       })()}
 
+      </div>{/* end reports */}
+
+      {/* ── INVENTORY TAB (4) ── */}
+      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
+
       {/* Stock Take / Inventory Count */}
       <h2>Stock Take / Inventory Count</h2>
       {!stockCountActive ? (
@@ -4579,6 +4681,11 @@ function App() {
         </div>
       )}
 
+      </div>{/* end inventory */}
+
+      {/* ── EMPLOYEES TAB ── */}
+      <div style={{ display: activeTab === 'employees' ? '' : 'none' }}>
+
       {/* Employee / Cashier Management */}
       <h2 style={{ marginTop: "40px" }}>Employee Management</h2>
 
@@ -4664,6 +4771,11 @@ function App() {
         </table>
       </div>
 
+      </div>{/* end employees */}
+
+      {/* ── SETTINGS TAB ── */}
+      <div style={{ display: activeTab === 'settings' ? '' : 'none' }}>
+
       <h2 style={{ marginTop: "40px" }}>Business Profile / Store Settings</h2>
 
       {!editingBusiness ? (
@@ -4724,6 +4836,8 @@ function App() {
           </div>
         </form>
       )}
+
+      </div>{/* end settings */}
 
       {receipt && (() => {
         const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
