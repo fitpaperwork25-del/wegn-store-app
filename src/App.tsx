@@ -142,6 +142,24 @@ type StockCountLine = {
   counted_qty: number;
 };
 
+type StockCountRecord = {
+  id: string;
+  business_id: string;
+  status: string;
+  notes: string | null;
+  completed_at: string;
+  created_at: string;
+};
+
+type StockCountItemDetail = {
+  id: string;
+  product_id: string;
+  system_qty: number;
+  counted_qty: number;
+  variance: number;
+  products: { name: string; sku: string | null } | null;
+};
+
 type DrawerSession = {
   id: string;
   business_id: string;
@@ -267,6 +285,9 @@ function App() {
   const [stockCountLines, setStockCountLines] = useState<StockCountLine[]>([]);
   const [stockCountActive, setStockCountActive] = useState(false);
   const [stockCountLoading, setStockCountLoading] = useState(false);
+  const [stockCounts, setStockCounts] = useState<StockCountRecord[]>([]);
+  const [expandedCountId, setExpandedCountId] = useState<string | null>(null);
+  const [countItemsMap, setCountItemsMap] = useState<Record<string, StockCountItemDetail[]>>({});
   const [drawerSession, setDrawerSession] = useState<DrawerSession | null>(null);
   const [drawerPaidOuts, setDrawerPaidOuts] = useState<DrawerPaidOut[]>([]);
   const [drawerCashSales, setDrawerCashSales] = useState(0);
@@ -323,6 +344,7 @@ function App() {
     loadLoyaltyTransactions();
     loadDrawerSession();
     loadEmployees();
+    loadStockCounts();
   }, []);
 
   async function loadBusiness() {
@@ -492,6 +514,25 @@ function App() {
     setMessage(`Stock count completed — ${varianceCount} variance(s) corrected.`);
     await loadProducts();
     await loadTransactions();
+    await loadStockCounts();
+  }
+
+  async function loadStockCounts() {
+    const { data } = await supabase
+      .from("stock_counts")
+      .select("id, business_id, status, notes, completed_at, created_at")
+      .order("completed_at", { ascending: false });
+    if (data) setStockCounts(data);
+  }
+
+  async function loadCountItems(countId: string) {
+    if (countItemsMap[countId]) return;
+    const { data } = await supabase
+      .from("stock_count_items")
+      .select("id, product_id, system_qty, counted_qty, variance, products(name, sku)")
+      .eq("stock_count_id", countId)
+      .order("created_at", { ascending: true });
+    if (data) setCountItemsMap(prev => ({ ...prev, [countId]: data as unknown as StockCountItemDetail[] }));
   }
 
   async function loadDrawerSession() {
@@ -4317,6 +4358,102 @@ function App() {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Past Stock Counts */}
+      <h3 style={{ marginTop: "32px", marginBottom: "12px" }}>Past Stock Counts</h3>
+      {stockCounts.length === 0 ? (
+        <p style={{ color: "#888", fontSize: "14px", marginBottom: "24px" }}>No stock counts recorded yet.</p>
+      ) : (
+        <div style={{ overflowX: "auto", marginBottom: "32px" }}>
+          <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+            <thead>
+              <tr style={{ background: "#f3f4f6" }}>
+                <th style={{ textAlign: "left" }}>Date</th>
+                <th style={{ textAlign: "left" }}>Notes</th>
+                <th style={{ textAlign: "center" }}>Status</th>
+                <th style={{ textAlign: "center" }}>Items Counted</th>
+                <th style={{ textAlign: "center" }}>Variances</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockCounts.map((sc) => {
+                const isExpanded = expandedCountId === sc.id;
+                const items = countItemsMap[sc.id] ?? [];
+                return (
+                  <React.Fragment key={sc.id}>
+                    <tr
+                      style={{ cursor: "pointer", background: isExpanded ? "#eff6ff" : "inherit" }}
+                      onClick={() => {
+                        if (isExpanded) {
+                          setExpandedCountId(null);
+                        } else {
+                          setExpandedCountId(sc.id);
+                          loadCountItems(sc.id);
+                        }
+                      }}
+                    >
+                      <td>{new Date(sc.completed_at).toLocaleString()}</td>
+                      <td style={{ color: "#555" }}>{sc.notes ?? "—"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <span style={{
+                          fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
+                          background: "#dcfce7", color: "#15803d",
+                        }}>{sc.status}</span>
+                      </td>
+                      <td style={{ textAlign: "center", color: "#555" }}>
+                        {countItemsMap[sc.id] ? countItemsMap[sc.id].length : "—"}
+                      </td>
+                      <td style={{ textAlign: "center", color: "#555" }}>
+                        {countItemsMap[sc.id]
+                          ? countItemsMap[sc.id].filter(i => i.variance !== 0).length
+                          : "—"}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={5} style={{ background: "#f9fafb", padding: "16px" }}>
+                          {items.length === 0 ? (
+                            <span style={{ color: "#888", fontSize: "13px" }}>Loading…</span>
+                          ) : (
+                            <table border={1} cellPadding={6} style={{ width: "100%", fontSize: "12px" }}>
+                              <thead>
+                                <tr style={{ background: "#e5e7eb" }}>
+                                  <th style={{ textAlign: "left" }}>Product</th>
+                                  <th style={{ textAlign: "left" }}>SKU</th>
+                                  <th style={{ textAlign: "center" }}>System Qty</th>
+                                  <th style={{ textAlign: "center" }}>Counted Qty</th>
+                                  <th style={{ textAlign: "center" }}>Variance</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map((item) => (
+                                  <tr key={item.id}>
+                                    <td>{item.products?.name ?? "—"}</td>
+                                    <td style={{ color: "#888" }}>{item.products?.sku ?? "—"}</td>
+                                    <td style={{ textAlign: "center" }}>{item.system_qty}</td>
+                                    <td style={{ textAlign: "center" }}>{item.counted_qty}</td>
+                                    <td style={{
+                                      textAlign: "center",
+                                      fontWeight: item.variance !== 0 ? "bold" : "normal",
+                                      color: item.variance > 0 ? "#16a34a" : item.variance < 0 ? "#dc2626" : "#9ca3af",
+                                    }}>
+                                      {item.variance > 0 ? `+${item.variance}` : item.variance}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
