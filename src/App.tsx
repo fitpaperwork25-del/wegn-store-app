@@ -1171,6 +1171,7 @@ function App() {
     if (!sale || sale.status !== "completed") return;
     if (!window.confirm(`Void sale $${Number(sale.total).toFixed(2)}? This will reverse inventory.`)) return;
 
+    setVoidingId(saleId);
     setMessage(null);
 
     const { data: items, error: itemsErr } = await supabase
