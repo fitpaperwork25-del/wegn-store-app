@@ -109,3 +109,143 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* ─────────────────────────────────────────────
+   Responsive app shell
+   ───────────────────────────────────────────── */
+
+.app-root {
+  padding: 40px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+/* Header bar */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e2e8f0;
+  gap: 12px;
+}
+
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Desktop logo — larger and prominent */
+.app-logo {
+  height: 72px;
+  width: auto;
+  max-width: 240px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Hamburger — hidden on desktop */
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+/* Nav — horizontal on desktop */
+.app-nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Dashboard stat cards grid */
+.dash-card-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+
+/* ── Tablet ≤ 768px ── */
+@media (max-width: 768px) {
+  .app-root {
+    padding: 16px;
+  }
+
+  .app-header {
+    gap: 8px;
+    align-items: center;
+  }
+
+  .app-logo {
+    height: 48px;
+    max-width: 160px;
+  }
+
+  /* Show hamburger */
+  .hamburger-btn {
+    display: block;
+  }
+
+  /* Nav collapses into a dropdown below the header row */
+  .app-nav {
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    order: 10;
+    flex-basis: 100%;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 6px;
+    gap: 4px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+
+  .app-nav.app-nav-open {
+    display: flex;
+  }
+
+  /* Full-width nav buttons in mobile menu */
+  .app-nav button {
+    width: 100% !important;
+    text-align: left !important;
+    padding: 10px 14px !important;
+    font-size: 15px !important;
+  }
+
+  /* Cards: 2 per row on tablet */
+  .dash-card-row > * {
+    flex: 1 1 calc(50% - 8px) !important;
+    min-width: 0 !important;
+  }
+}
+
+/* ── Mobile ≤ 480px ── */
+@media (max-width: 480px) {
+  .app-root {
+    padding: 12px;
+  }
+
+  .app-logo {
+    height: 40px;
+    max-width: 130px;
+  }
+
+  /* Cards: 1 per row on mobile */
+  .dash-card-row > * {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+}

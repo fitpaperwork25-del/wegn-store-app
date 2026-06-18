@@ -335,6 +335,7 @@ function App() {
   const [editBizTaxRate, setEditBizTaxRate] = useState("");
 
   const [activeTab, setActiveTab] = useState<string>('pos');
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     loadBusiness();
@@ -1933,17 +1934,25 @@ function App() {
   }
 
   return (
-    <div style={{ padding: "40px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: "24px", paddingBottom: "20px", borderBottom: "2px solid #e2e8f0", gap: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center" }}>
+    <div className="app-root">
+      <div className="app-header">
+        <div className="app-header-brand">
           <img
             src="/logo.png"
             alt="Wegn-Store"
-            style={{ height: "clamp(40px, 5vw, 64px)", width: "auto", maxWidth: "200px", objectFit: "contain", display: "block" }}
+            className="app-logo"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
           />
         </div>
-        <nav style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+        <button
+          className="hamburger-btn"
+          onClick={() => setNavOpen(o => !o)}
+          aria-label="Toggle navigation"
+          aria-expanded={navOpen}
+        >
+          {navOpen ? '✕' : '☰'}
+        </button>
+        <nav className={`app-nav${navOpen ? ' app-nav-open' : ''}`}>
           {([
             ['dashboard', 'Dashboard'],
             ['pos', 'POS'],
@@ -1956,7 +1965,7 @@ function App() {
           ] as [string, string][]).map(([key, label]) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
+              onClick={() => { setActiveTab(key); setNavOpen(false); }}
               style={{
                 padding: "8px 14px",
                 background: activeTab === key ? "#1d4ed8" : "transparent",
@@ -2598,7 +2607,7 @@ function App() {
           .slice(0, 5);
 
         const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
-        const cardRow: React.CSSProperties = { display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "32px" };
+        const cardRow = "dash-card-row";
         const cardBase = (accent: string): React.CSSProperties => ({
           padding: "16px 20px", background: "#fff", border: "1px solid #e2e8f0",
           borderLeft: `4px solid ${accent}`, borderRadius: "8px",
@@ -2609,7 +2618,7 @@ function App() {
           <>
             {/* ── Today's Operations ── */}
             <div style={sLabel}>Today's Operations</div>
-            <div style={cardRow}>
+            <div className={cardRow}>
               <div style={cardBase("#1d4ed8")}>
                 <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Revenue Today</div>
                 <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>${revenueToday.toFixed(2)}</div>
@@ -2632,7 +2641,7 @@ function App() {
 
             {/* ── Business Status ── */}
             <div style={sLabel}>Business Status</div>
-            <div style={cardRow}>
+            <div className={cardRow}>
               <div style={cardBase(drawerSession ? "#16a34a" : "#64748b")}>
                 <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Cash Drawer</div>
                 <div style={{ fontSize: "26px", fontWeight: "bold", color: drawerSession ? "#15803d" : "#475569" }}>{drawerSession ? "OPEN" : "CLOSED"}</div>
