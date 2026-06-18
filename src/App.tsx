@@ -1285,7 +1285,7 @@ function App() {
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .insert({ subtotal, tax: taxAmount, discount_amount: discountAmount, total: finalTotal, status: "completed", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
+      .insert({ subtotal, tax: taxAmount, discount_amount: discountAmount, total: finalTotal, status: "open", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
       .select("id")
       .single();
 
@@ -1356,6 +1356,7 @@ function App() {
       }
     }
 
+    await supabase.from("sales").update({ status: "completed" }).eq("id", sale.id);
     setIsCompletingSale(false);
     setCart([]);
     setAmountTendered("");
@@ -3265,7 +3266,7 @@ function App() {
                     const isExpanded = expandedCustomerId === row.id;
                     const isEditing = editingCustomerId === row.id;
                     const inactive = row.status !== "active";
-                    const custSales = sales.filter(s => s.customer_id === row.id);
+                    const custSales = sales.filter(s => s.customer_id === row.id && s.status !== 'open');
                     return (
                       <React.Fragment key={row.id}>
                         <tr
@@ -3772,6 +3773,7 @@ function App() {
               <tr><td colSpan={7}>No sales yet</td></tr>
             ) : (
               sales.filter(s => {
+                if (s.status === 'open') return false;
                 if (salesCashierFilter === "all") return true;
                 if (salesCashierFilter === "none") return !s.cashier_id;
                 return s.cashier_id === salesCashierFilter;
