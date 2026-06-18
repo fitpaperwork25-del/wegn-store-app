@@ -289,6 +289,12 @@ function App() {
   const [newEmpName, setNewEmpName] = useState("");
   const [newEmpRole, setNewEmpRole] = useState<"cashier" | "manager">("cashier");
   const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editProdName, setEditProdName] = useState("");
+  const [editProdSku, setEditProdSku] = useState("");
+  const [editProdBarcode, setEditProdBarcode] = useState("");
+  const [editProdPrice, setEditProdPrice] = useState("");
+  const [editProdReorder, setEditProdReorder] = useState("");
 
   useEffect(() => {
     loadBusinessId();
@@ -914,6 +920,7 @@ function App() {
 
     const product = products.find((p) => p.barcode === code);
     if (!product) { setMessage(`Barcode not recognised: ${code}`); return; }
+    if (product.status !== "active") { setMessage("Product is inactive and cannot be sold."); return; }
     if (product.quantity_on_hand <= 0) { setMessage(`${product.product_name} is out of stock`); return; }
 
     const existing = cart.find((c) => c.product_id === product.product_id);
@@ -1569,6 +1576,36 @@ function App() {
     await loadTransactions();
   }
 
+  async function handleEditProduct(e: React.FormEvent, productId: string) {
+    e.preventDefault();
+    if (!editProdName.trim() || !editProdPrice) return;
+    const { error } = await supabase
+      .from("products")
+      .update({
+        name: editProdName.trim(),
+        sku: editProdSku.trim() || null,
+        barcode: editProdBarcode.trim() || null,
+        selling_price: Number(editProdPrice),
+        reorder_level: editProdReorder ? Number(editProdReorder) : 10,
+      })
+      .eq("id", productId);
+    if (error) { console.error(error); setMessage("Failed to update product: " + error.message); return; }
+    setEditingProductId(null);
+    setMessage("Product updated");
+    await loadProducts();
+  }
+
+  async function handleToggleProductStatus(product: ProductStock) {
+    const newStatus = product.status === "active" ? "inactive" : "active";
+    const { error } = await supabase
+      .from("products")
+      .update({ status: newStatus })
+      .eq("id", product.product_id);
+    if (error) { console.error(error); setMessage("Status update failed"); return; }
+    setMessage(newStatus === "active" ? "Product activated" : "Product deactivated");
+    await loadProducts();
+  }
+
   async function handleReceive(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
@@ -1713,7 +1750,7 @@ function App() {
           style={{ flex: "2 1 200px", padding: "8px" }}
         >
           <option value="">Select product...</option>
-          {products.filter((p) => p.quantity_on_hand > 0).map((p) => (
+          {products.filter((p) => p.quantity_on_hand > 0 && p.status === "active").map((p) => (
             <option key={p.product_id} value={p.product_id}>
               {p.product_name} — ${p.selling_price.toFixed(2)} (stock: {p.quantity_on_hand})
             </option>
@@ -2306,27 +2343,110 @@ function App() {
               <th>Status</th>
               <th>Avg Cost</th>
               <th>Inventory Value</th>
+              <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {products.map((product, index) => {
+            {products.map((product) => {
               const isLowStock = product.quantity_on_hand < product.reorder_level;
+              const inactive = product.status !== "active";
+              const isEditing = editingProductId === product.product_id;
               return (
-                <tr key={index} style={{ backgroundColor: isLowStock ? "#ffe5e5" : "inherit" }}>
-                  <td>{product.product_name}</td>
-                  <td>{product.sku}</td>
-                  <td>{product.barcode}</td>
-                  <td>${product.selling_price}</td>
-                  <td>{product.quantity_on_hand}</td>
-                  <td>{product.reorder_level}</td>
-                  <td style={{ color: isLowStock ? "red" : "inherit", fontWeight: isLowStock ? "bold" : "normal" }}>
-                    {isLowStock ? "LOW STOCK" : "OK"}
-                  </td>
-                  <td>{product.status}</td>
-                  <td>${product.average_cost.toFixed(2)}</td>
-                  <td>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</td>
-                </tr>
+                <React.Fragment key={product.product_id}>
+                  <tr style={{
+                    backgroundColor: inactive ? "#f5f5f5" : isLowStock ? "#ffe5e5" : "inherit",
+                    color: inactive ? "#999" : "inherit",
+                  }}>
+                    <td>{product.product_name}</td>
+                    <td>{product.sku ?? "—"}</td>
+                    <td>{product.barcode ?? "—"}</td>
+                    <td>${product.selling_price.toFixed(2)}</td>
+                    <td>{product.quantity_on_hand}</td>
+                    <td>{product.reorder_level}</td>
+                    <td style={{ color: !inactive && isLowStock ? "red" : "inherit", fontWeight: !inactive && isLowStock ? "bold" : "normal" }}>
+                      {inactive ? "—" : isLowStock ? "LOW STOCK" : "OK"}
+                    </td>
+                    <td>
+                      <span style={{
+                        fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
+                        background: inactive ? "#e5e7eb" : "#dcfce7",
+                        color: inactive ? "#6b7280" : "#15803d",
+                      }}>{product.status}</span>
+                    </td>
+                    <td>${product.average_cost.toFixed(2)}</td>
+                    <td>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <button
+                        onClick={() => {
+                          if (isEditing) { setEditingProductId(null); return; }
+                          setEditingProductId(product.product_id);
+                          setEditProdName(product.product_name);
+                          setEditProdSku(product.sku ?? "");
+                          setEditProdBarcode(product.barcode ?? "");
+                          setEditProdPrice(product.selling_price.toString());
+                          setEditProdReorder(product.reorder_level.toString());
+                        }}
+                        style={{ marginRight: "6px", padding: "4px 10px", cursor: "pointer" }}
+                      >{isEditing ? "Cancel" : "Edit"}</button>
+                      <button
+                        onClick={() => handleToggleProductStatus(product)}
+                        style={{ padding: "4px 10px", cursor: "pointer" }}
+                      >{inactive ? "Activate" : "Deactivate"}</button>
+                    </td>
+                  </tr>
+                  {isEditing && (
+                    <tr>
+                      <td colSpan={11} style={{ background: "#f9fafb", padding: "16px" }}>
+                        <form onSubmit={(e) => handleEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                          <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Product — {product.product_name}</strong>
+                          <input
+                            type="text"
+                            placeholder="Product name *"
+                            value={editProdName}
+                            onChange={(e) => setEditProdName(e.target.value)}
+                            required
+                            style={{ flex: "2 1 160px", padding: "7px" }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="SKU"
+                            value={editProdSku}
+                            onChange={(e) => setEditProdSku(e.target.value)}
+                            style={{ flex: "1 1 100px", padding: "7px" }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Barcode"
+                            value={editProdBarcode}
+                            onChange={(e) => setEditProdBarcode(e.target.value)}
+                            style={{ flex: "1 1 110px", padding: "7px" }}
+                          />
+                          <input
+                            type="number"
+                            placeholder="Selling price *"
+                            value={editProdPrice}
+                            onChange={(e) => setEditProdPrice(e.target.value)}
+                            required
+                            min="0"
+                            step="0.01"
+                            style={{ flex: "1 1 110px", padding: "7px" }}
+                          />
+                          <input
+                            type="number"
+                            placeholder="Reorder level"
+                            value={editProdReorder}
+                            onChange={(e) => setEditProdReorder(e.target.value)}
+                            min="0"
+                            style={{ flex: "1 1 110px", padding: "7px" }}
+                          />
+                          <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
+                          <button type="button" onClick={() => setEditingProductId(null)} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
+                        </form>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -2494,7 +2614,7 @@ function App() {
       <h2 style={{ marginTop: "40px" }}>Reorder Center</h2>
 
       {(() => {
-        const lowStock = products.filter((p) => p.quantity_on_hand < p.reorder_level);
+        const lowStock = products.filter((p) => p.quantity_on_hand < p.reorder_level && p.status === "active");
         if (lowStock.length === 0) {
           return <p style={{ color: "#16a34a" }}>All products are sufficiently stocked.</p>;
         }
