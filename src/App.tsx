@@ -260,6 +260,7 @@ function App() {
   const [posDiscountValue, setPosDiscountValue] = useState("");
   const [sales, setSales] = useState<Sale[]>([]);
   const [voidingId, setVoidingId] = useState("");
+  const [isCompletingSale, setIsCompletingSale] = useState(false);
   const [reorderSuppliers, setReorderSuppliers] = useState<Record<string, string>>({});
   const [reorderQtys, setReorderQtys] = useState<Record<string, string>>({});
   const [saleItems, setSaleItems] = useState<SaleItemRecord[]>([]);
@@ -1279,13 +1280,16 @@ function App() {
     const redeemDollar = redeemPts / 100;
     const finalTotal = Math.max(0, discountedSubtotal + taxAmount - redeemDollar);
 
+    if (isCompletingSale) return;
+    setIsCompletingSale(true);
+
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
       .insert({ subtotal, tax: taxAmount, discount_amount: discountAmount, total: finalTotal, status: "completed", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
       .select("id")
       .single();
 
-    if (saleErr || !sale) { console.error(saleErr); setMessage({ text: "Sale failed", type: "error" }); return; }
+    if (saleErr || !sale) { console.error(saleErr); setIsCompletingSale(false); setMessage({ text: "Sale failed", type: "error" }); return; }
 
     const { error: itemsErr } = await supabase
       .from("sale_items")
@@ -1297,7 +1301,7 @@ function App() {
         line_total: c.line_total,
       })));
 
-    if (itemsErr) { console.error(itemsErr); await supabase.from("sales").delete().eq("id", sale.id); setMessage({ text: "Sale items failed. Sale was not saved.", type: "error" }); return; }
+    if (itemsErr) { console.error(itemsErr); await supabase.from("sales").delete().eq("id", sale.id); setIsCompletingSale(false); setMessage({ text: "Sale items failed. Sale was not saved.", type: "error" }); return; }
 
     const { error: payErr } = await supabase
       .from("payments")
@@ -1352,6 +1356,7 @@ function App() {
       }
     }
 
+    setIsCompletingSale(false);
     setCart([]);
     setAmountTendered("");
     setPosDiscountValue("");
@@ -2269,6 +2274,7 @@ function App() {
             })()}
             <button
               onClick={handleCompleteSale}
+              disabled={cart.length === 0 || isCompletingSale}
               style={{
                 padding: "10px 28px",
                 background: "#1d4ed8",
