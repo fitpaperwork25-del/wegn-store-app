@@ -1267,17 +1267,27 @@ function App() {
 
     const subtotal = cart.reduce((sum, c) => sum + c.line_total, 0);
     const discountVal = Math.max(0, Number(posDiscountValue) || 0);
-    const discountAmount = posDiscountType === "percent"
-      ? Math.min(subtotal, subtotal * (discountVal / 100))
-      : Math.min(subtotal, discountVal);
+    const rawDiscountAmount = posDiscountType === "percent"
+      ? subtotal * (discountVal / 100)
+      : discountVal;
+    if (rawDiscountAmount > subtotal) {
+      setMessage({ text: "Discount exceeds sale amount.", type: "error" });
+      return;
+    }
+    const discountAmount = Math.min(rawDiscountAmount, subtotal);
     const discountedSubtotal = Math.max(0, subtotal - discountAmount);
     const taxAmount = Math.round(discountedSubtotal * (businessTaxRate / 100) * 100) / 100;
     const customerLoyaltyBal = posCustomerId
       ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
       : 0;
-    const redeemPts = posCustomerId
-      ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), customerLoyaltyBal)
+    const rawRedeemPts = posCustomerId
+      ? Math.max(0, Math.floor(Number(posRedeemPoints) || 0))
       : 0;
+    if (rawRedeemPts > customerLoyaltyBal) {
+      setMessage({ text: `Cannot redeem ${rawRedeemPts} points — customer only has ${customerLoyaltyBal}`, type: "error" });
+      return;
+    }
+    const redeemPts = rawRedeemPts;
     const redeemDollar = redeemPts / 100;
     const finalTotal = Math.max(0, discountedSubtotal + taxAmount - redeemDollar);
 
@@ -1336,15 +1346,17 @@ function App() {
     }
 
     if (posCustomerId) {
-      const earnedPoints = Math.floor(Math.max(0, discountedSubtotal - redeemDollar));
-      if (earnedPoints > 0) {
-        const { error: earnErr } = await supabase.from('loyalty_transactions').insert({
-          customer_id: posCustomerId,
-          sale_id: sale.id,
-          points: earnedPoints,
-          type: 'earn',
-        });
-        if (earnErr) console.error('loyalty earn insert error:', earnErr);
+      if (redeemPts === 0) {
+        const earnedPoints = Math.floor(Math.max(0, discountedSubtotal));
+        if (earnedPoints > 0) {
+          const { error: earnErr } = await supabase.from('loyalty_transactions').insert({
+            customer_id: posCustomerId,
+            sale_id: sale.id,
+            points: earnedPoints,
+            type: 'earn',
+          });
+          if (earnErr) console.error('loyalty earn insert error:', earnErr);
+        }
       }
       if (redeemPts > 0) {
         const { error: redeemErr } = await supabase.from('loyalty_transactions').insert({
@@ -2126,10 +2138,11 @@ function App() {
                 {(() => {
                   const subtotal = cart.reduce((s, c) => s + c.line_total, 0);
                   const discountVal = Math.max(0, Number(posDiscountValue) || 0);
-                  const discountAmt = posDiscountType === "percent"
-                    ? Math.min(subtotal, subtotal * (discountVal / 100))
-                    : Math.min(subtotal, discountVal);
-                  const tfDiscountedSubtotal = Math.max(0, subtotal - discountAmt);
+                  const rawDiscountAmt = posDiscountType === "percent"
+                    ? subtotal * (discountVal / 100)
+                    : discountVal;
+                  const discountAmt = rawDiscountAmt > subtotal ? 0 : rawDiscountAmt;
+                  const tfDiscountedSubtotal = subtotal - discountAmt;
                   const tfTaxAmt = Math.round(tfDiscountedSubtotal * (businessTaxRate / 100) * 100) / 100;
                   const tfCustBal = posCustomerId
                     ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
@@ -2180,37 +2193,50 @@ function App() {
           </div>
 
           {/* Discount controls */}
-          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
-            <span style={{ fontWeight: "bold", fontSize: "13px" }}>Discount:</span>
-            <select
-              value={posDiscountType}
-              onChange={(e) => { setPosDiscountType(e.target.value as "percent" | "fixed"); setPosDiscountValue(""); }}
-              style={{ padding: "6px 8px", fontSize: "13px" }}
-            >
-              <option value="percent">% Off</option>
-              <option value="fixed">$ Off</option>
-            </select>
-            <input
-              type="number"
-              min="0"
-              step={posDiscountType === "percent" ? "1" : "0.01"}
-              max={posDiscountType === "percent" ? "100" : undefined}
-              placeholder={posDiscountType === "percent" ? "e.g. 10" : "e.g. 2.00"}
-              value={posDiscountValue}
-              onChange={(e) => setPosDiscountValue(e.target.value)}
-              style={{ width: "110px", padding: "6px 8px", fontSize: "13px" }}
-            />
-            {posDiscountValue && (
-              <button onClick={() => setPosDiscountValue("")} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}>
-                Clear
-              </button>
-            )}
-          </div>
+          {(() => {
+            const dSubtotal = cart.reduce((s, c) => s + c.line_total, 0);
+            const dVal = Math.max(0, Number(posDiscountValue) || 0);
+            const dAmt = posDiscountType === "percent" ? dSubtotal * (dVal / 100) : dVal;
+            const discountExceeds = posDiscountValue !== "" && dAmt > dSubtotal;
+            return (
+              <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
+                <span style={{ fontWeight: "bold", fontSize: "13px" }}>Discount:</span>
+                <select
+                  value={posDiscountType}
+                  onChange={(e) => { setPosDiscountType(e.target.value as "percent" | "fixed"); setPosDiscountValue(""); }}
+                  style={{ padding: "6px 8px", fontSize: "13px" }}
+                >
+                  <option value="percent">% Off</option>
+                  <option value="fixed">$ Off</option>
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  step={posDiscountType === "percent" ? "1" : "0.01"}
+                  max={posDiscountType === "percent" ? "100" : undefined}
+                  placeholder={posDiscountType === "percent" ? "e.g. 10" : "e.g. 2.00"}
+                  value={posDiscountValue}
+                  onChange={(e) => setPosDiscountValue(e.target.value)}
+                  style={{ width: "110px", padding: "6px 8px", fontSize: "13px", borderColor: discountExceeds ? "#dc2626" : undefined }}
+                />
+                {discountExceeds && (
+                  <span style={{ fontSize: "13px", color: "#dc2626", fontWeight: "bold" }}>Discount exceeds sale amount.</span>
+                )}
+                {posDiscountValue && (
+                  <button onClick={() => setPosDiscountValue("")} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Redeem loyalty points */}
           {posCustomerId && (() => {
             const custBal = loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0);
-            const redeemVal = Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), custBal);
+            const rawRedeem = Math.max(0, Math.floor(Number(posRedeemPoints) || 0));
+            const redeemExceeds = posRedeemPoints !== "" && rawRedeem > custBal;
+            const redeemVal = Math.min(rawRedeem, custBal);
             return (
               <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
                 <span style={{ fontWeight: "bold", fontSize: "13px", color: "#7c3aed" }}>Redeem Points:</span>
@@ -2223,9 +2249,12 @@ function App() {
                   placeholder="e.g. 100"
                   value={posRedeemPoints}
                   onChange={(e) => setPosRedeemPoints(e.target.value)}
-                  style={{ width: "100px", padding: "6px 8px", fontSize: "13px" }}
+                  style={{ width: "100px", padding: "6px 8px", fontSize: "13px", borderColor: redeemExceeds ? "#dc2626" : undefined }}
                 />
-                {redeemVal > 0 && (
+                {redeemExceeds && (
+                  <span style={{ fontSize: "13px", color: "#dc2626", fontWeight: "bold" }}>Exceeds available points ({custBal})</span>
+                )}
+                {!redeemExceeds && redeemVal > 0 && (
                   <span style={{ fontSize: "13px", color: "#7c3aed" }}>= −${(redeemVal / 100).toFixed(2)}</span>
                 )}
                 {posRedeemPoints && (
@@ -2258,10 +2287,11 @@ function App() {
             {paymentMethod === "cash" && (() => {
               const subtotal = cart.reduce((s, c) => s + c.line_total, 0);
               const discountVal = Math.max(0, Number(posDiscountValue) || 0);
-              const discountAmt = posDiscountType === "percent"
-                ? Math.min(subtotal, subtotal * (discountVal / 100))
-                : Math.min(subtotal, discountVal);
-              const cashDiscountedSubtotal = Math.max(0, subtotal - discountAmt);
+              const rawDiscountAmt = posDiscountType === "percent"
+                ? subtotal * (discountVal / 100)
+                : discountVal;
+              const discountAmt = rawDiscountAmt > subtotal ? 0 : rawDiscountAmt;
+              const cashDiscountedSubtotal = subtotal - discountAmt;
               const cashTaxAmt = Math.round(cashDiscountedSubtotal * (businessTaxRate / 100) * 100) / 100;
               const cashCustBal = posCustomerId
                 ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
@@ -2289,22 +2319,34 @@ function App() {
                 </>
               );
             })()}
-            <button
-              onClick={handleCompleteSale}
-              disabled={cart.length === 0 || isCompletingSale}
-              style={{
-                padding: "10px 28px",
-                background: "#1d4ed8",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontWeight: "bold",
-                fontSize: "15px",
-              }}
-            >
-              Complete Sale
-            </button>
+            {(() => {
+              const btnSubtotal = cart.reduce((s, c) => s + c.line_total, 0);
+              const btnDVal = Math.max(0, Number(posDiscountValue) || 0);
+              const btnDAmt = posDiscountType === "percent" ? btnSubtotal * (btnDVal / 100) : btnDVal;
+              const discountInvalid = posDiscountValue !== "" && btnDAmt > btnSubtotal;
+              const redeemInvalid = posCustomerId && posRedeemPoints !== "" &&
+                Math.max(0, Math.floor(Number(posRedeemPoints) || 0)) >
+                loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0);
+              const blocked = cart.length === 0 || isCompletingSale || !!redeemInvalid || discountInvalid;
+              return (
+                <button
+                  onClick={handleCompleteSale}
+                  disabled={blocked}
+                  style={{
+                    padding: "10px 28px",
+                    background: blocked ? "#94a3b8" : "#1d4ed8",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: blocked ? "not-allowed" : "pointer",
+                    fontWeight: "bold",
+                    fontSize: "15px",
+                  }}
+                >
+                  Complete Sale
+                </button>
+              );
+            })()}
           </div>
         </div>
       )}
