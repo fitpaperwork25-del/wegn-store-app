@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "./supabase";
 
 type Transaction = {
@@ -271,6 +271,59 @@ function App() {
   const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [printPo, setPrintPo] = useState<{ po: PurchaseOrder; items: POItem[]; supplierName: string } | null>(null);
+  const [signPoId, setSignPoId] = useState<string | null>(null);
+  const [signRole, setSignRole] = useState<"manager" | "supplier">("manager");
+  const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sigDrawingRef = useRef(false);
+
+  function getPoSignatures(poId: string): { manager?: { dataUrl: string; signedAt: string }; supplier?: { dataUrl: string; signedAt: string } } {
+    try { return JSON.parse(localStorage.getItem(`po-sig-${poId}`) || "{}"); } catch { return {}; }
+  }
+  function savePoSignature(poId: string, role: "manager" | "supplier", dataUrl: string) {
+    const sigs = getPoSignatures(poId);
+    sigs[role] = { dataUrl, signedAt: new Date().toISOString() };
+    localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
+  }
+  function clearPoSignature(poId: string, role: "manager" | "supplier") {
+    const sigs = getPoSignatures(poId);
+    delete sigs[role];
+    localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
+  }
+
+  const initSigCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
+    sigCanvasRef.current = canvas;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    const getPos = (e: MouseEvent | TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      if ("touches" in e) {
+        return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
+      }
+      return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    };
+
+    const down = (e: MouseEvent | TouchEvent) => { e.preventDefault(); sigDrawingRef.current = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const move = (e: MouseEvent | TouchEvent) => { if (!sigDrawingRef.current) return; e.preventDefault(); const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+    const up = () => { sigDrawingRef.current = false; };
+
+    canvas.addEventListener("mousedown", down);
+    canvas.addEventListener("mousemove", move);
+    canvas.addEventListener("mouseup", up);
+    canvas.addEventListener("mouseleave", up);
+    canvas.addEventListener("touchstart", down, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", up);
+  }, []);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [posCustomerPhone, setPosCustomerPhone] = useState("");
   const [posCustomerId, setPosCustomerId] = useState<string | null>(null);
@@ -3757,6 +3810,14 @@ function App() {
                               Print PO
                             </button>
                           )}
+                          {(isDraft || isOrdered) && (
+                            <button
+                              onClick={() => { setSignPoId(po.id); setSignRole("manager"); }}
+                              style={{ padding: "4px 10px", marginRight: "4px", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "4px" }}
+                            >
+                              Sign PO
+                            </button>
+                          )}
                           {isDraft && (
                             <button
                               onClick={() => handleMarkOrdered(po)}
@@ -5263,6 +5324,99 @@ function App() {
 
       </div>{/* end settings */}
 
+      {/* Signature Modal */}
+      {signPoId && (() => {
+        const po = purchaseOrders.find(p => p.id === signPoId);
+        if (!po) return null;
+        const sigs = getPoSignatures(signPoId);
+        const hasMgr = !!sigs.manager;
+        const hasSup = !!sigs.supplier;
+        return (
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+            onClick={(e) => { if (e.target === e.currentTarget) setSignPoId(null); }}
+          >
+            <div style={{ background: "#fff", padding: "28px 32px", width: "480px", borderRadius: "8px", boxShadow: "0 4px 24px rgba(0,0,0,0.2)", fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+              <div style={{ fontWeight: 700, fontSize: "18px", marginBottom: "4px", color: "#0f172a" }}>Sign Purchase Order</div>
+              <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "16px" }}>{po.po_number}</div>
+
+              {/* Role tabs */}
+              <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+                <button
+                  onClick={() => setSignRole("manager")}
+                  style={{ flex: 1, padding: "8px", borderRadius: "6px", border: signRole === "manager" ? "2px solid #1d4ed8" : "1px solid #d1d5db", background: signRole === "manager" ? "#eff6ff" : "#fff", fontWeight: signRole === "manager" ? 600 : 400, cursor: "pointer", fontSize: "14px", color: signRole === "manager" ? "#1d4ed8" : "#475569" }}
+                >
+                  Manager {hasMgr ? " (signed)" : ""}
+                </button>
+                <button
+                  onClick={() => setSignRole("supplier")}
+                  style={{ flex: 1, padding: "8px", borderRadius: "6px", border: signRole === "supplier" ? "2px solid #1d4ed8" : "1px solid #d1d5db", background: signRole === "supplier" ? "#eff6ff" : "#fff", fontWeight: signRole === "supplier" ? 600 : 400, cursor: "pointer", fontSize: "14px", color: signRole === "supplier" ? "#1d4ed8" : "#475569" }}
+                >
+                  Supplier {hasSup ? " (signed)" : ""}
+                </button>
+              </div>
+
+              {/* Existing signature preview */}
+              {sigs[signRole] && (
+                <div style={{ marginBottom: "12px", padding: "10px", border: "1px solid #bbf7d0", borderRadius: "6px", background: "#f0fdf4", textAlign: "center" }}>
+                  <img src={sigs[signRole]!.dataUrl} alt="Saved signature" style={{ height: "56px", maxWidth: "100%", objectFit: "contain" }} />
+                  <div style={{ fontSize: "12px", color: "#15803d", marginTop: "4px" }}>Signed: {new Date(sigs[signRole]!.signedAt).toLocaleString()}</div>
+                  <button
+                    onClick={() => { clearPoSignature(signPoId, signRole); setSignPoId(null); setTimeout(() => setSignPoId(po.id), 0); }}
+                    style={{ marginTop: "8px", padding: "4px 14px", fontSize: "13px", cursor: "pointer", color: "#b91c1c", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px" }}
+                  >Clear Signature</button>
+                </div>
+              )}
+
+              {/* Canvas */}
+              {!sigs[signRole] && (
+                <>
+                  <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "6px" }}>Draw your signature below:</div>
+                  <canvas
+                    ref={initSigCanvas}
+                    width={400}
+                    height={150}
+                    style={{ width: "100%", height: "150px", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "crosshair", touchAction: "none" }}
+                  />
+                  <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                    <button
+                      onClick={() => {
+                        const c = sigCanvasRef.current;
+                        if (!c) return;
+                        const ctx = c.getContext("2d");
+                        if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); }
+                      }}
+                      style={{ padding: "8px 16px", cursor: "pointer", borderRadius: "5px", border: "1px solid #d1d5db" }}
+                    >Clear</button>
+                    <button
+                      onClick={() => {
+                        const c = sigCanvasRef.current;
+                        if (!c) return;
+                        const dataUrl = c.toDataURL("image/png");
+                        savePoSignature(signPoId, signRole, dataUrl);
+                        setMessage({ text: `${signRole === "manager" ? "Manager" : "Supplier"} signature saved for ${po.po_number}`, type: "success" });
+                        setSignPoId(null);
+                      }}
+                      style={{ padding: "8px 20px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#1d4ed8", color: "#fff", fontWeight: 600 }}
+                    >Save Signature</button>
+                    <button
+                      onClick={() => setSignPoId(null)}
+                      style={{ padding: "8px 16px", cursor: "pointer", borderRadius: "5px", border: "1px solid #d1d5db", marginLeft: "auto" }}
+                    >Cancel</button>
+                  </div>
+                </>
+              )}
+
+              {sigs[signRole] && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
+                  <button onClick={() => setSignPoId(null)} style={{ padding: "8px 20px", cursor: "pointer", borderRadius: "5px", border: "1px solid #d1d5db" }}>Close</button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {printPo && (() => {
         const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
         const grandTotal = printPo.items.reduce((sum, i) => sum + Number(i.line_total), 0);
@@ -5306,71 +5460,113 @@ function App() {
               <div
                 id="po-print-content"
                 style={{
-                  background: "#fff", padding: "32px", width: "640px", maxHeight: "90vh", overflowY: "auto",
-                  fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: "15px", lineHeight: "1.5",
-                  boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
+                  background: "#fff", padding: "40px 44px", width: "720px", maxHeight: "90vh", overflowY: "auto",
+                  fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: "16px", lineHeight: "1.5",
+                  boxShadow: "0 4px 24px rgba(0,0,0,0.2)", color: "#1e293b",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "8px", paddingBottom: "12px", borderBottom: "3px solid #1d4ed8" }}>
-                  <img src="/logo.png" alt="" style={{ height: "52px", width: "auto", maxWidth: "52px", objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                  <div>
-                    {businessName && <div style={{ fontWeight: "bold", fontSize: "20px", color: "#0f172a" }}>{businessName}</div>}
-                    {businessAddress && <div style={{ fontSize: "13px", color: "#64748b" }}>{businessAddress}</div>}
-                    {businessPhone && <div style={{ fontSize: "13px", color: "#64748b" }}>{businessPhone}</div>}
+                {/* Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: "14px", borderBottom: "2px solid #0f172a" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <img src="/logo.png" alt="" style={{ height: "52px", width: "auto", maxWidth: "52px", objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                    <div>
+                      {businessName && <div style={{ fontWeight: 700, fontSize: "22px", color: "#0f172a" }}>{businessName}</div>}
+                      {businessAddress && <div style={{ fontSize: "14px", color: "#475569" }}>{businessAddress}</div>}
+                      {(businessPhone || businessEmail) && <div style={{ fontSize: "14px", color: "#475569" }}>{[businessPhone, businessEmail].filter(Boolean).join(" | ")}</div>}
+                    </div>
                   </div>
-                  <div style={{ marginLeft: "auto", textAlign: "right" }}>
-                    <div style={{ fontWeight: "bold", fontSize: "18px", color: "#1d4ed8", letterSpacing: "0.05em" }}>PURCHASE ORDER</div>
-                    <div style={{ fontSize: "13px", color: "#64748b" }}>{new Date(printPo.po.created_at).toLocaleDateString()}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "24px", fontWeight: 700, color: "#0f172a", letterSpacing: "0.04em" }}>PURCHASE ORDER</div>
+                    <div style={{ fontSize: "16px", fontWeight: 700, color: "#334155", marginTop: "2px" }}>{printPo.po.po_number}</div>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", margin: "12px 0 16px", fontSize: "14px" }}>
-                  <div style={{ flex: 1, minWidth: "200px" }}>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, marginBottom: "2px" }}>PO Number</div>
-                    <div style={{ fontWeight: 600 }}>{printPo.po.po_number}</div>
+                {/* Info boxes */}
+                <div style={{ display: "flex", gap: "14px", margin: "16px 0" }}>
+                  <div style={{ flex: 1, border: "1px solid #cbd5e1", borderRadius: "6px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "4px" }}>Supplier</div>
+                    <div style={{ fontWeight: 600, fontSize: "17px" }}>{printPo.supplierName}</div>
                   </div>
-                  <div style={{ flex: 1, minWidth: "200px" }}>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, marginBottom: "2px" }}>Supplier</div>
-                    <div style={{ fontWeight: 600 }}>{printPo.supplierName}</div>
+                  <div style={{ border: "1px solid #cbd5e1", borderRadius: "6px", padding: "12px 16px", minWidth: "130px" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "4px" }}>Date</div>
+                    <div style={{ fontWeight: 600, fontSize: "15px" }}>{new Date(printPo.po.created_at).toLocaleDateString()}</div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, marginBottom: "2px" }}>Status</div>
-                    <div style={{ fontWeight: 600 }}>{printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status.charAt(0).toUpperCase() + printPo.po.status.slice(1)}</div>
+                  <div style={{ border: "1px solid #cbd5e1", borderRadius: "6px", padding: "12px 16px", minWidth: "130px" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "4px" }}>Status</div>
+                    <div style={{ fontWeight: 600, fontSize: "15px" }}>{printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status.charAt(0).toUpperCase() + printPo.po.status.slice(1)}</div>
                   </div>
                 </div>
 
                 {printPo.po.notes && (
-                  <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}>
-                    <strong style={{ color: "#475569" }}>Notes:</strong> {printPo.po.notes}
+                  <div style={{ fontSize: "14px", color: "#475569", marginBottom: "14px", padding: "10px 14px", background: "#f8fafc", borderRadius: "4px", borderLeft: "3px solid #94a3b8" }}>
+                    <strong style={{ color: "#334155" }}>Notes:</strong> {printPo.po.notes}
                   </div>
                 )}
 
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                {/* Items table */}
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "15px", border: "1px solid #cbd5e1" }}>
                   <thead>
-                    <tr style={{ background: "#f1f5f9", borderBottom: "2px solid #cbd5e1" }}>
-                      <th style={{ textAlign: "left", padding: "10px 8px", color: "#475569", fontWeight: 600 }}>Product</th>
-                      <th style={{ textAlign: "center", padding: "10px 8px", color: "#475569", fontWeight: 600, width: "80px" }}>Qty</th>
-                      <th style={{ textAlign: "right", padding: "10px 8px", color: "#475569", fontWeight: 600, width: "110px" }}>Unit Cost</th>
-                      <th style={{ textAlign: "right", padding: "10px 8px", color: "#475569", fontWeight: 600, width: "110px" }}>Line Total</th>
+                    <tr style={{ background: "#f1f5f9" }}>
+                      <th style={{ textAlign: "left", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8" }}>Product</th>
+                      <th style={{ textAlign: "center", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8", width: "80px" }}>Qty</th>
+                      <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8", width: "110px" }}>Unit Cost</th>
+                      <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8", width: "110px" }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {printPo.items.map((item, i) => (
                       <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
-                        <td style={{ padding: "8px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
-                        <td style={{ padding: "8px", textAlign: "center" }}>{item.quantity}</td>
-                        <td style={{ padding: "8px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
-                        <td style={{ padding: "8px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
+                        <td style={{ padding: "11px 14px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
+                        <td style={{ padding: "11px 14px", textAlign: "center" }}>{item.quantity}</td>
+                        <td style={{ padding: "11px 14px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
+                        <td style={{ padding: "11px 14px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
-                    <tr style={{ borderTop: "2px solid #334155" }}>
-                      <td colSpan={3} style={{ padding: "10px 8px", textAlign: "right", fontWeight: "bold", fontSize: "15px" }}>Grand Total</td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "bold", fontSize: "16px" }}>${grandTotal.toFixed(2)}</td>
-                    </tr>
-                  </tfoot>
                 </table>
+
+                {/* Grand total */}
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <div style={{ background: "#0f172a", color: "#fff", padding: "12px 24px", fontSize: "17px", fontWeight: 700, borderRadius: "0 0 6px 6px", minWidth: "220px", textAlign: "right" }}>
+                    Grand Total: ${grandTotal.toFixed(2)}
+                  </div>
+                </div>
+
+                {/* Signatures */}
+                {(() => {
+                  const sigs = getPoSignatures(printPo.po.id);
+                  return (
+                    <div style={{ display: "flex", gap: "40px", marginTop: "32px" }}>
+                      <div style={{ flex: 1 }}>
+                        {sigs.manager ? (
+                          <>
+                            <img src={sigs.manager.dataUrl} alt="Manager signature" style={{ height: "48px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block", marginBottom: "4px" }} />
+                            <div style={{ fontSize: "12px", color: "#64748b" }}>Signed: {new Date(sigs.manager.signedAt).toLocaleString()}</div>
+                          </>
+                        ) : (
+                          <div style={{ borderBottom: "1px solid #334155", marginBottom: "6px", height: "28px" }} />
+                        )}
+                        <div style={{ fontSize: "13px", color: "#64748b" }}>Authorized By</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        {sigs.supplier ? (
+                          <>
+                            <img src={sigs.supplier.dataUrl} alt="Supplier signature" style={{ height: "48px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block", marginBottom: "4px" }} />
+                            <div style={{ fontSize: "12px", color: "#64748b" }}>Signed: {new Date(sigs.supplier.signedAt).toLocaleString()}</div>
+                          </>
+                        ) : (
+                          <div style={{ borderBottom: "1px solid #334155", marginBottom: "6px", height: "28px" }} />
+                        )}
+                        <div style={{ fontSize: "13px", color: "#64748b" }}>Supplier Representative</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Footer */}
+                <div style={{ textAlign: "center", marginTop: "24px", paddingTop: "12px", borderTop: "2px solid #0f172a", fontSize: "14px", color: "#64748b" }}>
+                  Thank you for your business.
+                </div>
 
                 <div id="po-print-actions" style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "20px" }}>
                   <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>
