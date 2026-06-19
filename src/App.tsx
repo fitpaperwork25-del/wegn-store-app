@@ -264,6 +264,7 @@ function App() {
   const [isCompletingSale, setIsCompletingSale] = useState(false);
   const [reorderSuppliers, setReorderSuppliers] = useState<Record<string, string>>({});
   const [reorderQtys, setReorderQtys] = useState<Record<string, string>>({});
+  const [reorderSelected, setReorderSelected] = useState<Set<string>>(new Set());
   const [saleItems, setSaleItems] = useState<SaleItemRecord[]>([]);
   const [showEod, setShowEod] = useState(false);
   const [eodItems, setEodItems] = useState<EodItem[]>([]);
@@ -1426,43 +1427,67 @@ function App() {
     setShowEod(true);
   }
 
-  async function handleCreateReorderPO(product: ProductStock) {
-    const supplierId = reorderSuppliers[product.product_id];
-    const qty = Number(reorderQtys[product.product_id] ?? (product.reorder_level - product.quantity_on_hand));
-    if (!supplierId || qty <= 0) { setMessage({ text: "Select a supplier and enter a quantity", type: "error" }); return; }
+  async function handleBatchReorderPO() {
+    const selected = Array.from(reorderSelected);
+    if (selected.length === 0) { setMessage({ text: "No products selected", type: "error" }); return; }
+
+    const missing = selected.filter(pid => !reorderSuppliers[pid]);
+    if (missing.length > 0) {
+      const names = missing.map(pid => products.find(p => p.product_id === pid)?.product_name ?? pid.slice(0, 8));
+      setMessage({ text: `Select a supplier for: ${names.join(", ")}`, type: "error" });
+      return;
+    }
+
+    const bySupplier: Record<string, string[]> = {};
+    for (const pid of selected) {
+      const sid = reorderSuppliers[pid];
+      if (!bySupplier[sid]) bySupplier[sid] = [];
+      bySupplier[sid].push(pid);
+    }
 
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
-    const poNumber = `PO-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const unitCost = product.average_cost ?? 0;
-    const lineTotal = qty * unitCost;
+    let poCount = 0;
+    let itemCount = 0;
 
-    const { data: po, error: poErr } = await supabase
-      .from("purchase_orders")
-      .insert({
-        business_id: businessId,
-        supplier_id: supplierId,
-        po_number: poNumber,
-        status: "draft",
-        subtotal: lineTotal,
-        notes: `Reorder: ${product.product_name}`,
-      })
-      .select("id")
-      .single();
+    for (const [supplierId, productIds] of Object.entries(bySupplier)) {
+      const items = productIds.map(pid => {
+        const product = products.find(p => p.product_id === pid)!;
+        const qty = Number(reorderQtys[pid] ?? (product.reorder_level - product.quantity_on_hand));
+        const unitCost = product.average_cost ?? 0;
+        return { product_id: pid, product_name: product.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
+      });
+      const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
+      const ts = new Date(now.getTime() + poCount * 1000);
+      const poNumber = `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+      const notes = items.length === 1
+        ? `Reorder: ${items[0].product_name}`
+        : `Reorder: ${items.length} products`;
 
-    if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
+      const { data: po, error: poErr } = await supabase
+        .from("purchase_orders")
+        .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
+        .select("id")
+        .single();
 
-    await supabase.from("purchase_order_items").insert({
-      purchase_order_id: po.id,
-      product_id: product.product_id,
-      quantity: qty,
-      unit_cost: unitCost,
-      line_total: lineTotal,
-    });
+      if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
 
-    setReorderSuppliers((prev) => { const n = { ...prev }; delete n[product.product_id]; return n; });
-    setReorderQtys((prev) => { const n = { ...prev }; delete n[product.product_id]; return n; });
-    setMessage({ text: `Draft PO created: ${poNumber}`, type: "success" });
+      const { error: itemsErr } = await supabase.from("purchase_order_items").insert(
+        items.map(i => ({ purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }))
+      );
+      if (itemsErr) { console.error(itemsErr); }
+
+      poCount++;
+      itemCount += items.length;
+    }
+
+    setReorderSelected(new Set());
+    const clearedSuppliers = { ...reorderSuppliers };
+    const clearedQtys = { ...reorderQtys };
+    for (const pid of selected) { delete clearedSuppliers[pid]; delete clearedQtys[pid]; }
+    setReorderSuppliers(clearedSuppliers);
+    setReorderQtys(clearedQtys);
+    setMessage({ text: `Created ${poCount} purchase order${poCount !== 1 ? "s" : ""} containing ${itemCount} product${itemCount !== 1 ? "s" : ""}.`, type: "success" });
     await loadPurchaseOrders();
   }
 
@@ -3108,23 +3133,70 @@ function App() {
         if (lowStock.length === 0) {
           return <p style={{ color: "#16a34a" }}>All products are sufficiently stocked.</p>;
         }
+        const allIds = new Set(lowStock.map(p => p.product_id));
+        const allSelected = lowStock.every(p => reorderSelected.has(p.product_id));
+        const selectedCount = lowStock.filter(p => reorderSelected.has(p.product_id)).length;
         return (
+          <>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
+            <button
+              onClick={() => setReorderSelected(new Set(allIds))}
+              style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "1px solid #1d4ed8", background: "#eff6ff", color: "#1d4ed8", fontWeight: 600, fontSize: "13px" }}
+            >Select All ({lowStock.length})</button>
+            <button
+              onClick={() => setReorderSelected(new Set())}
+              disabled={selectedCount === 0}
+              style={{ padding: "6px 14px", cursor: selectedCount === 0 ? "not-allowed" : "pointer", borderRadius: "5px", border: "1px solid #d1d5db", background: "#f9fafb", color: "#374151", fontSize: "13px" }}
+            >Clear Selection</button>
+            {selectedCount > 0 && (
+              <button
+                onClick={handleBatchReorderPO}
+                style={{ padding: "6px 18px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#1d4ed8", color: "#fff", fontWeight: 600, fontSize: "13px" }}
+              >Create Draft PO From Selected ({selectedCount})</button>
+            )}
+            {selectedCount > 0 && (
+              <span style={{ fontSize: "13px", color: "#64748b" }}>{selectedCount} of {lowStock.length} selected</span>
+            )}
+          </div>
           <div style={{ overflowX: "auto", marginBottom: "32px" }}>
             <table border={1} cellPadding={10} style={{ width: "100%" }}>
               <thead>
                 <tr>
+                  <th style={{ width: "36px" }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={() => setReorderSelected(allSelected ? new Set() : new Set(allIds))}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </th>
                   <th>Product</th>
                   <th>Stock</th>
                   <th>Reorder Level</th>
                   <th>Shortage</th>
                   <th>Supplier</th>
                   <th>Order Qty</th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody>
-                {lowStock.map((p) => (
-                  <tr key={p.product_id} style={{ backgroundColor: "#ffe5e5" }}>
+                {lowStock.map((p) => {
+                  const checked = reorderSelected.has(p.product_id);
+                  return (
+                  <tr key={p.product_id} style={{ backgroundColor: checked ? "#dbeafe" : "#ffe5e5" }}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setReorderSelected(prev => {
+                            const next = new Set(prev);
+                            if (next.has(p.product_id)) next.delete(p.product_id); else next.add(p.product_id);
+                            return next;
+                          });
+                        }}
+                        style={{ cursor: "pointer" }}
+                      />
+                    </td>
                     <td>{p.product_name}</td>
                     <td>{p.quantity_on_hand}</td>
                     <td>{p.reorder_level}</td>
@@ -3156,19 +3228,13 @@ function App() {
                         style={{ width: "70px", padding: "4px" }}
                       />
                     </td>
-                    <td>
-                      <button
-                        onClick={() => handleCreateReorderPO(p)}
-                        style={{ padding: "4px 12px", cursor: "pointer" }}
-                      >
-                        Create Draft PO
-                      </button>
-                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          </>
         );
       })()}
 
