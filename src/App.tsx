@@ -839,6 +839,7 @@ function App() {
 
   async function handleToggleCustomerStatus(customer: Customer) {
     const newStatus = customer.status === "active" ? "inactive" : "active";
+    if (newStatus === "inactive" && !window.confirm(`Deactivate customer "${customer.name}"?`)) return;
     const { error } = await supabase.from("customers").update({ status: newStatus }).eq("id", customer.id);
     if (error) { console.error(error); setMessage({ text: "Status update failed", type: "error" }); return; }
     if (posCustomerId === customer.id && newStatus === "inactive") {
@@ -1522,6 +1523,7 @@ function App() {
   }
 
   async function handleDeletePO(po: PurchaseOrder) {
+    if (!window.confirm(`Delete ${po.po_number}? This will permanently remove the PO and all its line items.`)) return;
     const { error: itemsError } = await supabase
       .from("purchase_order_items")
       .delete()
@@ -1539,6 +1541,7 @@ function App() {
   }
 
   async function handleCancelPO(po: PurchaseOrder) {
+    if (!window.confirm(`Cancel ${po.po_number}? This cannot be undone.`)) return;
     const { error } = await supabase
       .from("purchase_orders")
       .update({ status: "cancelled" })
@@ -1561,6 +1564,7 @@ function App() {
   }
 
   async function handleRemovePOItem(itemId: string) {
+    if (!window.confirm("Remove this line item from the purchase order?")) return;
     const { error } = await supabase
       .from("purchase_order_items")
       .delete()
@@ -1647,6 +1651,7 @@ function App() {
 
   async function handleToggleSupplierStatus(s: Supplier) {
     const newStatus = s.status === "active" ? "inactive" : "active";
+    if (newStatus === "inactive" && !window.confirm(`Deactivate supplier "${s.name}"?`)) return;
     const { error } = await supabase.from("suppliers").update({ status: newStatus }).eq("id", s.id);
     if (error) { console.error(error); setMessage({ text: "Status update failed", type: "error" }); return; }
     await loadSuppliers();
@@ -1655,6 +1660,7 @@ function App() {
   async function handleDeleteSupplier(id: string, name: string) {
     const hasPOs = purchaseOrders.some(po => po.supplier_id === id);
     if (hasPOs) { setMessage({ text: `Cannot delete "${name}" — they have existing purchase orders.`, type: "error" }); return; }
+    if (!window.confirm(`Permanently delete supplier "${name}"?`)) return;
     const { error } = await supabase.from("suppliers").delete().eq("id", id);
     if (error) { console.error(error); setMessage({ text: "Delete failed", type: "error" }); return; }
     setMessage({ text: `Supplier "${name}" deleted`, type: "success" });
@@ -1679,6 +1685,7 @@ function App() {
 
   async function handleToggleEmployeeStatus(emp: Employee) {
     const newStatus = emp.status === "active" ? "inactive" : "active";
+    if (newStatus === "inactive" && !window.confirm(`Deactivate employee "${emp.name}"?`)) return;
     const { error } = await supabase.from("employees").update({ status: newStatus }).eq("id", emp.id);
     if (error) { console.error(error); setMessage({ text: "Status update failed", type: "error" }); return; }
     if (activeCashierId === emp.id && newStatus === "inactive") {
@@ -1867,6 +1874,7 @@ function App() {
 
   async function handleToggleProductStatus(product: ProductStock) {
     const newStatus = product.status === "active" ? "inactive" : "active";
+    if (newStatus === "inactive" && !window.confirm(`Deactivate product "${product.product_name}"? It will no longer appear in POS.`)) return;
     const { error } = await supabase
       .from("products")
       .update({ status: newStatus })
