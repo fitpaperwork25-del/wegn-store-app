@@ -2319,274 +2319,252 @@ function App() {
         <p className="page-subtitle">Manage products, stock levels, reorder points, and product status</p>
       </div>
 
-      <h2 style={{ marginTop: "40px" }}>Receive Inventory</h2>
-
-      <form
-        onSubmit={handleReceive}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "16px",
-        }}
-      >
-        <select
-          value={selectedProductId}
-          onChange={(e) => setSelectedProductId(e.target.value)}
-          style={{ flex: "1 1 200px", padding: "8px" }}
+      <div className="section-card">
+        <h3 className="section-card-title">Receive Inventory</h3>
+        <form
+          onSubmit={handleReceive}
+          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
         >
-          <option value="">Select product...</option>
-          {products.map((product) => (
-            <option key={product.product_id} value={product.product_id}>
-              {product.product_name}
-            </option>
-          ))}
-        </select>
-
-        <input
-          type="number"
-          min="1"
-          placeholder="Quantity"
-          value={receiveQuantity}
-          onChange={(e) => setReceiveQuantity(e.target.value)}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-
-        <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-          Receive
-        </button>
-      </form>
-
-
-      <h2 style={{ marginTop: "40px" }}>Adjust Inventory</h2>
-
-      <form
-        onSubmit={handleAdjust}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "16px",
-        }}
-      >
-        <select
-          value={adjustProductId}
-          onChange={(e) => setAdjustProductId(e.target.value)}
-          style={{ flex: "1 1 200px", padding: "8px" }}
-        >
-          <option value="">Select product...</option>
-          {products.map((product) => (
-            <option key={product.product_id} value={product.product_id}>
-              {product.product_name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={adjustType}
-          onChange={(e) => setAdjustType(e.target.value)}
-          style={{ flex: "1 1 140px", padding: "8px" }}
-        >
-          <option value="damaged">damaged</option>
-          <option value="expired">expired</option>
-          <option value="lost">lost</option>
-          <option value="correction">correction</option>
-        </select>
-
-        <input
-          type="number"
-          placeholder={adjustType === "correction" ? "Qty (±)" : "Quantity"}
-          value={adjustQuantity}
-          onChange={(e) => setAdjustQuantity(e.target.value)}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-
-        <input
-          type="text"
-          placeholder="Reason (optional)"
-          value={adjustReason}
-          onChange={(e) => setAdjustReason(e.target.value)}
-          style={{ flex: "2 1 200px", padding: "8px" }}
-        />
-
-        <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-          Adjust
-        </button>
-      </form>
-
-      <h2 style={{ marginTop: "40px" }}>Add Product</h2>
-
-      <form
-        onSubmit={handleAddProduct}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "16px",
-        }}
-      >
-        <input
-          type="text"
-          placeholder="Product Name *"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          style={{ flex: "2 1 200px", padding: "8px" }}
-        />
-        <input
-          type="text"
-          placeholder="SKU"
-          value={newSku}
-          onChange={(e) => setNewSku(e.target.value)}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-        <input
-          type="text"
-          placeholder="Barcode"
-          value={newBarcode}
-          onChange={(e) => { setNewBarcode(e.target.value); setBarcodeAutoFill(""); }}
-          onBlur={handleBarcodeLookup}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeLookup(); } }}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-        <input
-          type="number"
-          placeholder="Cost Price"
-          value={newCostPrice}
-          onChange={(e) => setNewCostPrice(e.target.value)}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-        <input
-          type="number"
-          placeholder="Selling Price *"
-          value={newSellingPrice}
-          onChange={(e) => setNewSellingPrice(e.target.value)}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-        <input
-          type="number"
-          placeholder="Reorder Level"
-          value={newReorderLevel}
-          onChange={(e) => setNewReorderLevel(e.target.value)}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-        <input
-          type="number"
-          min="0"
-          placeholder="Initial Stock *"
-          value={newInitialStock}
-          onChange={(e) => setNewInitialStock(e.target.value)}
-          style={{ flex: "1 1 120px", padding: "8px" }}
-        />
-        <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-          Add Product
-        </button>
-      </form>
-
-      {barcodeAutoFill && (
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", padding: "8px 14px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "6px", fontSize: "13px" }}>
-          <span style={{ color: "#1d4ed8" }}>{barcodeAutoFill}</span>
-          <button onClick={() => setBarcodeAutoFill("")} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "15px", color: "#64748b" }}>✕</button>
-        </div>
-      )}
-
-      <h2 style={{ marginTop: "40px" }}>Bulk Import Products</h2>
-
-      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
-        <button onClick={downloadCsvTemplate} style={{ padding: "8px 16px" }}>
-          Download CSV Template
-        </button>
-        <input
-          type="file"
-          accept=".csv"
-          onChange={handleCsvUpload}
-          style={{ padding: "4px" }}
-        />
+          <select
+            value={selectedProductId}
+            onChange={(e) => setSelectedProductId(e.target.value)}
+            style={{ flex: "1 1 200px", padding: "8px" }}
+          >
+            <option value="">Select product...</option>
+            {products.map((product) => (
+              <option key={product.product_id} value={product.product_id}>
+                {product.product_name}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min="1"
+            placeholder="Quantity"
+            value={receiveQuantity}
+            onChange={(e) => setReceiveQuantity(e.target.value)}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <button type="submit" className="pos-add-btn">
+            Receive
+          </button>
+        </form>
       </div>
 
-      {bulkPreview.length > 0 && (
-        <>
-          <div style={{ overflowX: "auto", marginBottom: "12px" }}>
-            <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-              <thead>
-                <tr>
-                  <th>Status</th>
-                  <th>Name</th>
-                  <th>Selling Price</th>
-                  <th>SKU</th>
-                  <th>Barcode</th>
-                  <th>Cost Price</th>
-                  <th>Reorder Level</th>
-                  <th>Initial Stock</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bulkPreview.map((row, i) => {
-                  const statusColor: Record<BulkRow['status'], string> = {
-                    valid: '#15803d',
-                    missing_name: '#b91c1c',
-                    missing_price: '#b91c1c',
-                    invalid_price: '#b91c1c',
-                    duplicate_barcode: '#92400e',
-                  };
-                  const statusLabel: Record<BulkRow['status'], string> = {
-                    valid: '✓ Valid',
-                    missing_name: '✗ Missing name',
-                    missing_price: '✗ Missing price',
-                    invalid_price: '✗ Invalid price',
-                    duplicate_barcode: '⚠ Duplicate barcode',
-                  };
-                  return (
-                    <tr key={i} style={{ background: row.status === 'valid' ? undefined : '#fff7f7' }}>
-                      <td style={{ color: statusColor[row.status], fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                        {statusLabel[row.status]}
-                      </td>
-                      <td>{row.name || '—'}</td>
-                      <td>{row.selling_price || '—'}</td>
-                      <td>{row.sku || '—'}</td>
-                      <td>{row.barcode || '—'}</td>
-                      <td>{row.cost_price || '—'}</td>
-                      <td>{row.reorder_level || '—'}</td>
-                      <td>{row.initial_stock || '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "24px" }}>
-            <span style={{ fontSize: "13px", color: "#666" }}>
-              {bulkPreview.filter(r => r.status === 'valid').length} valid &nbsp;·&nbsp;
-              {bulkPreview.filter(r => r.status !== 'valid').length} will be skipped
-            </span>
-            <button
-              onClick={handleBulkImport}
-              disabled={bulkImporting || bulkPreview.filter(r => r.status === 'valid').length === 0}
-              style={{
-                padding: "8px 24px",
-                background: bulkPreview.filter(r => r.status === 'valid').length === 0 ? '#ccc' : '#1d4ed8',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: bulkPreview.filter(r => r.status === 'valid').length === 0 ? 'not-allowed' : 'pointer',
-                fontWeight: 'bold',
-              }}
-            >
-              {bulkImporting ? 'Importing…' : 'Import Products'}
-            </button>
-          </div>
-        </>
-      )}
+      <div className="section-card">
+        <h3 className="section-card-title">Adjust Inventory</h3>
+        <form
+          onSubmit={handleAdjust}
+          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
+        >
+          <select
+            value={adjustProductId}
+            onChange={(e) => setAdjustProductId(e.target.value)}
+            style={{ flex: "1 1 200px", padding: "8px" }}
+          >
+            <option value="">Select product...</option>
+            {products.map((product) => (
+              <option key={product.product_id} value={product.product_id}>
+                {product.product_name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={adjustType}
+            onChange={(e) => setAdjustType(e.target.value)}
+            style={{ flex: "1 1 140px", padding: "8px" }}
+          >
+            <option value="damaged">damaged</option>
+            <option value="expired">expired</option>
+            <option value="lost">lost</option>
+            <option value="correction">correction</option>
+          </select>
+          <input
+            type="number"
+            placeholder={adjustType === "correction" ? "Qty (±)" : "Quantity"}
+            value={adjustQuantity}
+            onChange={(e) => setAdjustQuantity(e.target.value)}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <input
+            type="text"
+            placeholder="Reason (optional)"
+            value={adjustReason}
+            onChange={(e) => setAdjustReason(e.target.value)}
+            style={{ flex: "2 1 200px", padding: "8px" }}
+          />
+          <button type="submit" className="pos-add-btn">
+            Adjust
+          </button>
+        </form>
+      </div>
 
-      {bulkResults && (
-        <div style={{ marginBottom: "24px", padding: "16px", border: "1px solid #ccc", borderRadius: "8px", display: "flex", gap: "32px" }}>
-          <div><span style={{ fontSize: "13px", color: "#666" }}>Imported</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#15803d" }}>{bulkResults.imported}</div></div>
-          <div><span style={{ fontSize: "13px", color: "#666" }}>Skipped</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#92400e" }}>{bulkResults.skipped}</div></div>
-          <div><span style={{ fontSize: "13px", color: "#666" }}>Failed</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#b91c1c" }}>{bulkResults.failed}</div></div>
+      <div className="section-card">
+        <h3 className="section-card-title">Add Product</h3>
+        <form
+          onSubmit={handleAddProduct}
+          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
+        >
+          <input
+            type="text"
+            placeholder="Product Name *"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            style={{ flex: "2 1 200px", padding: "8px" }}
+          />
+          <input
+            type="text"
+            placeholder="SKU"
+            value={newSku}
+            onChange={(e) => setNewSku(e.target.value)}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <input
+            type="text"
+            placeholder="Barcode"
+            value={newBarcode}
+            onChange={(e) => { setNewBarcode(e.target.value); setBarcodeAutoFill(""); }}
+            onBlur={handleBarcodeLookup}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeLookup(); } }}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <input
+            type="number"
+            placeholder="Cost Price"
+            value={newCostPrice}
+            onChange={(e) => setNewCostPrice(e.target.value)}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <input
+            type="number"
+            placeholder="Selling Price *"
+            value={newSellingPrice}
+            onChange={(e) => setNewSellingPrice(e.target.value)}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <input
+            type="number"
+            placeholder="Reorder Level"
+            value={newReorderLevel}
+            onChange={(e) => setNewReorderLevel(e.target.value)}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <input
+            type="number"
+            min="0"
+            placeholder="Initial Stock *"
+            value={newInitialStock}
+            onChange={(e) => setNewInitialStock(e.target.value)}
+            style={{ flex: "1 1 120px", padding: "8px" }}
+          />
+          <button type="submit" className="pos-add-btn">
+            Add Product
+          </button>
+        </form>
+        {barcodeAutoFill && (
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "12px", padding: "8px 14px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "6px", fontSize: "13px" }}>
+            <span style={{ color: "#1d4ed8" }}>{barcodeAutoFill}</span>
+            <button onClick={() => setBarcodeAutoFill("")} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "15px", color: "#64748b" }}>✕</button>
+          </div>
+        )}
+      </div>
+
+      <div className="section-card">
+        <h3 className="section-card-title">Bulk Import Products</h3>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={downloadCsvTemplate} style={{ padding: "8px 16px" }}>
+            Download CSV Template
+          </button>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleCsvUpload}
+            style={{ padding: "4px" }}
+          />
         </div>
-      )}
+
+        {bulkPreview.length > 0 && (
+          <>
+            <div style={{ overflowX: "auto", marginTop: "16px", marginBottom: "12px" }}>
+              <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Name</th>
+                    <th>Selling Price</th>
+                    <th>SKU</th>
+                    <th>Barcode</th>
+                    <th>Cost Price</th>
+                    <th>Reorder Level</th>
+                    <th>Initial Stock</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkPreview.map((row, i) => {
+                    const statusColor: Record<BulkRow['status'], string> = {
+                      valid: '#15803d',
+                      missing_name: '#b91c1c',
+                      missing_price: '#b91c1c',
+                      invalid_price: '#b91c1c',
+                      duplicate_barcode: '#92400e',
+                    };
+                    const statusLabel: Record<BulkRow['status'], string> = {
+                      valid: '✓ Valid',
+                      missing_name: '✗ Missing name',
+                      missing_price: '✗ Missing price',
+                      invalid_price: '✗ Invalid price',
+                      duplicate_barcode: '⚠ Duplicate barcode',
+                    };
+                    return (
+                      <tr key={i} style={{ background: row.status === 'valid' ? undefined : '#fff7f7' }}>
+                        <td style={{ color: statusColor[row.status], fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                          {statusLabel[row.status]}
+                        </td>
+                        <td>{row.name || '—'}</td>
+                        <td>{row.selling_price || '—'}</td>
+                        <td>{row.sku || '—'}</td>
+                        <td>{row.barcode || '—'}</td>
+                        <td>{row.cost_price || '—'}</td>
+                        <td>{row.reorder_level || '—'}</td>
+                        <td>{row.initial_stock || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+              <span style={{ fontSize: "13px", color: "#666" }}>
+                {bulkPreview.filter(r => r.status === 'valid').length} valid &nbsp;·&nbsp;
+                {bulkPreview.filter(r => r.status !== 'valid').length} will be skipped
+              </span>
+              <button
+                onClick={handleBulkImport}
+                disabled={bulkImporting || bulkPreview.filter(r => r.status === 'valid').length === 0}
+                style={{
+                  padding: "8px 24px",
+                  background: bulkPreview.filter(r => r.status === 'valid').length === 0 ? '#ccc' : '#1d4ed8',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: bulkPreview.filter(r => r.status === 'valid').length === 0 ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                {bulkImporting ? 'Importing…' : 'Import Products'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {bulkResults && (
+          <div style={{ marginTop: "16px", padding: "16px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", display: "flex", gap: "32px" }}>
+            <div><span style={{ fontSize: "13px", color: "#666" }}>Imported</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#15803d" }}>{bulkResults.imported}</div></div>
+            <div><span style={{ fontSize: "13px", color: "#666" }}>Skipped</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#92400e" }}>{bulkResults.skipped}</div></div>
+            <div><span style={{ fontSize: "13px", color: "#666" }}>Failed</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#b91c1c" }}>{bulkResults.failed}</div></div>
+          </div>
+        )}
+      </div>
 
       </div>{/* end inventory */}
 
@@ -2746,28 +2724,35 @@ function App() {
         const lowStockItems = products.filter(p => p.status === 'active' && p.quantity_on_hand < p.reorder_level).length;
         const inventoryValue = products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
         const activeSupplierCount = suppliers.filter(s => s.status === 'active').length;
-        const summaryCard = (accent: string): React.CSSProperties => ({
-          padding: "16px 20px", background: "#fff", border: "1px solid #e2e8f0",
-          borderLeft: `4px solid ${accent}`, borderRadius: "8px",
-          minWidth: "140px", flex: "1 1 140px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        });
         return (
           <div className="dash-card-row" style={{ marginBottom: "24px" }}>
-            <div style={summaryCard("#1d4ed8")}>
-              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Total Products</div>
-              <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{totalProducts}</div>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>&#x1F4E6;</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Total Products</div>
+                <div className="dash-card-value">{totalProducts}</div>
+              </div>
             </div>
-            <div style={summaryCard(lowStockItems > 0 ? "#dc2626" : "#16a34a")}>
-              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Low Stock Items</div>
-              <div style={{ fontSize: "26px", fontWeight: "bold", color: lowStockItems > 0 ? "#dc2626" : "#0f172a" }}>{lowStockItems}</div>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: lowStockItems > 0 ? "#fef2f2" : "#f0fdf4", color: lowStockItems > 0 ? "#dc2626" : "#16a34a" }}>&#x26A0;</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Low Stock Items</div>
+                <div className="dash-card-value" style={lowStockItems > 0 ? { color: "#dc2626" } : undefined}>{lowStockItems}</div>
+              </div>
             </div>
-            <div style={summaryCard("#16a34a")}>
-              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Inventory Value</div>
-              <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>${inventoryValue.toFixed(2)}</div>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>$</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Inventory Value</div>
+                <div className="dash-card-value">${inventoryValue.toFixed(2)}</div>
+              </div>
             </div>
-            <div style={summaryCard("#7c3aed")}>
-              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Active Suppliers</div>
-              <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{activeSupplierCount}</div>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>&#x1F465;</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Active Suppliers</div>
+                <div className="dash-card-value">{activeSupplierCount}</div>
+              </div>
             </div>
           </div>
         );
