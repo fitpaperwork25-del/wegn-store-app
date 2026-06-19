@@ -5270,9 +5270,28 @@ function App() {
           <>
             <style>{`
               @media print {
+                @page { margin: 0.5in; }
                 .app-root > * { display: none !important; }
-                #po-print-modal { display: block !important; position: static !important; background: none !important; }
-                #po-print-content { box-shadow: none !important; margin: 0 !important; }
+                #po-print-modal {
+                  display: block !important;
+                  position: static !important;
+                  background: none !important;
+                  align-items: stretch !important;
+                  justify-content: flex-start !important;
+                  height: auto !important;
+                  inset: auto !important;
+                }
+                #po-print-content {
+                  box-shadow: none !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  max-height: none !important;
+                  overflow: visible !important;
+                  font-size: 12pt !important;
+                }
+                #po-print-content table { page-break-inside: avoid; break-inside: avoid; }
                 #po-print-actions { display: none !important; }
               }
             `}</style>
@@ -5287,63 +5306,73 @@ function App() {
               <div
                 id="po-print-content"
                 style={{
-                  background: "#fff", padding: "32px", width: "560px", maxHeight: "90vh", overflowY: "auto",
-                  fontFamily: "sans-serif", fontSize: "14px", lineHeight: "1.6",
+                  background: "#fff", padding: "32px", width: "640px", maxHeight: "90vh", overflowY: "auto",
+                  fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: "15px", lineHeight: "1.5",
                   boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
                 }}
               >
-                <div style={{ textAlign: "center", marginBottom: "16px" }}>
-                  <img src="/logo.png" alt="" style={{ height: "48px", width: "auto", maxWidth: "140px", objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                  {businessName && <div style={{ fontWeight: "bold", fontSize: "18px", marginTop: "4px" }}>{businessName}</div>}
-                  {businessAddress && <div style={{ fontSize: "12px", color: "#555" }}>{businessAddress}</div>}
-                  {businessPhone && <div style={{ fontSize: "12px", color: "#555" }}>{businessPhone}</div>}
+                <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "8px", paddingBottom: "12px", borderBottom: "3px solid #1d4ed8" }}>
+                  <img src="/logo.png" alt="" style={{ height: "52px", width: "auto", maxWidth: "52px", objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                  <div>
+                    {businessName && <div style={{ fontWeight: "bold", fontSize: "20px", color: "#0f172a" }}>{businessName}</div>}
+                    {businessAddress && <div style={{ fontSize: "13px", color: "#64748b" }}>{businessAddress}</div>}
+                    {businessPhone && <div style={{ fontSize: "13px", color: "#64748b" }}>{businessPhone}</div>}
+                  </div>
+                  <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                    <div style={{ fontWeight: "bold", fontSize: "18px", color: "#1d4ed8", letterSpacing: "0.05em" }}>PURCHASE ORDER</div>
+                    <div style={{ fontSize: "13px", color: "#64748b" }}>{new Date(printPo.po.created_at).toLocaleDateString()}</div>
+                  </div>
                 </div>
 
-                <div style={{ borderTop: "2px solid #333", borderBottom: "1px solid #ddd", padding: "12px 0", marginBottom: "16px" }}>
-                  <div style={{ fontWeight: "bold", fontSize: "16px", marginBottom: "8px" }}>PURCHASE ORDER</div>
-                  <div style={{ display: "flex", gap: "32px", flexWrap: "wrap", fontSize: "13px" }}>
-                    <div><strong>PO Number:</strong> {printPo.po.po_number}</div>
-                    <div><strong>Date:</strong> {new Date(printPo.po.created_at).toLocaleDateString()}</div>
-                    <div><strong>Status:</strong> {printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status}</div>
+                <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", margin: "12px 0 16px", fontSize: "14px" }}>
+                  <div style={{ flex: 1, minWidth: "200px" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, marginBottom: "2px" }}>PO Number</div>
+                    <div style={{ fontWeight: 600 }}>{printPo.po.po_number}</div>
                   </div>
-                  <div style={{ fontSize: "13px", marginTop: "4px" }}>
-                    <strong>Supplier:</strong> {printPo.supplierName}
+                  <div style={{ flex: 1, minWidth: "200px" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, marginBottom: "2px" }}>Supplier</div>
+                    <div style={{ fontWeight: 600 }}>{printPo.supplierName}</div>
                   </div>
-                  {printPo.po.notes && (
-                    <div style={{ fontSize: "13px", marginTop: "4px", color: "#555" }}>
-                      <strong>Notes:</strong> {printPo.po.notes}
-                    </div>
-                  )}
+                  <div>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, marginBottom: "2px" }}>Status</div>
+                    <div style={{ fontWeight: 600 }}>{printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status.charAt(0).toUpperCase() + printPo.po.status.slice(1)}</div>
+                  </div>
                 </div>
 
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", marginBottom: "16px" }}>
+                {printPo.po.notes && (
+                  <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}>
+                    <strong style={{ color: "#475569" }}>Notes:</strong> {printPo.po.notes}
+                  </div>
+                )}
+
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
                   <thead>
-                    <tr style={{ borderBottom: "2px solid #333" }}>
-                      <th style={{ textAlign: "left", padding: "8px 4px" }}>Product</th>
-                      <th style={{ textAlign: "right", padding: "8px 4px" }}>Qty</th>
-                      <th style={{ textAlign: "right", padding: "8px 4px" }}>Unit Cost</th>
-                      <th style={{ textAlign: "right", padding: "8px 4px" }}>Line Total</th>
+                    <tr style={{ background: "#f1f5f9", borderBottom: "2px solid #cbd5e1" }}>
+                      <th style={{ textAlign: "left", padding: "10px 8px", color: "#475569", fontWeight: 600 }}>Product</th>
+                      <th style={{ textAlign: "center", padding: "10px 8px", color: "#475569", fontWeight: 600, width: "80px" }}>Qty</th>
+                      <th style={{ textAlign: "right", padding: "10px 8px", color: "#475569", fontWeight: 600, width: "110px" }}>Unit Cost</th>
+                      <th style={{ textAlign: "right", padding: "10px 8px", color: "#475569", fontWeight: 600, width: "110px" }}>Line Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {printPo.items.map((item, i) => (
-                      <tr key={item.id} style={{ borderBottom: "1px solid #eee", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                        <td style={{ padding: "6px 4px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
-                        <td style={{ padding: "6px 4px", textAlign: "right" }}>{item.quantity}</td>
-                        <td style={{ padding: "6px 4px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
-                        <td style={{ padding: "6px 4px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
+                      <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
+                        <td style={{ padding: "8px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
+                        <td style={{ padding: "8px", textAlign: "center" }}>{item.quantity}</td>
+                        <td style={{ padding: "8px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
+                        <td style={{ padding: "8px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr style={{ borderTop: "2px solid #333" }}>
-                      <td colSpan={3} style={{ padding: "8px 4px", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>Grand Total</td>
-                      <td style={{ padding: "8px 4px", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>${grandTotal.toFixed(2)}</td>
+                    <tr style={{ borderTop: "2px solid #334155" }}>
+                      <td colSpan={3} style={{ padding: "10px 8px", textAlign: "right", fontWeight: "bold", fontSize: "15px" }}>Grand Total</td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "bold", fontSize: "16px" }}>${grandTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
                 </table>
 
-                <div id="po-print-actions" style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                <div id="po-print-actions" style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "20px" }}>
                   <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>
                     Print
                   </button>
