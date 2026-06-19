@@ -355,6 +355,13 @@ function App() {
     loadStockCounts();
   }, []);
 
+  useEffect(() => {
+    if (cart.length === 0) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [cart.length]);
+
   // Derived from allPayments + sales so it stays current after every sale/void/return.
   // Filters to completed sales only (excludes voided/returned) scoped to current drawer session.
   const drawerCashSales = drawerSession
