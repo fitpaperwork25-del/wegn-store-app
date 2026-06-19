@@ -177,30 +177,112 @@ code {
 /* Brand text beside logo */
 .app-brand-text {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  justify-content: center;
+  align-items: center;
 }
 .app-brand-name {
   font-size: 22px;
   font-weight: 700;
   color: #0f172a;
-  line-height: 1.15;
+  line-height: 1;
   letter-spacing: -0.3px;
 }
-.app-brand-sub {
-  font-size: 12px;
-  font-weight: 400;
-  color: #94a3b8;
-  letter-spacing: 0.02em;
+
+/* ─────────────────────────────────────────────
+   Page header — consistent across all tabs
+   ───────────────────────────────────────────── */
+
+.page-header {
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.page-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+  letter-spacing: -0.3px;
+}
+.page-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+  }
+  .page-title {
+    font-size: 22px;
+  }
+  .page-subtitle {
+    font-size: 13px;
+  }
 }
 
 /* Dashboard stat cards grid */
 .dash-card-row {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
+}
+
+.dash-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.dash-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.dash-card-body {
+  min-width: 0;
+}
+
+.dash-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.dash-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+}
+
+.dash-card-helper {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.3;
+  margin-top: 1px;
 }
 
 /* ── Tablet ≤ 768px ── */
@@ -221,9 +303,6 @@ code {
 
   .app-brand-name {
     font-size: 15px;
-  }
-  .app-brand-sub {
-    display: none;
   }
 
   /* Show hamburger */
@@ -259,7 +338,8 @@ code {
   }
 
   /* Cards: 2 per row on tablet */
-  .dash-card-row > * {
+  .dash-card-row > *,
+  .dash-card {
     flex: 1 1 calc(50% - 8px) !important;
     min-width: 0 !important;
   }
@@ -281,7 +361,8 @@ code {
   }
 
   /* Cards: 1 per row on mobile */
-  .dash-card-row > * {
+  .dash-card-row > *,
+  .dash-card {
     flex: 1 1 100% !important;
     min-width: 0 !important;
   }

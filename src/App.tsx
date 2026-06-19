@@ -1945,7 +1945,6 @@ function App() {
           />
           <div className="app-brand-text">
             <span className="app-brand-name">Dilla Market</span>
-            <span className="app-brand-sub">Store Management Platform</span>
           </div>
         </div>
         <button
@@ -2005,7 +2004,10 @@ function App() {
       {/* ── POS TAB ── */}
       <div style={{ display: activeTab === 'pos' ? '' : 'none' }}>
 
-      <h2>Point of Sale</h2>
+      <div className="page-header">
+        <h2 className="page-title">Point of Sale</h2>
+        <p className="page-subtitle">Scan items, process sales, manage returns and receipts</p>
+      </div>
 
       <div className="pos-card">
       <input
@@ -2312,7 +2314,12 @@ function App() {
       {/* ── INVENTORY TAB ── */}
       <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
 
-      <h2>Receive Inventory</h2>
+      <div className="page-header">
+        <h2 className="page-title">Inventory</h2>
+        <p className="page-subtitle">Manage products, stock levels, reorder points, and product status</p>
+      </div>
+
+      <h2 style={{ marginTop: "40px" }}>Receive Inventory</h2>
 
       <form
         onSubmit={handleReceive}
@@ -2586,10 +2593,10 @@ function App() {
       {/* ── DASHBOARD TAB ── */}
       <div style={{ display: activeTab === 'dashboard' ? '' : 'none' }}>
 
-      <h2 style={{ marginBottom: "4px" }}>Dashboard</h2>
-      <p style={{ margin: "0 0 24px", fontSize: "13px", color: "#94a3b8" }}>
-        {businessName || "Wegn-Store"} &mdash; {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-      </p>
+      <div className="page-header">
+        <h2 className="page-title">Dashboard</h2>
+        <p className="page-subtitle">Today's store performance and operating status</p>
+      </div>
 
       {(() => {
         const today = new Date();
@@ -2613,61 +2620,79 @@ function App() {
           .slice(0, 5);
 
         const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
-        const cardRow = "dash-card-row";
-        const cardBase = (accent: string): React.CSSProperties => ({
-          padding: "16px 20px", background: "#fff", border: "1px solid #e2e8f0",
-          borderLeft: `4px solid ${accent}`, borderRadius: "8px",
-          minWidth: "160px", flex: "1 1 160px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        });
 
         return (
           <>
             {/* ── Today's Operations ── */}
             <div style={sLabel}>Today's Operations</div>
-            <div className={cardRow}>
-              <div style={cardBase("#1d4ed8")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Revenue Today</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>${revenueToday.toFixed(2)}</div>
+            <div className="dash-card-row">
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>$</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Revenue Today</div>
+                  <div className="dash-card-value">${revenueToday.toFixed(2)}</div>
+                </div>
               </div>
-              <div style={cardBase("#16a34a")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Transactions</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{txnCount}</div>
-                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>{txnCount === 1 ? "sale" : "sales"} today</div>
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>&#x1D4E1;</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Transactions</div>
+                  <div className="dash-card-value">{txnCount}</div>
+                  <div className="dash-card-helper">{txnCount === 1 ? "sale" : "sales"} today</div>
+                </div>
               </div>
-              <div style={cardBase("#4f46e5")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Average Sale</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{txnCount > 0 ? `$${avgSale.toFixed(2)}` : "—"}</div>
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: "#eef2ff", color: "#4f46e5" }}>&#x2197;</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Average Sale</div>
+                  <div className="dash-card-value">{txnCount > 0 ? `$${avgSale.toFixed(2)}` : "—"}</div>
+                </div>
               </div>
-              <div style={cardBase(lowStockCount > 0 ? "#dc2626" : "#16a34a")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Low Stock Items</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: lowStockCount > 0 ? "#dc2626" : "#0f172a" }}>{lowStockCount}</div>
-                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>{lowStockCount > 0 ? "need reorder" : "all stocked"}</div>
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: lowStockCount > 0 ? "#fef2f2" : "#f0fdf4", color: lowStockCount > 0 ? "#dc2626" : "#16a34a" }}>&#x26A0;</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Low Stock Items</div>
+                  <div className="dash-card-value" style={lowStockCount > 0 ? { color: "#dc2626" } : undefined}>{lowStockCount}</div>
+                  <div className="dash-card-helper">{lowStockCount > 0 ? "need reorder" : "all stocked"}</div>
+                </div>
               </div>
             </div>
 
             {/* ── Business Status ── */}
             <div style={sLabel}>Business Status</div>
-            <div className={cardRow}>
-              <div style={cardBase(drawerSession ? "#16a34a" : "#64748b")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Cash Drawer</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: drawerSession ? "#15803d" : "#475569" }}>{drawerSession ? "OPEN" : "CLOSED"}</div>
-                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                  {drawerSession ? `Since ${new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
+            <div className="dash-card-row">
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: drawerSession ? "#f0fdf4" : "#f1f5f9", color: drawerSession ? "#16a34a" : "#64748b" }}>&#x1F4B0;</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Cash Drawer</div>
+                  <div className="dash-card-value" style={{ color: drawerSession ? "#15803d" : "#475569" }}>{drawerSession ? "OPEN" : "CLOSED"}</div>
+                  <div className="dash-card-helper">
+                    {drawerSession ? `Since ${new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
+                  </div>
                 </div>
               </div>
-              <div style={cardBase(openPoCount > 0 ? "#ea580c" : "#64748b")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Open Purchase Orders</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{openPoCount}</div>
-                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>{openPoCount > 0 ? "pending" : "none pending"}</div>
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: openPoCount > 0 ? "#fff7ed" : "#f1f5f9", color: openPoCount > 0 ? "#ea580c" : "#64748b" }}>&#x1F4C4;</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Open Purchase Orders</div>
+                  <div className="dash-card-value">{openPoCount}</div>
+                  <div className="dash-card-helper">{openPoCount > 0 ? "pending" : "none pending"}</div>
+                </div>
               </div>
-              <div style={cardBase("#0d9488")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Active Customers</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{activeCustomerCount}</div>
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: "#f0fdfa", color: "#0d9488" }}>&#x1F465;</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Active Customers</div>
+                  <div className="dash-card-value">{activeCustomerCount}</div>
+                </div>
               </div>
-              <div style={cardBase("#7c3aed")}>
-                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Loyalty Points</div>
-                <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{pointsOutstanding.toLocaleString()}</div>
-                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>outstanding</div>
+              <div className="dash-card">
+                <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>&#x2605;</div>
+                <div className="dash-card-body">
+                  <div className="dash-card-label">Loyalty Points</div>
+                  <div className="dash-card-value">{pointsOutstanding.toLocaleString()}</div>
+                  <div className="dash-card-helper">outstanding</div>
+                </div>
               </div>
             </div>
 
@@ -2874,6 +2899,11 @@ function App() {
 
       {/* ── PURCHASING TAB ── */}
       <div style={{ display: activeTab === 'purchasing' ? '' : 'none' }}>
+
+      <div className="page-header">
+        <h2 className="page-title">Purchasing</h2>
+        <p className="page-subtitle">Manage suppliers, purchase orders, receiving, and reorder planning</p>
+      </div>
 
       <h2 style={{ marginTop: "40px" }}>Suppliers</h2>
 
@@ -3157,7 +3187,10 @@ function App() {
       {/* ── CUSTOMERS TAB ── */}
       <div style={{ display: activeTab === 'customers' ? '' : 'none' }}>
 
-      <h2 style={{ marginTop: "40px" }}>Customer Management</h2>
+      <div className="page-header">
+        <h2 className="page-title">Customers</h2>
+        <p className="page-subtitle">Manage customer profiles, purchase history, and loyalty points</p>
+      </div>
 
       <h3 style={{ marginBottom: "8px" }}>Add Customer</h3>
       <form
@@ -3925,6 +3958,11 @@ function App() {
 
       {/* ── REPORTS TAB ── */}
       <div style={{ display: activeTab === 'reports' ? '' : 'none' }}>
+
+      <div className="page-header">
+        <h2 className="page-title">Reports</h2>
+        <p className="page-subtitle">Review sales, tax, inventory, loyalty, and operational performance</p>
+      </div>
 
       {/* Sales Analytics Dashboard */}
       <h2 style={{ marginTop: "40px" }}>Sales Analytics</h2>
@@ -4867,8 +4905,10 @@ function App() {
       {/* ── EMPLOYEES TAB ── */}
       <div style={{ display: activeTab === 'employees' ? '' : 'none' }}>
 
-      {/* Employee / Cashier Management */}
-      <h2 style={{ marginTop: "40px" }}>Employee Management</h2>
+      <div className="page-header">
+        <h2 className="page-title">Employees</h2>
+        <p className="page-subtitle">Manage staff, cashier activity, cash drawer, and shift operations</p>
+      </div>
 
       <form onSubmit={handleAddEmployee} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
         <input
@@ -4957,7 +4997,10 @@ function App() {
       {/* ── SETTINGS TAB ── */}
       <div style={{ display: activeTab === 'settings' ? '' : 'none' }}>
 
-      <h2 style={{ marginTop: "40px" }}>Business Profile / Store Settings</h2>
+      <div className="page-header">
+        <h2 className="page-title">Settings</h2>
+        <p className="page-subtitle">Configure business profile, tax, receipt, and store preferences</p>
+      </div>
 
       {!editingBusiness ? (
         <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "20px", maxWidth: "480px", marginBottom: "16px" }}>
