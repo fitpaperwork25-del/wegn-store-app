@@ -270,6 +270,7 @@ function App() {
   const [eodItems, setEodItems] = useState<EodItem[]>([]);
   const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [printPo, setPrintPo] = useState<{ po: PurchaseOrder; items: POItem[]; supplierName: string } | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [posCustomerPhone, setPosCustomerPhone] = useState("");
   const [posCustomerId, setPosCustomerId] = useState<string | null>(null);
@@ -1018,63 +1019,70 @@ function App() {
     if (isConfirmingReceive) return;
     setIsConfirmingReceive(true);
 
-    for (const item of receivingItems) {
-      const receiveQty = Number(receiveQtys[item.id] ?? 0);
-      if (receiveQty <= 0) continue;
+    try {
+      for (const item of receivingItems) {
+        const receiveQty = Number(receiveQtys[item.id] ?? 0);
+        if (receiveQty <= 0) continue;
 
-      const product = products.find((p) => p.product_id === item.product_id);
-      if (!product) continue;
+        const product = products.find((p) => p.product_id === item.product_id);
+        if (!product) continue;
 
-      const quantityBefore = product.quantity_on_hand;
-      const quantityAfter = quantityBefore + receiveQty;
-      const oldAvgCost = product.average_cost ?? 0;
-      const newAvgCost = (quantityBefore + receiveQty) > 0
-        ? ((quantityBefore * oldAvgCost) + (receiveQty * item.unit_cost)) / (quantityBefore + receiveQty)
-        : item.unit_cost;
+        const quantityBefore = product.quantity_on_hand;
+        const quantityAfter = quantityBefore + receiveQty;
+        const oldAvgCost = product.average_cost ?? 0;
+        const newAvgCost = (quantityBefore + receiveQty) > 0
+          ? ((quantityBefore * oldAvgCost) + (receiveQty * item.unit_cost)) / (quantityBefore + receiveQty)
+          : item.unit_cost;
 
-      const { error: invError } = await supabase
-        .from("inventory")
-        .update({ quantity_on_hand: quantityAfter })
-        .eq("id", product.inventory_id);
+        const { error: invError } = await supabase
+          .from("inventory")
+          .update({ quantity_on_hand: quantityAfter })
+          .eq("id", product.inventory_id);
 
-      if (invError) { console.error(invError); continue; }
+        if (invError) { console.error(invError); continue; }
 
-      const { error: avgCostError } = await supabase
-        .from("products")
-        .update({ average_cost: newAvgCost })
-        .eq("id", item.product_id);
+        const { error: avgCostError } = await supabase
+          .from("products")
+          .update({ average_cost: newAvgCost })
+          .eq("id", item.product_id);
 
-      if (avgCostError) { console.error(avgCostError); }
+        if (avgCostError) { console.error(avgCostError); }
 
-      const { error: txError } = await supabase
-        .from("inventory_transactions")
-        .insert({
-          business_id: product.business_id,
-          product_id: item.product_id,
-          transaction_type: "receiving",
-          quantity_change: receiveQty,
-          quantity_before: quantityBefore,
-          quantity_after: quantityAfter,
-          reason: `PO ${po.po_number}`,
-        });
+        const { error: txError } = await supabase
+          .from("inventory_transactions")
+          .insert({
+            business_id: product.business_id,
+            product_id: item.product_id,
+            transaction_type: "receiving",
+            quantity_change: receiveQty,
+            quantity_before: quantityBefore,
+            quantity_after: quantityAfter,
+            reason: `PO ${po.po_number}`,
+          });
 
-      if (txError) { console.error(txError); }
+        if (txError) { console.error(txError); }
+      }
+
+      const { error: statusError } = await supabase
+        .from("purchase_orders")
+        .update({ status: "received" })
+        .eq("id", receivingPoId);
+
+      if (statusError) { console.error(statusError); setMessage({ text: "Failed to update PO status", type: "error" }); return; }
+
+      setReceivingPoId("");
+      setReceivingItems([]);
+      setReceiveQtys({});
+      setMessage({ text: `${po.po_number} received — inventory updated`, type: "success" });
+      await loadProducts();
+      await loadPurchaseOrders();
+      await loadTransactions();
+    } catch (err) {
+      console.error(err);
+      setMessage({ text: "Receive failed unexpectedly", type: "error" });
+    } finally {
+      setIsConfirmingReceive(false);
     }
-
-    const { error: statusError } = await supabase
-      .from("purchase_orders")
-      .update({ status: "received" })
-      .eq("id", receivingPoId);
-
-    if (statusError) { console.error(statusError); }
-
-    setIsConfirmingReceive(false);
-    setReceivingPoId("");
-    setReceivingItems([]);
-    setReceiveQtys({});
-    await loadProducts();
-    await loadPurchaseOrders();
-    await loadTransactions();
   }
 
   function handleBarcodeSubmit(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -1180,6 +1188,17 @@ function App() {
       pointsEarned: earnRow ? earnRow.points : undefined,
       pointsRedeemed: redeemRow ? Math.abs(redeemRow.points) : undefined,
     });
+  }
+
+  async function handlePrintPO(po: PurchaseOrder) {
+    const { data, error } = await supabase
+      .from("purchase_order_items")
+      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .eq("purchase_order_id", po.id)
+      .order("created_at", { ascending: true });
+    if (error || !data) { console.error(error); return; }
+    const supplierName = suppliers.find(s => s.id === po.supplier_id)?.name ?? "Unknown";
+    setPrintPo({ po, items: data as POItem[], supplierName });
   }
 
   async function handleVoidSale(saleId: string) {
@@ -3705,10 +3724,14 @@ function App() {
                     const isOrdered = po.status === "ordered";
                     const isCancelled = po.status === "cancelled";
                     const isReceived = po.status === "received";
+                    const isSelected = selectedPoId === po.id;
                     const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isCancelled ? "#e5e7eb" : "#dcfce7";
                     const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isCancelled ? "#6b7280" : "#15803d";
+                    const isDraftPO = isDraft;
+                    const productItemMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
                     return (
-                      <tr key={po.id} style={{ backgroundColor: isCancelled ? "#f9fafb" : selectedPoId === po.id ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
+                      <React.Fragment key={po.id}>
+                      <tr style={{ backgroundColor: isCancelled ? "#f9fafb" : isSelected ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
                         <td>{po.po_number}</td>
                         <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
                         <td><span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: badgeBg, color: badgeColor }}>{po.status === "ordered" ? "awaiting delivery" : po.status}</span></td>
@@ -3718,12 +3741,20 @@ function App() {
                         <td style={{ whiteSpace: "nowrap" }}>
                           {!isCancelled && !isReceived && (
                             <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px" }}>
-                              {selectedPoId === po.id ? "Close" : "View/Edit"}
+                              {isSelected ? "Close" : "View/Edit"}
                             </button>
                           )}
                           {isReceived && (
                             <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px" }}>
-                              {selectedPoId === po.id ? "Close" : "View"}
+                              {isSelected ? "Close" : "View"}
+                            </button>
+                          )}
+                          {(isDraft || isOrdered) && (
+                            <button
+                              onClick={() => handlePrintPO(po)}
+                              style={{ padding: "4px 10px", marginRight: "4px" }}
+                            >
+                              Print PO
                             </button>
                           )}
                           {isDraft && (
@@ -3760,6 +3791,159 @@ function App() {
                           )}
                         </td>
                       </tr>
+                      {isSelected && (
+                        <tr>
+                          <td colSpan={7} style={{ background: "#f9fafb", padding: "16px", border: "1px solid #c7d2fe" }}>
+                            <strong style={{ display: "block", marginBottom: "12px", color: "#1d4ed8" }}>
+                              PO Detail — {po.po_number}
+                              <span style={{
+                                marginLeft: "12px", fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
+                                background: isDraftPO ? "#fef3c7" : po.status === "cancelled" ? "#e5e7eb" : "#dcfce7",
+                                color: isDraftPO ? "#92400e" : po.status === "cancelled" ? "#6b7280" : "#15803d",
+                              }}>{po.status}</span>
+                            </strong>
+
+                            {isDraftPO && (
+                              <form
+                                onSubmit={handleAddPOItem}
+                                style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
+                              >
+                                <select
+                                  value={itemProductId}
+                                  onChange={(e) => setItemProductId(e.target.value)}
+                                  style={{ flex: "2 1 200px", padding: "8px" }}
+                                >
+                                  <option value="">Select product...</option>
+                                  {products.map((p) => (
+                                    <option key={p.product_id} value={p.product_id}>
+                                      {p.product_name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  placeholder="Quantity"
+                                  value={itemQuantity}
+                                  onChange={(e) => setItemQuantity(e.target.value)}
+                                  style={{ flex: "1 1 120px", padding: "8px" }}
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="Unit Cost"
+                                  value={itemUnitCost}
+                                  onChange={(e) => setItemUnitCost(e.target.value)}
+                                  style={{ flex: "1 1 120px", padding: "8px" }}
+                                />
+                                <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
+                                  Add Item
+                                </button>
+                              </form>
+                            )}
+
+                            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+                              <thead>
+                                <tr>
+                                  <th>Product</th>
+                                  <th>Quantity</th>
+                                  <th>Unit Cost</th>
+                                  <th>Line Total</th>
+                                  {isDraftPO && <th></th>}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {poItems.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={isDraftPO ? 5 : 4}>No items yet</td>
+                                  </tr>
+                                ) : (
+                                  poItems.map((item) => (
+                                    <tr key={item.id}>
+                                      <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
+                                      <td>{item.quantity}</td>
+                                      <td>${Number(item.unit_cost).toFixed(2)}</td>
+                                      <td>${Number(item.line_total).toFixed(2)}</td>
+                                      {isDraftPO && (
+                                        <td>
+                                          <button
+                                            onClick={() => handleRemovePOItem(item.id)}
+                                            style={{ padding: "2px 8px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px", cursor: "pointer" }}
+                                          >
+                                            ×
+                                          </button>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+
+                            {poItems.length > 0 && (
+                              <p style={{ textAlign: "right", fontWeight: "bold", marginTop: "8px" }}>
+                                Subtotal: ${poItems.reduce((sum, i) => sum + Number(i.line_total), 0).toFixed(2)}
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                      {receivingPoId === po.id && (
+                        <tr>
+                          <td colSpan={7} style={{ background: "#f0fdf4", padding: "16px", border: "2px solid #16a34a" }}>
+                            <strong style={{ display: "block", marginBottom: "12px", color: "#15803d" }}>
+                              Receive Inventory — {po.po_number}
+                            </strong>
+
+                            <table border={1} cellPadding={10} style={{ width: "100%", marginBottom: "16px" }}>
+                              <thead>
+                                <tr>
+                                  <th>Product</th>
+                                  <th>Ordered Qty</th>
+                                  <th>Receive Qty</th>
+                                  <th>Unit Cost</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {receivingItems.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4}>No line items on this PO</td>
+                                  </tr>
+                                ) : (
+                                  receivingItems.map((item) => (
+                                    <tr key={item.id}>
+                                      <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
+                                      <td>{item.quantity}</td>
+                                      <td>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={receiveQtys[item.id] ?? ""}
+                                          onChange={(e) =>
+                                            setReceiveQtys((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                          }
+                                          style={{ width: "80px", padding: "4px" }}
+                                        />
+                                      </td>
+                                      <td>${Number(item.unit_cost).toFixed(2)}</td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+
+                            <button
+                              onClick={handleConfirmReceive}
+                              disabled={receivingItems.length === 0 || isConfirmingReceive}
+                              style={{ padding: "10px 24px", background: "#16a34a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
+                            >
+                              {isConfirmingReceive ? "Processing…" : "Confirm Receive"}
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -3767,178 +3951,6 @@ function App() {
             </table>
           </div>
           </>
-        );
-      })()}
-
-      {selectedPoId && (() => {
-        const po = purchaseOrders.find((p) => p.id === selectedPoId);
-        const isDraftPO = po?.status === "draft";
-        const productMap = Object.fromEntries(
-          products.map((p) => [p.product_id, p.product_name])
-        );
-        return (
-          <div style={{ marginTop: "32px", padding: "20px", border: "1px solid #ccc", borderRadius: "8px", marginBottom: "32px" }}>
-            <h3 style={{ margin: "0 0 16px" }}>
-              PO Detail — {po?.po_number}
-              {po && (
-                <span style={{
-                  marginLeft: "12px", fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                  background: isDraftPO ? "#fef3c7" : po.status === "cancelled" ? "#e5e7eb" : "#dcfce7",
-                  color: isDraftPO ? "#92400e" : po.status === "cancelled" ? "#6b7280" : "#15803d",
-                }}>{po.status}</span>
-              )}
-            </h3>
-
-            {isDraftPO && (
-              <form
-                onSubmit={handleAddPOItem}
-                style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
-              >
-                <select
-                  value={itemProductId}
-                  onChange={(e) => setItemProductId(e.target.value)}
-                  style={{ flex: "2 1 200px", padding: "8px" }}
-                >
-                  <option value="">Select product...</option>
-                  {products.map((p) => (
-                    <option key={p.product_id} value={p.product_id}>
-                      {p.product_name}
-                    </option>
-                  ))}
-                </select>
-
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Quantity"
-                  value={itemQuantity}
-                  onChange={(e) => setItemQuantity(e.target.value)}
-                  style={{ flex: "1 1 120px", padding: "8px" }}
-                />
-
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Unit Cost"
-                  value={itemUnitCost}
-                  onChange={(e) => setItemUnitCost(e.target.value)}
-                  style={{ flex: "1 1 120px", padding: "8px" }}
-                />
-
-                <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-                  Add Item
-                </button>
-              </form>
-            )}
-
-            <div style={{ overflowX: "auto" }}>
-              <table border={1} cellPadding={10} style={{ width: "100%" }}>
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Quantity</th>
-                    <th>Unit Cost</th>
-                    <th>Line Total</th>
-                    {isDraftPO && <th></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {poItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={isDraftPO ? 5 : 4}>No items yet</td>
-                    </tr>
-                  ) : (
-                    poItems.map((item) => (
-                      <tr key={item.id}>
-                        <td>{productMap[item.product_id] ?? "Unknown"}</td>
-                        <td>{item.quantity}</td>
-                        <td>${Number(item.unit_cost).toFixed(2)}</td>
-                        <td>${Number(item.line_total).toFixed(2)}</td>
-                        {isDraftPO && (
-                          <td>
-                            <button
-                              onClick={() => handleRemovePOItem(item.id)}
-                              style={{ padding: "2px 8px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px", cursor: "pointer" }}
-                            >
-                              ×
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {poItems.length > 0 && (
-              <p style={{ textAlign: "right", fontWeight: "bold", marginTop: "8px" }}>
-                Subtotal: ${poItems.reduce((sum, i) => sum + Number(i.line_total), 0).toFixed(2)}
-              </p>
-            )}
-          </div>
-        );
-      })()}
-
-      {receivingPoId && (() => {
-        const po = purchaseOrders.find((p) => p.id === receivingPoId);
-        const productMap = Object.fromEntries(
-          products.map((p) => [p.product_id, p.product_name])
-        );
-        return (
-          <div style={{ marginTop: "32px", padding: "20px", border: "2px solid #16a34a", borderRadius: "8px", marginBottom: "32px" }}>
-            <h3 style={{ margin: "0 0 16px", color: "#15803d" }}>
-              Receive Inventory — {po?.po_number}
-            </h3>
-
-            <div style={{ overflowX: "auto", marginBottom: "16px" }}>
-              <table border={1} cellPadding={10} style={{ width: "100%" }}>
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Ordered Qty</th>
-                    <th>Receive Qty</th>
-                    <th>Unit Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {receivingItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={4}>No line items on this PO</td>
-                    </tr>
-                  ) : (
-                    receivingItems.map((item) => (
-                      <tr key={item.id}>
-                        <td>{productMap[item.product_id] ?? "Unknown"}</td>
-                        <td>{item.quantity}</td>
-                        <td>
-                          <input
-                            type="number"
-                            min="0"
-                            value={receiveQtys[item.id] ?? ""}
-                            onChange={(e) =>
-                              setReceiveQtys((prev) => ({ ...prev, [item.id]: e.target.value }))
-                            }
-                            style={{ width: "80px", padding: "4px" }}
-                          />
-                        </td>
-                        <td>${Number(item.unit_cost).toFixed(2)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <button
-              onClick={handleConfirmReceive}
-              disabled={receivingItems.length === 0 || isConfirmingReceive}
-              style={{ padding: "10px 24px", background: "#16a34a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
-            >
-              Confirm Receive
-            </button>
-          </div>
         );
       })()}
 
@@ -5251,13 +5263,107 @@ function App() {
 
       </div>{/* end settings */}
 
+      {printPo && (() => {
+        const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
+        const grandTotal = printPo.items.reduce((sum, i) => sum + Number(i.line_total), 0);
+        return (
+          <>
+            <style>{`
+              @media print {
+                .app-root > * { display: none !important; }
+                #po-print-modal { display: block !important; position: static !important; background: none !important; }
+                #po-print-content { box-shadow: none !important; margin: 0 !important; }
+                #po-print-actions { display: none !important; }
+              }
+            `}</style>
+            <div
+              id="po-print-modal"
+              style={{
+                position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+              }}
+              onClick={(e) => { if (e.target === e.currentTarget) setPrintPo(null); }}
+            >
+              <div
+                id="po-print-content"
+                style={{
+                  background: "#fff", padding: "32px", width: "560px", maxHeight: "90vh", overflowY: "auto",
+                  fontFamily: "sans-serif", fontSize: "14px", lineHeight: "1.6",
+                  boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
+                }}
+              >
+                <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                  <img src="/logo.png" alt="" style={{ height: "48px", width: "auto", maxWidth: "140px", objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                  {businessName && <div style={{ fontWeight: "bold", fontSize: "18px", marginTop: "4px" }}>{businessName}</div>}
+                  {businessAddress && <div style={{ fontSize: "12px", color: "#555" }}>{businessAddress}</div>}
+                  {businessPhone && <div style={{ fontSize: "12px", color: "#555" }}>{businessPhone}</div>}
+                </div>
+
+                <div style={{ borderTop: "2px solid #333", borderBottom: "1px solid #ddd", padding: "12px 0", marginBottom: "16px" }}>
+                  <div style={{ fontWeight: "bold", fontSize: "16px", marginBottom: "8px" }}>PURCHASE ORDER</div>
+                  <div style={{ display: "flex", gap: "32px", flexWrap: "wrap", fontSize: "13px" }}>
+                    <div><strong>PO Number:</strong> {printPo.po.po_number}</div>
+                    <div><strong>Date:</strong> {new Date(printPo.po.created_at).toLocaleDateString()}</div>
+                    <div><strong>Status:</strong> {printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status}</div>
+                  </div>
+                  <div style={{ fontSize: "13px", marginTop: "4px" }}>
+                    <strong>Supplier:</strong> {printPo.supplierName}
+                  </div>
+                  {printPo.po.notes && (
+                    <div style={{ fontSize: "13px", marginTop: "4px", color: "#555" }}>
+                      <strong>Notes:</strong> {printPo.po.notes}
+                    </div>
+                  )}
+                </div>
+
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", marginBottom: "16px" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #333" }}>
+                      <th style={{ textAlign: "left", padding: "8px 4px" }}>Product</th>
+                      <th style={{ textAlign: "right", padding: "8px 4px" }}>Qty</th>
+                      <th style={{ textAlign: "right", padding: "8px 4px" }}>Unit Cost</th>
+                      <th style={{ textAlign: "right", padding: "8px 4px" }}>Line Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {printPo.items.map((item, i) => (
+                      <tr key={item.id} style={{ borderBottom: "1px solid #eee", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <td style={{ padding: "6px 4px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
+                        <td style={{ padding: "6px 4px", textAlign: "right" }}>{item.quantity}</td>
+                        <td style={{ padding: "6px 4px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
+                        <td style={{ padding: "6px 4px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: "2px solid #333" }}>
+                      <td colSpan={3} style={{ padding: "8px 4px", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>Grand Total</td>
+                      <td style={{ padding: "8px 4px", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>${grandTotal.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <div id="po-print-actions" style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                  <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>
+                    Print
+                  </button>
+                  <button onClick={() => setPrintPo(null)} style={{ padding: "8px 20px", cursor: "pointer" }}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       {receipt && (() => {
         const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
         return (
           <>
             <style>{`
               @media print {
-                body > * { display: none !important; }
+                .app-root > * { display: none !important; }
                 #receipt-modal { display: block !important; position: static !important; background: none !important; }
                 #receipt-print { box-shadow: none !important; margin: 0 !important; }
                 #receipt-actions { display: none !important; }
