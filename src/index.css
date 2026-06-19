@@ -136,13 +136,14 @@ code {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  gap: 16px;
 }
 
 /* Desktop logo — larger and prominent */
 .app-logo {
-  height: 96px;
+  height: 150px;
   width: auto;
-  max-width: 280px;
+  max-width: 200px;
   object-fit: contain;
   display: block;
 }
@@ -161,12 +162,37 @@ code {
   flex-shrink: 0;
 }
 
-/* Nav — horizontal on desktop */
+/* Nav — horizontal on desktop, subtle pill tray */
 .app-nav {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+/* Brand text beside logo */
+.app-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+}
+.app-brand-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.15;
+  letter-spacing: -0.3px;
+}
+.app-brand-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
 }
 
 /* Dashboard stat cards grid */
@@ -191,6 +217,13 @@ code {
   .app-logo {
     height: 48px;
     max-width: 160px;
+  }
+
+  .app-brand-name {
+    font-size: 15px;
+  }
+  .app-brand-sub {
+    display: none;
   }
 
   /* Show hamburger */
@@ -241,6 +274,10 @@ code {
   .app-logo {
     height: 40px;
     max-width: 130px;
+  }
+
+  .app-brand-text {
+    display: none;
   }
 
   /* Cards: 1 per row on mobile */
@@ -377,3 +414,114 @@ code {
 .sh-btn-print  { background: #fff; border: 1px solid #cbd5e1; color: #475569; }
 .sh-btn-void   { background: #fff; border: 1px solid #fca5a5; color: #b91c1c; }
 .sh-btn-return { background: #fff; border: 1px solid #c4b5fd; color: #7c3aed; }
+
+/* ─────────────────────────────────────────────
+   Inventory table
+   ───────────────────────────────────────────── */
+
+.inv-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 32px;
+}
+
+.inv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.inv-table th {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+}
+.inv-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.inv-table tbody tr:hover td {
+  background: #eff6ff;
+}
+.inv-row-inactive td {
+  color: #9ca3af;
+  background: #fafafa;
+}
+.inv-edit-row td {
+  padding: 0 !important;
+  border-bottom: 2px solid #e2e8f0;
+}
+.inv-edit-row td > * {
+  padding: 16px;
+}
+
+/* Inventory badges */
+.inv-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.inv-badge-success { background: #dcfce7; color: #15803d; }
+.inv-badge-warning { background: #fef3c7; color: #92400e; }
+.inv-badge-danger  { background: #fee2e2; color: #b91c1c; }
+.inv-badge-muted   { background: #f1f5f9; color: #64748b; }
+
+/* ── Mobile inventory: card layout ≤ 640px ── */
+@media (max-width: 640px) {
+  .inv-table thead {
+    display: none;
+  }
+  .inv-table,
+  .inv-table tbody,
+  .inv-table tr,
+  .inv-table td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .inv-table tbody tr {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .inv-table tbody tr:hover td {
+    background: transparent;
+  }
+  .inv-table td {
+    padding: 4px 0;
+    border-bottom: none;
+    text-align: right !important;
+  }
+  .inv-table td::before {
+    content: attr(data-label);
+    float: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .inv-edit-row,
+  .inv-edit-row td {
+    display: block;
+    width: 100%;
+  }
+  .inv-edit-row td {
+    text-align: left !important;
+  }
+  .inv-edit-row td::before {
+    display: none;
+  }
+}

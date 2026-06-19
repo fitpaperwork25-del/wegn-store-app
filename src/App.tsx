@@ -1939,10 +1939,14 @@ function App() {
         <div className="app-header-brand">
           <img
             src="/logo.png"
-            alt="Wegn-Store"
+            alt="Dilla Market"
             className="app-logo"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
           />
+          <div className="app-brand-text">
+            <span className="app-brand-name">Dilla Market</span>
+            <span className="app-brand-sub">Store Management Platform</span>
+          </div>
         </div>
         <button
           className="hamburger-btn"
@@ -2711,54 +2715,78 @@ function App() {
 
       <h2 style={{ marginTop: "40px" }}>Products & Stock</h2>
 
-      <div style={{ overflowX: "auto" }}>
-        <table border={1} cellPadding={10} style={{ width: "100%" }}>
+      {/* ── Inventory Summary Cards ── */}
+      {(() => {
+        const totalProducts = products.length;
+        const lowStockItems = products.filter(p => p.status === 'active' && p.quantity_on_hand < p.reorder_level).length;
+        const inventoryValue = products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
+        const activeSupplierCount = suppliers.filter(s => s.status === 'active').length;
+        const summaryCard = (accent: string): React.CSSProperties => ({
+          padding: "16px 20px", background: "#fff", border: "1px solid #e2e8f0",
+          borderLeft: `4px solid ${accent}`, borderRadius: "8px",
+          minWidth: "140px", flex: "1 1 140px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        });
+        return (
+          <div className="dash-card-row" style={{ marginBottom: "24px" }}>
+            <div style={summaryCard("#1d4ed8")}>
+              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Total Products</div>
+              <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{totalProducts}</div>
+            </div>
+            <div style={summaryCard(lowStockItems > 0 ? "#dc2626" : "#16a34a")}>
+              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Low Stock Items</div>
+              <div style={{ fontSize: "26px", fontWeight: "bold", color: lowStockItems > 0 ? "#dc2626" : "#0f172a" }}>{lowStockItems}</div>
+            </div>
+            <div style={summaryCard("#16a34a")}>
+              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Inventory Value</div>
+              <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>${inventoryValue.toFixed(2)}</div>
+            </div>
+            <div style={summaryCard("#7c3aed")}>
+              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Active Suppliers</div>
+              <div style={{ fontSize: "26px", fontWeight: "bold", color: "#0f172a" }}>{activeSupplierCount}</div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Desktop table / Mobile cards ── */}
+      <div className="inv-table-wrap">
+        <table className="inv-table">
           <thead>
             <tr>
-              <th>Product</th>
-              <th>SKU</th>
-              <th>Barcode</th>
-              <th>Price</th>
-              <th>Stock</th>
-              <th>Reorder Level</th>
-              <th>Alert</th>
+              <th style={{ textAlign: "left" }}>Product</th>
+              <th style={{ textAlign: "left" }}>SKU</th>
+              <th style={{ textAlign: "right" }}>Price</th>
+              <th style={{ textAlign: "right" }}>Stock</th>
               <th>Status</th>
-              <th>Avg Cost</th>
-              <th>Inventory Value</th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
             {products.map((product) => {
-              const isLowStock = product.quantity_on_hand < product.reorder_level;
+              const isLowStock = product.status === 'active' && product.quantity_on_hand < product.reorder_level;
+              const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
               const inactive = product.status !== "active";
               const isEditing = editingProductId === product.product_id;
               return (
                 <React.Fragment key={product.product_id}>
-                  <tr style={{
-                    backgroundColor: inactive ? "#f5f5f5" : isLowStock ? "#ffe5e5" : "inherit",
-                    color: inactive ? "#999" : "inherit",
-                  }}>
-                    <td>{product.product_name}</td>
-                    <td>{product.sku ?? "—"}</td>
-                    <td>{product.barcode ?? "—"}</td>
-                    <td>${product.selling_price.toFixed(2)}</td>
-                    <td>{product.quantity_on_hand}</td>
-                    <td>{product.reorder_level}</td>
-                    <td style={{ color: !inactive && isLowStock ? "red" : "inherit", fontWeight: !inactive && isLowStock ? "bold" : "normal" }}>
-                      {inactive ? "—" : isLowStock ? "LOW STOCK" : "OK"}
+                  <tr className={inactive ? "inv-row-inactive" : ""}>
+                    <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
+                    <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
+                    <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
+                    <td data-label="Stock" style={{ textAlign: "right" }}>
+                      <span style={{ fontWeight: 500 }}>{product.quantity_on_hand}</span>
+                      {!inactive && isOutOfStock && (
+                        <span className="inv-badge inv-badge-danger" style={{ marginLeft: "8px" }}>Out of Stock</span>
+                      )}
+                      {!inactive && isLowStock && !isOutOfStock && (
+                        <span className="inv-badge inv-badge-warning" style={{ marginLeft: "8px" }}>Low Stock</span>
+                      )}
                     </td>
-                    <td>
-                      <span style={{
-                        fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                        background: inactive ? "#e5e7eb" : "#dcfce7",
-                        color: inactive ? "#6b7280" : "#15803d",
-                      }}>{product.status}</span>
+                    <td data-label="Status" style={{ textAlign: "center" }}>
+                      <span className={`inv-badge ${inactive ? "inv-badge-muted" : "inv-badge-success"}`}>{product.status}</span>
                     </td>
-                    <td>${product.average_cost.toFixed(2)}</td>
-                    <td>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td data-label="Actions" style={{ whiteSpace: "nowrap" }}>
                       <button
                         onClick={() => {
                           if (isEditing) { setEditingProductId(null); return; }
@@ -2769,17 +2797,18 @@ function App() {
                           setEditProdPrice(product.selling_price.toString());
                           setEditProdReorder(product.reorder_level.toString());
                         }}
-                        style={{ marginRight: "6px", padding: "4px 10px", cursor: "pointer" }}
+                        className="sh-btn sh-btn-print"
                       >{isEditing ? "Cancel" : "Edit"}</button>
                       <button
                         onClick={() => handleToggleProductStatus(product)}
-                        style={{ padding: "4px 10px", cursor: "pointer" }}
+                        className={`sh-btn ${inactive ? "sh-btn-return" : "sh-btn-void"}`}
+                        style={{ marginLeft: "6px" }}
                       >{inactive ? "Activate" : "Deactivate"}</button>
                     </td>
                   </tr>
                   {isEditing && (
-                    <tr>
-                      <td colSpan={11} style={{ background: "#f9fafb", padding: "16px" }}>
+                    <tr className="inv-edit-row">
+                      <td colSpan={6} style={{ background: "#f9fafb", padding: "16px" }}>
                         <form onSubmit={(e) => handleEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
                           <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Product — {product.product_name}</strong>
                           <input
@@ -2822,6 +2851,12 @@ function App() {
                             min="0"
                             style={{ flex: "1 1 110px", padding: "7px" }}
                           />
+                          <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
+                            <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${product.average_cost.toFixed(2)}</strong></span>
+                            <span>Inventory Value: <strong style={{ color: "#0f172a" }}>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</strong></span>
+                            <span>Reorder Level: <strong style={{ color: "#0f172a" }}>{product.reorder_level}</strong></span>
+                            <span>Barcode: <strong style={{ color: "#0f172a" }}>{product.barcode ?? "—"}</strong></span>
+                          </div>
                           <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
                           <button type="button" onClick={() => setEditingProductId(null)} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
                         </form>
