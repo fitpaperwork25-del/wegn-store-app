@@ -217,6 +217,7 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [poStatusFilter, setPoStatusFilter] = useState<"all" | "draft" | "ordered" | "received" | "cancelled">("all");
   const [selectedPoId, setSelectedPoId] = useState("");
   const [poItems, setPoItems] = useState<POItem[]>([]);
   const [itemProductId, setItemProductId] = useState("");
@@ -1521,6 +1522,16 @@ function App() {
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
     if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); }
     setMessage({ text: `PO ${po.po_number} cancelled`, type: "success" });
+    await loadPurchaseOrders();
+  }
+
+  async function handleMarkOrdered(po: PurchaseOrder) {
+    const { error } = await supabase
+      .from("purchase_orders")
+      .update({ status: "ordered" })
+      .eq("id", po.id);
+    if (error) { console.error(error); setMessage({ text: "Failed to mark as ordered: " + error.message, type: "error" }); return; }
+    setMessage({ text: `PO ${po.po_number} marked as ordered`, type: "success" });
     await loadPurchaseOrders();
   }
 
@@ -3544,10 +3555,51 @@ function App() {
       </form>
 
       {(() => {
+        const counts = {
+          all: purchaseOrders.length,
+          draft: purchaseOrders.filter(po => po.status === "draft").length,
+          ordered: purchaseOrders.filter(po => po.status === "ordered").length,
+          received: purchaseOrders.filter(po => po.status === "received").length,
+          cancelled: purchaseOrders.filter(po => po.status === "cancelled").length,
+        };
+        const chips: { key: typeof poStatusFilter; label: string }[] = [
+          { key: "all", label: "All" },
+          { key: "draft", label: "Draft" },
+          { key: "ordered", label: "Awaiting Delivery" },
+          { key: "received", label: "Received" },
+          { key: "cancelled", label: "Cancelled" },
+        ];
+        const filteredPOs = poStatusFilter === "all"
+          ? purchaseOrders
+          : purchaseOrders.filter(po => po.status === poStatusFilter);
         const supplierMap = Object.fromEntries(
           suppliers.map((supplier) => [supplier.id, supplier.name])
         );
         return (
+          <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
+            {chips.map(chip => {
+              const active = poStatusFilter === chip.key;
+              return (
+                <button
+                  key={chip.key}
+                  onClick={() => setPoStatusFilter(chip.key)}
+                  style={{
+                    padding: "6px 16px",
+                    borderRadius: "20px",
+                    border: active ? "2px solid #1d4ed8" : "1px solid #d1d5db",
+                    background: active ? "#dbeafe" : "#f9fafb",
+                    color: active ? "#1d4ed8" : "#374151",
+                    fontWeight: active ? 600 : 400,
+                    cursor: "pointer",
+                    fontSize: "13px",
+                  }}
+                >
+                  {chip.label} ({counts[chip.key]})
+                </button>
+              );
+            })}
+          </div>
           <div style={{ overflowX: "auto", marginBottom: "40px" }}>
             <table border={1} cellPadding={10} style={{ width: "100%" }}>
               <thead>
@@ -3562,34 +3614,46 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {purchaseOrders.length === 0 ? (
+                {filteredPOs.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>No purchase orders found</td>
+                    <td colSpan={7}>{poStatusFilter === "all" ? "No purchase orders found" : `No ${poStatusFilter} purchase orders`}</td>
                   </tr>
                 ) : (
-                  purchaseOrders.map((po) => {
+                  filteredPOs.map((po) => {
                     const isDraft = po.status === "draft";
+                    const isOrdered = po.status === "ordered";
                     const isCancelled = po.status === "cancelled";
-                    const badgeStyle: React.CSSProperties = {
-                      fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                      background: isDraft ? "#fef3c7" : isCancelled ? "#e5e7eb" : "#dcfce7",
-                      color: isDraft ? "#92400e" : isCancelled ? "#6b7280" : "#15803d",
-                    };
+                    const isReceived = po.status === "received";
+                    const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isCancelled ? "#e5e7eb" : "#dcfce7";
+                    const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isCancelled ? "#6b7280" : "#15803d";
                     return (
                       <tr key={po.id} style={{ backgroundColor: isCancelled ? "#f9fafb" : selectedPoId === po.id ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
                         <td>{po.po_number}</td>
                         <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
-                        <td><span style={badgeStyle}>{po.status}</span></td>
+                        <td><span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: badgeBg, color: badgeColor }}>{po.status === "ordered" ? "awaiting delivery" : po.status}</span></td>
                         <td>${Number(po.subtotal ?? 0).toFixed(2)}</td>
                         <td>{po.notes || "-"}</td>
                         <td>{new Date(po.created_at).toLocaleString()}</td>
                         <td style={{ whiteSpace: "nowrap" }}>
-                          {!isCancelled && (
+                          {!isCancelled && !isReceived && (
                             <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px" }}>
                               {selectedPoId === po.id ? "Close" : "View/Edit"}
                             </button>
                           )}
+                          {isReceived && (
+                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px" }}>
+                              {selectedPoId === po.id ? "Close" : "View"}
+                            </button>
+                          )}
                           {isDraft && (
+                            <button
+                              onClick={() => handleMarkOrdered(po)}
+                              style={{ padding: "4px 10px", marginRight: "4px", background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd", borderRadius: "4px" }}
+                            >
+                              Mark Ordered
+                            </button>
+                          )}
+                          {(isDraft || isOrdered) && (
                             <button
                               onClick={() => handleOpenReceive(po)}
                               style={{ padding: "4px 10px", marginRight: "4px", background: receivingPoId === po.id ? "#d1fae5" : undefined }}
@@ -3621,6 +3685,7 @@ function App() {
               </tbody>
             </table>
           </div>
+          </>
         );
       })()}
 
