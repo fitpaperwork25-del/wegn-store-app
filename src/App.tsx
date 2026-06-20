@@ -421,6 +421,7 @@ function App() {
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [posRedeemPoints, setPosRedeemPoints] = useState("");
   const [analyticsRange, setAnalyticsRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
+  const [allReturnItems, setAllReturnItems] = useState<{ sale_id: string; product_id: string; quantity_returned: number }[]>([]);
   const [allPayments, setAllPayments] = useState<EodPayment[]>([]);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editSupName, setEditSupName] = useState("");
@@ -469,6 +470,7 @@ function App() {
     loadAllPayments();
     loadCustomers();
     loadLoyaltyTransactions();
+    loadAllReturnItems();
     loadDrawerSession();
     loadEmployees();
     loadStockCounts();
@@ -639,6 +641,7 @@ function App() {
     await loadTransactions();
     await loadSales();
     await loadLoyaltyTransactions();
+    await loadAllReturnItems();
   }
 
   function handleStartCount() {
@@ -915,6 +918,13 @@ function App() {
       .select('id, customer_id, sale_id, points, type, created_at')
       .order('created_at', { ascending: false });
     setLoyaltyTransactions((data as LoyaltyTransaction[]) ?? []);
+  }
+
+  async function loadAllReturnItems() {
+    const { data } = await supabase
+      .from('return_items')
+      .select('sale_id, product_id, quantity_returned');
+    setAllReturnItems((data as { sale_id: string; product_id: string; quantity_returned: number }[]) ?? []);
   }
 
   function handleLookupCustomer() {
@@ -5246,84 +5256,188 @@ function App() {
         );
       })()}
 
-      {/* 5. Profit / Gross Margin Report */}
-      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Profit / Gross Margin</h3>
-      <p style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>
-        Approximate profit based on current average cost
-      </p>
+      {/* 5. Profit Reporting v1 */}
+      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Profit Report</h3>
       {(() => {
-        const completedSaleIds = new Set(sales.filter(s => s.status === "completed").map(s => s.id));
-        const completedItems = saleItems.filter(si => completedSaleIds.has(si.sale_id));
-        const productMap = Object.fromEntries(products.map(p => [p.product_id, p]));
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const profitRangeStart: Date | null =
+          analyticsRange === 'today' ? startOfDay :
+          analyticsRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
+          analyticsRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
+          null;
 
-        let totalRevenue = 0;
-        let totalCogs = 0;
+        const eligibleSales = sales.filter(s =>
+          (s.status === 'completed' || s.status === 'returned') &&
+          (profitRangeStart === null || new Date(s.created_at) >= profitRangeStart)
+        );
+        const eligibleSaleIds = new Set(eligibleSales.map(s => s.id));
 
-        const byProduct: Record<string, { name: string; units: number; revenue: number; cogs: number }> = {};
-        for (const si of completedItems) {
-          const product = productMap[si.product_id];
-          const cost = product ? product.average_cost * si.quantity : 0;
-          totalRevenue += si.line_total;
-          totalCogs += cost;
-          if (!byProduct[si.product_id]) {
-            byProduct[si.product_id] = { name: product?.product_name ?? si.product_id, units: 0, revenue: 0, cogs: 0 };
-          }
-          byProduct[si.product_id].units += si.quantity;
-          byProduct[si.product_id].revenue += si.line_total;
-          byProduct[si.product_id].cogs += cost;
+        const periodItems = saleItems.filter(si => eligibleSaleIds.has(si.sale_id));
+
+        const returnMap: Record<string, number> = {};
+        for (const ri of allReturnItems) {
+          if (!eligibleSaleIds.has(ri.sale_id)) continue;
+          const key = `${ri.sale_id}::${ri.product_id}`;
+          returnMap[key] = (returnMap[key] ?? 0) + ri.quantity_returned;
         }
 
-        const grossProfit = totalRevenue - totalCogs;
-        const marginPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+        const productMap = Object.fromEntries(products.map(p => [p.product_id, p]));
+
+        let grossSales = 0;
+        let totalDiscounts = 0;
+        let totalReturns = 0;
+        let totalCogs = 0;
+
+        const byProduct: Record<string, { name: string; soldUnits: number; returnedUnits: number; grossRev: number; returnedRev: number; cogs: number }> = {};
+
+        for (const si of periodItems) {
+          const product = productMap[si.product_id];
+          const avgCost = product?.average_cost ?? 0;
+          const unitPrice = si.unit_price;
+          const returnKey = `${si.sale_id}::${si.product_id}`;
+          const returnedQty = returnMap[returnKey] ?? 0;
+          const netQty = si.quantity - returnedQty;
+          const returnedRev = returnedQty * unitPrice;
+
+          grossSales += si.line_total;
+          totalReturns += returnedRev;
+          totalCogs += netQty * avgCost;
+
+          if (!byProduct[si.product_id]) {
+            byProduct[si.product_id] = { name: product?.product_name ?? si.product_id, soldUnits: 0, returnedUnits: 0, grossRev: 0, returnedRev: 0, cogs: 0 };
+          }
+          byProduct[si.product_id].soldUnits += si.quantity;
+          byProduct[si.product_id].returnedUnits += returnedQty;
+          byProduct[si.product_id].grossRev += si.line_total;
+          byProduct[si.product_id].returnedRev += returnedRev;
+          byProduct[si.product_id].cogs += netQty * avgCost;
+        }
+
+        for (const s of eligibleSales) {
+          totalDiscounts += Number(s.discount_amount);
+        }
+
+        const netSales = grossSales - totalDiscounts - totalReturns;
+        const grossProfit = netSales - totalCogs;
+        const grossMargin = netSales > 0 ? (grossProfit / netSales) * 100 : 0;
+
+        const productRows = Object.entries(byProduct).map(([pid, row]) => {
+          const netRev = row.grossRev - row.returnedRev;
+          const gp = netRev - row.cogs;
+          const margin = netRev > 0 ? (gp / netRev) * 100 : 0;
+          return { pid, ...row, netRev, gp, margin };
+        });
+        const topProfit = [...productRows].sort((a, b) => b.gp - a.gp).slice(0, 10);
+        const lowestMargin = [...productRows].filter(r => r.netRev > 0).sort((a, b) => a.margin - b.margin).slice(0, 10);
+
+        const rangeLabel = analyticsRange === 'today' ? 'Today' : analyticsRange === '7d' ? 'Last 7 Days' : analyticsRange === '30d' ? 'Last 30 Days' : 'All Time';
 
         return (
           <>
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
+              {(['today', '7d', '30d', 'all'] as const).map(r => {
+                const label = r === 'today' ? 'Today' : r === '7d' ? 'Last 7 Days' : r === '30d' ? 'Last 30 Days' : 'All Time';
+                const active = analyticsRange === r;
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setAnalyticsRange(r)}
+                    style={{
+                      padding: "7px 18px", cursor: "pointer", borderRadius: "6px", fontWeight: active ? "bold" : "normal",
+                      background: active ? "#1d4ed8" : "#fff", color: active ? "#fff" : "#333",
+                      border: active ? "1px solid #1d4ed8" : "1px solid #ccc",
+                    }}
+                  >{label}</button>
+                );
+              })}
+            </div>
+
+            {/* P&L Summary Cards */}
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "28px" }}>
               {[
-                { label: "Total Revenue", value: `$${totalRevenue.toFixed(2)}` },
-                { label: "Total COGS", value: `$${totalCogs.toFixed(2)}` },
-                { label: "Gross Profit", value: `$${grossProfit.toFixed(2)}` },
-                { label: "Gross Margin %", value: `${marginPct.toFixed(1)}%` },
+                { label: "Gross Sales", value: `$${grossSales.toFixed(2)}`, color: "#1d4ed8" },
+                { label: "Discounts", value: `−$${totalDiscounts.toFixed(2)}`, color: totalDiscounts > 0 ? "#b45309" : "#888" },
+                { label: "Returns", value: `−$${totalReturns.toFixed(2)}`, color: totalReturns > 0 ? "#dc2626" : "#888" },
+                { label: "Net Sales", value: `$${netSales.toFixed(2)}`, color: "#0f172a" },
+                { label: "COGS", value: `$${totalCogs.toFixed(2)}`, color: "#6b7280" },
+                { label: "Gross Profit", value: `$${grossProfit.toFixed(2)}`, color: grossProfit >= 0 ? "#15803d" : "#dc2626" },
+                { label: "Gross Margin", value: `${grossMargin.toFixed(1)}%`, color: grossMargin >= 20 ? "#15803d" : grossMargin >= 0 ? "#b45309" : "#dc2626" },
               ].map(card => (
-                <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "16px", minWidth: "160px", flex: 1 }}>
-                  <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
-                  <div style={{ fontSize: "24px", fontWeight: "bold" }}>{card.value}</div>
+                <div key={card.label} style={{ border: "1px solid #e5e7eb", borderRadius: "8px", padding: "14px 18px", minWidth: "130px", flex: 1 }}>
+                  <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
+                  <div style={{ fontSize: "22px", fontWeight: "bold", color: card.color, marginTop: "4px" }}>{card.value}</div>
                 </div>
               ))}
             </div>
-            <div style={{ overflowX: "auto" }}>
-              <table border={1} cellPadding={10} style={{ width: "100%" }}>
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Units Sold</th>
-                    <th>Revenue</th>
-                    <th>COGS</th>
-                    <th>Gross Profit</th>
-                    <th>Margin %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(byProduct).length === 0 ? (
-                    <tr><td colSpan={6}>No completed sales data</td></tr>
-                  ) : (
-                    Object.entries(byProduct).map(([pid, row]) => {
-                      const gp = row.revenue - row.cogs;
-                      const mp = row.revenue > 0 ? (gp / row.revenue) * 100 : 0;
-                      return (
-                        <tr key={pid}>
-                          <td>{row.name}</td>
-                          <td>{row.units}</td>
-                          <td>${row.revenue.toFixed(2)}</td>
-                          <td>${row.cogs.toFixed(2)}</td>
-                          <td>${gp.toFixed(2)}</td>
-                          <td>{mp.toFixed(1)}%</td>
+
+            <div style={{ display: "flex", gap: "32px", flexWrap: "wrap", alignItems: "flex-start" }}>
+              {/* Top Profit Products */}
+              <div style={{ flex: 1, minWidth: "320px" }}>
+                <h4 style={{ marginBottom: "8px" }}>Top Profit Products — {rangeLabel}</h4>
+                {topProfit.length === 0 ? (
+                  <p style={{ color: "#888", fontSize: "14px" }}>No sales data for this period.</p>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+                      <thead>
+                        <tr><th>#</th><th>Product</th><th>Net Units</th><th>Net Revenue</th><th>COGS</th><th>Profit</th><th>Margin</th></tr>
+                      </thead>
+                      <tbody>
+                        {topProfit.map((row, i) => (
+                          <tr key={row.pid}>
+                            <td>{i + 1}</td>
+                            <td>{row.name}</td>
+                            <td>{row.soldUnits - row.returnedUnits}</td>
+                            <td>${row.netRev.toFixed(2)}</td>
+                            <td>${row.cogs.toFixed(2)}</td>
+                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>${row.gp.toFixed(2)}</td>
+                            <td>{row.margin.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
+                          <td colSpan={3}>Top 10 Total</td>
+                          <td>${topProfit.reduce((s, r) => s + r.netRev, 0).toFixed(2)}</td>
+                          <td>${topProfit.reduce((s, r) => s + r.cogs, 0).toFixed(2)}</td>
+                          <td style={{ color: "#15803d" }}>${topProfit.reduce((s, r) => s + r.gp, 0).toFixed(2)}</td>
+                          <td></td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Lowest Margin Products */}
+              <div style={{ flex: 1, minWidth: "320px" }}>
+                <h4 style={{ marginBottom: "8px" }}>Lowest Margin Products — {rangeLabel}</h4>
+                {lowestMargin.length === 0 ? (
+                  <p style={{ color: "#888", fontSize: "14px" }}>No sales data for this period.</p>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+                      <thead>
+                        <tr><th>#</th><th>Product</th><th>Net Units</th><th>Net Revenue</th><th>COGS</th><th>Profit</th><th>Margin</th></tr>
+                      </thead>
+                      <tbody>
+                        {lowestMargin.map((row, i) => (
+                          <tr key={row.pid} style={{ background: row.margin < 20 ? "#fef2f2" : undefined }}>
+                            <td>{i + 1}</td>
+                            <td>{row.name}</td>
+                            <td>{row.soldUnits - row.returnedUnits}</td>
+                            <td>${row.netRev.toFixed(2)}</td>
+                            <td>${row.cogs.toFixed(2)}</td>
+                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>${row.gp.toFixed(2)}</td>
+                            <td style={{ color: row.margin < 20 ? "#dc2626" : "#b45309", fontWeight: "bold" }}>{row.margin.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         );
