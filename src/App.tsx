@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "./supabase";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 
 type Transaction = {
   id: string;
@@ -288,6 +290,57 @@ function App() {
     const sigs = getPoSignatures(poId);
     delete sigs[role];
     localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
+  }
+
+  function getPoEmailLog(poId: string): { lastEmailedAt: string; count: number } | null {
+    try { const v = localStorage.getItem(`po-email-${poId}`); return v ? JSON.parse(v) : null; } catch { return null; }
+  }
+  function savePoEmailLog(poId: string) {
+    const prev = getPoEmailLog(poId);
+    localStorage.setItem(`po-email-${poId}`, JSON.stringify({ lastEmailedAt: new Date().toISOString(), count: (prev?.count ?? 0) + 1 }));
+  }
+
+  async function handleEmailPO(po: PurchaseOrder) {
+    const supplier = suppliers.find(s => s.id === po.supplier_id);
+    if (!supplier?.email) { setMessage({ text: "Supplier email not configured.", type: "error" }); return; }
+
+    const { data, error } = await supabase
+      .from("purchase_order_items")
+      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .eq("purchase_order_id", po.id)
+      .order("created_at", { ascending: true });
+    if (error || !data) { console.error(error); setMessage({ text: "Failed to load PO items", type: "error" }); return; }
+
+    setPrintPo({ po, items: data as POItem[], supplier });
+
+    setTimeout(async () => {
+      const el = document.getElementById("po-print-content");
+      if (!el) { setMessage({ text: "Failed to render PO", type: "error" }); return; }
+
+      const actionsEl = document.getElementById("po-print-actions");
+      if (actionsEl) actionsEl.style.display = "none";
+
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#fff" });
+
+      if (actionsEl) actionsEl.style.display = "";
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "letter");
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = (canvas.height * pdfW) / canvas.width;
+      pdf.addImage(imgData, "PNG", 0, 0, pdfW, Math.min(pdfH, pdf.internal.pageSize.getHeight()));
+      pdf.save(`${po.po_number}.pdf`);
+
+      const subject = encodeURIComponent(`Purchase Order ${po.po_number}`);
+      const body = encodeURIComponent(
+        `Hello ${supplier.name},\n\nPlease find attached Purchase Order ${po.po_number}.\n\nPlease review and confirm receipt.\n\nThank you,\n${businessName || "Management"}`
+      );
+      window.open(`mailto:${supplier.email}?subject=${subject}&body=${body}`, "_self");
+
+      savePoEmailLog(po.id);
+      setMessage({ text: `PDF downloaded and email draft opened for ${po.po_number}`, type: "success" });
+      setPrintPo(null);
+    }, 800);
   }
 
   const initSigCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
@@ -3787,7 +3840,14 @@ function App() {
                       <tr style={{ backgroundColor: isCancelled ? "#f9fafb" : isSelected ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
                         <td>{po.po_number}</td>
                         <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
-                        <td><span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: badgeBg, color: badgeColor }}>{po.status === "ordered" ? "awaiting delivery" : po.status}</span></td>
+                        <td>
+                          <span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: badgeBg, color: badgeColor }}>{po.status === "ordered" ? "awaiting delivery" : po.status}</span>
+                          {(() => { const log = getPoEmailLog(po.id); return log ? (
+                            <span style={{ fontSize: "10px", fontWeight: "bold", padding: "2px 6px", borderRadius: "10px", background: "#dbeafe", color: "#1e40af", marginLeft: "6px" }} title={`Emailed ${new Date(log.lastEmailedAt).toLocaleString()}`}>emailed</span>
+                          ) : (isDraft || isOrdered) ? (
+                            <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "10px", background: "#f1f5f9", color: "#94a3b8", marginLeft: "6px" }}>not sent</span>
+                          ) : null; })()}
+                        </td>
                         <td>${Number(po.subtotal ?? 0).toFixed(2)}</td>
                         <td>{po.notes || "-"}</td>
                         <td>{new Date(po.created_at).toLocaleString()}</td>
@@ -3808,6 +3868,14 @@ function App() {
                               style={{ padding: "4px 10px", marginRight: "4px" }}
                             >
                               Print PO
+                            </button>
+                          )}
+                          {(isDraft || isOrdered) && (
+                            <button
+                              onClick={() => handleEmailPO(po)}
+                              style={{ padding: "4px 10px", marginRight: "4px", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "4px" }}
+                            >
+                              Email PO
                             </button>
                           )}
                           {(isDraft || isOrdered) && (
