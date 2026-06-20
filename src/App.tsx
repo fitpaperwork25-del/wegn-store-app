@@ -122,6 +122,7 @@ type ProductStock = {
   reorder_level: number;
   status: string;
   average_cost: number;
+  supplier_id: string | null;
 };
 
 type ReturnLineItem = {
@@ -267,6 +268,9 @@ function App() {
   const [reorderSuppliers, setReorderSuppliers] = useState<Record<string, string>>({});
   const [reorderQtys, setReorderQtys] = useState<Record<string, string>>({});
   const [reorderSelected, setReorderSelected] = useState<Set<string>>(new Set());
+  const [reorderFilter, setReorderFilter] = useState<"all" | "missing" | "ready">("all");
+  const [bulkSupplierId, setBulkSupplierId] = useState("");
+  const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
   const [saleItems, setSaleItems] = useState<SaleItemRecord[]>([]);
   const [showEod, setShowEod] = useState(false);
   const [eodItems, setEodItems] = useState<EodItem[]>([]);
@@ -1564,7 +1568,12 @@ function App() {
     const selected = Array.from(reorderSelected);
     if (selected.length === 0) { setMessage({ text: "No products selected", type: "error" }); return; }
 
-    const missing = selected.filter(pid => !reorderSuppliers[pid]);
+    if (selected.length > 25 && !window.confirm(`Create PO with ${selected.length} products?`)) return;
+
+    const missing = selected.filter(pid => {
+      const prod = products.find(p => p.product_id === pid);
+      return !reorderSuppliers[pid] && !prod?.supplier_id;
+    });
     if (missing.length > 0) {
       const names = missing.map(pid => products.find(p => p.product_id === pid)?.product_name ?? pid.slice(0, 8));
       setMessage({ text: `Select a supplier for: ${names.join(", ")}`, type: "error" });
@@ -1573,7 +1582,9 @@ function App() {
 
     const bySupplier: Record<string, string[]> = {};
     for (const pid of selected) {
-      const sid = reorderSuppliers[pid];
+      const prod = products.find(p => p.product_id === pid);
+      const sid = reorderSuppliers[pid] || prod?.supplier_id || "";
+      if (!sid) continue;
       if (!bySupplier[sid]) bySupplier[sid] = [];
       bySupplier[sid].push(pid);
     }
@@ -1622,6 +1633,20 @@ function App() {
     setReorderQtys(clearedQtys);
     setMessage({ text: `Created ${poCount} purchase order${poCount !== 1 ? "s" : ""} containing ${itemCount} product${itemCount !== 1 ? "s" : ""}.`, type: "success" });
     await loadPurchaseOrders();
+  }
+
+  async function handleBulkAssignSupplier() {
+    if (!bulkSupplierId || reorderSelected.size === 0) return;
+    const selected = Array.from(reorderSelected);
+    let count = 0;
+    for (const pid of selected) {
+      const { error } = await supabase.from("products").update({ supplier_id: bulkSupplierId }).eq("id", pid);
+      if (!error) count++;
+    }
+    setReorderSelected(new Set());
+    setBulkSupplierId("");
+    setMessage({ text: `Supplier assigned to ${count} product${count !== 1 ? "s" : ""}`, type: "success" });
+    await loadProducts();
   }
 
   async function handleCreatePO(e: React.FormEvent) {
@@ -1845,7 +1870,8 @@ function App() {
           selling_price,
           reorder_level,
           status,
-          average_cost
+          average_cost,
+          supplier_id
         )
       `);
 
@@ -1867,6 +1893,7 @@ function App() {
         reorder_level: item.products?.reorder_level ?? 10,
         status: item.products?.status,
         average_cost: item.products?.average_cost ?? 0,
+        supplier_id: item.products?.supplier_id ?? null,
       })) || [];
 
     setProducts(formatted);
@@ -3273,107 +3300,221 @@ function App() {
         if (lowStock.length === 0) {
           return <p style={{ color: "#16a34a" }}>All products are sufficiently stocked.</p>;
         }
-        const allIds = new Set(lowStock.map(p => p.product_id));
-        const allSelected = lowStock.every(p => reorderSelected.has(p.product_id));
+        const missingSup = lowStock.filter(p => !p.supplier_id && !reorderSuppliers[p.product_id]);
+        const readyToOrder = lowStock.filter(p => p.supplier_id || reorderSuppliers[p.product_id]);
+        const filtered = reorderFilter === "missing" ? missingSup : reorderFilter === "ready" ? readyToOrder : lowStock;
         const selectedCount = lowStock.filter(p => reorderSelected.has(p.product_id)).length;
+        const estValue = lowStock.filter(p => reorderSelected.has(p.product_id)).reduce((sum, p) => {
+          const qty = Number(reorderQtys[p.product_id] ?? (p.reorder_level - p.quantity_on_hand));
+          return sum + qty * (p.average_cost || 0);
+        }, 0);
+        const involvedSuppliers = new Set(lowStock.map(p => reorderSuppliers[p.product_id] || p.supplier_id).filter(Boolean));
+
+        const grouped: Record<string, typeof lowStock> = {};
+        for (const p of filtered) {
+          const sid = reorderSuppliers[p.product_id] || p.supplier_id || "__unassigned__";
+          if (!grouped[sid]) grouped[sid] = [];
+          grouped[sid].push(p);
+        }
+        const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
+
         return (
           <>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
-            <button
-              onClick={() => setReorderSelected(new Set(allIds))}
-              style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "1px solid #1d4ed8", background: "#eff6ff", color: "#1d4ed8", fontWeight: 600, fontSize: "13px" }}
-            >Select All ({lowStock.length})</button>
-            <button
-              onClick={() => setReorderSelected(new Set())}
-              disabled={selectedCount === 0}
-              style={{ padding: "6px 14px", cursor: selectedCount === 0 ? "not-allowed" : "pointer", borderRadius: "5px", border: "1px solid #d1d5db", background: "#f9fafb", color: "#374151", fontSize: "13px" }}
-            >Clear Selection</button>
-            {selectedCount > 0 && (
+          {/* Summary cards */}
+          <div className="dash-card-row" style={{ marginBottom: "16px" }}>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: "#fef2f2", color: "#dc2626" }}>!</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Need Reorder</div>
+                <div className="dash-card-value">{lowStock.length}</div>
+              </div>
+            </div>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>S</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Suppliers Involved</div>
+                <div className="dash-card-value">{involvedSuppliers.size}</div>
+              </div>
+            </div>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>&#x2713;</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Selected</div>
+                <div className="dash-card-value">{selectedCount}</div>
+              </div>
+            </div>
+            <div className="dash-card">
+              <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>$</div>
+              <div className="dash-card-body">
+                <div className="dash-card-label">Est. PO Value</div>
+                <div className="dash-card-value">${estValue.toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Missing supplier alert */}
+          {missingSup.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "10px 16px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", marginBottom: "12px" }}>
+              <div style={{ fontSize: "14px", color: "#92400e" }}>
+                <strong>{missingSup.length}</strong> product{missingSup.length !== 1 ? "s" : ""} need supplier assignment
+              </div>
               <button
-                onClick={handleBatchReorderPO}
-                style={{ padding: "6px 18px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#1d4ed8", color: "#fff", fontWeight: 600, fontSize: "13px" }}
-              >Create Draft PO From Selected ({selectedCount})</button>
-            )}
+                onClick={() => setReorderFilter("missing")}
+                style={{ padding: "5px 14px", fontSize: "13px", cursor: "pointer", borderRadius: "5px", border: "1px solid #f59e0b", background: "#fef3c7", color: "#92400e", fontWeight: 600 }}
+              >Review Missing Suppliers</button>
+            </div>
+          )}
+
+          {/* Filter chips */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
+            {([
+              { key: "all" as const, label: "All", count: lowStock.length },
+              { key: "missing" as const, label: "Missing Supplier", count: missingSup.length },
+              { key: "ready" as const, label: "Ready to Reorder", count: readyToOrder.length },
+            ]).map(chip => {
+              const active = reorderFilter === chip.key;
+              return (
+                <button
+                  key={chip.key}
+                  onClick={() => { setReorderFilter(chip.key); setReorderSelected(new Set()); }}
+                  style={{
+                    padding: "6px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "13px",
+                    border: active ? "2px solid #1d4ed8" : "1px solid #d1d5db",
+                    background: active ? "#dbeafe" : "#f9fafb",
+                    color: active ? "#1d4ed8" : "#374151",
+                    fontWeight: active ? 600 : 400,
+                  }}
+                >{chip.label} ({chip.count})</button>
+              );
+            })}
             {selectedCount > 0 && (
-              <span style={{ fontSize: "13px", color: "#64748b" }}>{selectedCount} of {lowStock.length} selected</span>
+              <span style={{ fontSize: "13px", color: "#64748b", marginLeft: "8px" }}>{selectedCount} selected</span>
             )}
           </div>
-          <div style={{ overflowX: "auto", marginBottom: "32px" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th style={{ width: "36px" }}>
+
+          {/* Bulk actions */}
+          {selectedCount > 0 && (
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", padding: "10px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+              <button
+                onClick={() => setReorderSelected(new Set())}
+                style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "1px solid #d1d5db", background: "#fff", color: "#374151", fontSize: "13px" }}
+              >Clear Selection</button>
+              <select
+                value={bulkSupplierId}
+                onChange={(e) => setBulkSupplierId(e.target.value)}
+                style={{ padding: "6px 8px", fontSize: "13px", borderRadius: "5px", border: "1px solid #d1d5db" }}
+              >
+                <option value="">Assign supplier…</option>
+                {suppliers.filter(s => s.status === "active").map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              {bulkSupplierId && (
+                <button
+                  onClick={handleBulkAssignSupplier}
+                  style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#15803d", color: "#fff", fontWeight: 600, fontSize: "13px" }}
+                >Assign to Selected ({selectedCount})</button>
+              )}
+              {reorderFilter !== "missing" && (
+                <button
+                  onClick={handleBatchReorderPO}
+                  style={{ padding: "8px 22px", cursor: "pointer", borderRadius: "6px", border: "none", background: "#15803d", color: "#fff", fontWeight: 700, fontSize: "14px" }}
+                >Create Draft PO ({selectedCount})</button>
+              )}
+            </div>
+          )}
+
+          {/* Grouped by supplier */}
+          {Object.entries(grouped).map(([sid, items]) => {
+            const supName = sid === "__unassigned__" ? "No Supplier Assigned" : (supplierMap[sid] ?? "Unknown");
+            const isCollapsed = collapsedSuppliers.has(sid);
+            const groupValue = items.reduce((sum, p) => {
+              const qty = Number(reorderQtys[p.product_id] ?? (p.reorder_level - p.quantity_on_hand));
+              return sum + qty * (p.average_cost || 0);
+            }, 0);
+            const groupSelected = items.filter(p => reorderSelected.has(p.product_id)).length;
+            const allGroupSelected = items.every(p => reorderSelected.has(p.product_id));
+            return (
+              <div key={sid} style={{ marginBottom: "16px", border: "1px solid #e2e8f0", borderRadius: "6px", overflow: "hidden" }}>
+                <div
+                  onClick={() => setCollapsedSuppliers(prev => { const n = new Set(prev); if (n.has(sid)) n.delete(sid); else n.add(sid); return n; })}
+                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", background: "#f8fafc", cursor: "pointer", userSelect: "none" }}
+                >
+                  <span style={{ fontSize: "14px", color: "#64748b" }}>{isCollapsed ? "▸" : "▾"}</span>
+                  <strong style={{ fontSize: "15px", color: sid === "__unassigned__" ? "#b45309" : "#0f172a" }}>{supName}</strong>
+                  <span style={{ fontSize: "13px", color: "#64748b" }}>{items.length} product{items.length !== 1 ? "s" : ""}</span>
+                  <span style={{ fontSize: "13px", color: "#64748b" }}>Est. ${groupValue.toFixed(2)}</span>
+                  {groupSelected > 0 && <span style={{ fontSize: "12px", color: "#1d4ed8", fontWeight: 600 }}>{groupSelected} selected</span>}
+                  <div style={{ marginLeft: "auto" }} onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={allSelected}
-                      onChange={() => setReorderSelected(allSelected ? new Set() : new Set(allIds))}
+                      checked={allGroupSelected}
+                      onChange={() => {
+                        setReorderSelected(prev => {
+                          const next = new Set(prev);
+                          if (allGroupSelected) { items.forEach(p => next.delete(p.product_id)); } else { items.forEach(p => next.add(p.product_id)); }
+                          return next;
+                        });
+                      }}
                       style={{ cursor: "pointer" }}
                     />
-                  </th>
-                  <th>Product</th>
-                  <th>Stock</th>
-                  <th>Reorder Level</th>
-                  <th>Shortage</th>
-                  <th>Supplier</th>
-                  <th>Order Qty</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lowStock.map((p) => {
-                  const checked = reorderSelected.has(p.product_id);
-                  return (
-                  <tr key={p.product_id} style={{ backgroundColor: checked ? "#dbeafe" : "#ffe5e5" }}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          setReorderSelected(prev => {
-                            const next = new Set(prev);
-                            if (next.has(p.product_id)) next.delete(p.product_id); else next.add(p.product_id);
-                            return next;
-                          });
-                        }}
-                        style={{ cursor: "pointer" }}
-                      />
-                    </td>
-                    <td>{p.product_name}</td>
-                    <td>{p.quantity_on_hand}</td>
-                    <td>{p.reorder_level}</td>
-                    <td style={{ color: "red", fontWeight: "bold" }}>
-                      {p.reorder_level - p.quantity_on_hand}
-                    </td>
-                    <td>
-                      <select
-                        value={reorderSuppliers[p.product_id] ?? ""}
-                        onChange={(e) =>
-                          setReorderSuppliers((prev) => ({ ...prev, [p.product_id]: e.target.value }))
-                        }
-                        style={{ padding: "4px", width: "100%" }}
-                      >
-                        <option value="">Select supplier…</option>
-                        {suppliers.filter(s => s.status === "active").map((s) => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        value={reorderQtys[p.product_id] ?? String(p.reorder_level - p.quantity_on_hand)}
-                        onChange={(e) =>
-                          setReorderQtys((prev) => ({ ...prev, [p.product_id]: e.target.value }))
-                        }
-                        style={{ width: "70px", padding: "4px" }}
-                      />
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </div>
+                </div>
+                {!isCollapsed && (
+                  <table border={0} cellPadding={8} style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #e2e8f0" }}>
+                        <th style={{ width: "36px", padding: "6px 8px" }}></th>
+                        <th style={{ textAlign: "left", padding: "6px 8px" }}>Product</th>
+                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Stock</th>
+                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Reorder</th>
+                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Shortage</th>
+                        <th style={{ padding: "6px 8px" }}>Supplier</th>
+                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Order Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((p, i) => {
+                        const checked = reorderSelected.has(p.product_id);
+                        const savedSupplier = p.supplier_id || "";
+                        return (
+                          <tr key={p.product_id} style={{ borderBottom: "1px solid #f1f5f9", background: checked ? "#eff6ff" : i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                            <td style={{ padding: "6px 8px" }}>
+                              <input type="checkbox" checked={checked} onChange={() => { setReorderSelected(prev => { const n = new Set(prev); if (n.has(p.product_id)) n.delete(p.product_id); else n.add(p.product_id); return n; }); }} style={{ cursor: "pointer" }} />
+                            </td>
+                            <td style={{ padding: "6px 8px" }}>{p.product_name}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{p.reorder_level - p.quantity_on_hand}</td>
+                            <td style={{ padding: "6px 8px" }}>
+                              <select
+                                value={reorderSuppliers[p.product_id] ?? savedSupplier}
+                                onChange={(e) => setReorderSuppliers((prev) => ({ ...prev, [p.product_id]: e.target.value }))}
+                                style={{ padding: "3px", width: "100%", fontSize: "12px" }}
+                              >
+                                <option value="">Select…</option>
+                                {suppliers.filter(s => s.status === "active").map((s) => (
+                                  <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                              <input
+                                type="number" min="1"
+                                value={reorderQtys[p.product_id] ?? String(p.reorder_level - p.quantity_on_hand)}
+                                onChange={(e) => setReorderQtys((prev) => ({ ...prev, [p.product_id]: e.target.value }))}
+                                style={{ width: "60px", padding: "3px", textAlign: "right" }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
           </>
         );
       })()}
