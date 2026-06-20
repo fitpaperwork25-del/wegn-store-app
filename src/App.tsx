@@ -124,6 +124,16 @@ type ProductStock = {
   status: string;
   average_cost: number;
   supplier_id: string | null;
+  category_id: string | null;
+};
+
+type Category = {
+  id: string;
+  business_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  created_at: string;
 };
 
 type ReturnLineItem = {
@@ -233,6 +243,7 @@ function App() {
   const [isConfirmingReceive, setIsConfirmingReceive] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poNotes, setPoNotes] = useState("");
+  const [poMoreOpen, setPoMoreOpen] = useState<string | null>(null);
   const [supName, setSupName] = useState("");
   const [supContact, setSupContact] = useState("");
   const [supPhone, setSupPhone] = useState("");
@@ -445,6 +456,15 @@ function App() {
   const [editProdBarcode, setEditProdBarcode] = useState("");
   const [editProdPrice, setEditProdPrice] = useState("");
   const [editProdReorder, setEditProdReorder] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatDesc, setNewCatDesc] = useState("");
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+  const [editCatDesc, setEditCatDesc] = useState("");
+  const [newProductCategory, setNewProductCategory] = useState("");
+  const [editProdCategory, setEditProdCategory] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [businessName, setBusinessName] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessEmail, setBusinessEmail] = useState("");
@@ -473,6 +493,7 @@ function App() {
     loadLoyaltyTransactions();
     loadAllReturnItems();
     loadAllPoItems();
+    loadCategories();
     loadDrawerSession();
     loadEmployees();
     loadStockCounts();
@@ -938,6 +959,58 @@ function App() {
       quantity_received: item.quantity_received ?? 0,
     }));
     setAllPoItems(items as POItem[]);
+  }
+
+  async function loadCategories() {
+    const { data } = await supabase
+      .from('categories')
+      .select('id, business_id, name, description, status, created_at')
+      .order('name', { ascending: true });
+    setCategories((data as Category[]) ?? []);
+  }
+
+  async function handleAddCategory(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    const { error } = await supabase.from('categories').insert({
+      business_id: businessId,
+      name: newCatName.trim(),
+      description: newCatDesc.trim() || null,
+      status: 'active',
+    });
+    if (error) { setMessage({ text: "Failed to add category: " + error.message, type: "error" }); return; }
+    setNewCatName("");
+    setNewCatDesc("");
+    setMessage({ text: "Category added", type: "success" });
+    await loadCategories();
+  }
+
+  async function handleEditCategory(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingCatId || !editCatName.trim()) return;
+    const { error } = await supabase.from('categories').update({
+      name: editCatName.trim(),
+      description: editCatDesc.trim() || null,
+    }).eq('id', editingCatId);
+    if (error) { setMessage({ text: "Failed to update category: " + error.message, type: "error" }); return; }
+    setEditingCatId(null);
+    setMessage({ text: "Category updated", type: "success" });
+    await loadCategories();
+  }
+
+  async function handleDeleteCategory(cat: Category) {
+    const assigned = products.filter(p => p.category_id === cat.id).length;
+    if (assigned > 0 && !window.confirm(`"${cat.name}" has ${assigned} product(s). Deleting will unset their category. Continue?`)) return;
+    if (assigned > 0) {
+      for (const p of products.filter(pr => pr.category_id === cat.id)) {
+        await supabase.from('products').update({ category_id: null }).eq('id', p.product_id);
+      }
+    }
+    const { error } = await supabase.from('categories').delete().eq('id', cat.id);
+    if (error) { setMessage({ text: "Failed to delete category: " + error.message, type: "error" }); return; }
+    setMessage({ text: `Category "${cat.name}" deleted`, type: "success" });
+    await loadCategories();
+    await loadProducts();
   }
 
   function handleLookupCustomer() {
@@ -2020,7 +2093,8 @@ function App() {
           reorder_level,
           status,
           average_cost,
-          supplier_id
+          supplier_id,
+          category_id
         )
       `);
 
@@ -2043,6 +2117,7 @@ function App() {
         status: item.products?.status,
         average_cost: item.products?.average_cost ?? 0,
         supplier_id: item.products?.supplier_id ?? null,
+        category_id: item.products?.category_id ?? null,
       })) || [];
 
     setProducts(formatted);
@@ -2107,6 +2182,7 @@ function App() {
         selling_price: Number(newSellingPrice),
         reorder_level: newReorderLevel ? Number(newReorderLevel) : 10,
         status: "active",
+        category_id: newProductCategory || null,
       })
       .select("id")
       .single();
@@ -2155,6 +2231,7 @@ function App() {
     setNewSellingPrice("");
     setNewReorderLevel("");
     setNewInitialStock("");
+    setNewProductCategory("");
     setBarcodeAutoFill("");
     setMessage({ text: "Product added successfully", type: "success" });
     await loadProducts();
@@ -2172,6 +2249,7 @@ function App() {
         barcode: editProdBarcode.trim() || null,
         selling_price: Number(editProdPrice),
         reorder_level: editProdReorder ? Number(editProdReorder) : 10,
+        category_id: editProdCategory || null,
       })
       .eq("id", productId);
     if (error) { console.error(error); setMessage({ text: "Failed to update product: " + error.message, type: "error" }); return; }
@@ -2843,6 +2921,16 @@ function App() {
             onChange={(e) => setNewReorderLevel(e.target.value)}
             style={{ flex: "1 1 120px", padding: "8px" }}
           />
+          <select
+            value={newProductCategory}
+            onChange={(e) => setNewProductCategory(e.target.value)}
+            style={{ flex: "1 1 140px", padding: "8px" }}
+          >
+            <option value="">No Category</option>
+            {categories.filter(c => c.status === "active").map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
           <input
             type="number"
             min="0"
@@ -3152,12 +3240,68 @@ function App() {
         );
       })()}
 
+      {/* ── Categories ── */}
+      <div style={{ marginBottom: "24px" }}>
+        <h3 style={{ marginBottom: "8px" }}>Categories</h3>
+        <form onSubmit={handleAddCategory} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
+          <input type="text" placeholder="Category name *" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} required style={{ flex: "2 1 160px", padding: "7px" }} />
+          <input type="text" placeholder="Description" value={newCatDesc} onChange={(e) => setNewCatDesc(e.target.value)} style={{ flex: "2 1 200px", padding: "7px" }} />
+          <button type="submit" style={{ padding: "7px 16px" }}>Add Category</button>
+        </form>
+        {categories.length > 0 && (
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {categories.map(cat => {
+              const count = products.filter(p => p.category_id === cat.id).length;
+              const isEditing = editingCatId === cat.id;
+              return isEditing ? (
+                <form key={cat.id} onSubmit={handleEditCategory} style={{ display: "flex", gap: "6px", alignItems: "center", border: "1px solid #93c5fd", borderRadius: "6px", padding: "4px 8px", background: "#eff6ff" }}>
+                  <input type="text" value={editCatName} onChange={(e) => setEditCatName(e.target.value)} required style={{ width: "120px", padding: "4px", fontSize: "13px" }} />
+                  <input type="text" value={editCatDesc} onChange={(e) => setEditCatDesc(e.target.value)} placeholder="Desc" style={{ width: "120px", padding: "4px", fontSize: "13px" }} />
+                  <button type="submit" style={{ padding: "2px 8px", fontSize: "12px" }}>Save</button>
+                  <button type="button" onClick={() => setEditingCatId(null)} style={{ padding: "2px 8px", fontSize: "12px" }}>Cancel</button>
+                </form>
+              ) : (
+                <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: "6px", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", background: "#fff", fontSize: "13px" }}>
+                  <span style={{ fontWeight: 500 }}>{cat.name}</span>
+                  <span style={{ color: "#94a3b8", fontSize: "11px" }}>({count})</span>
+                  <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px" }}>Edit</button>
+                  <button onClick={() => handleDeleteCategory(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "3px", color: "#dc2626" }}>Del</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Category Filter ── */}
+      {categories.length > 0 && (
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+          {[{ key: "all", label: "All", count: products.length }, { key: "uncategorized", label: "Uncategorized", count: products.filter(p => !p.category_id).length }, ...categories.map(c => ({ key: c.id, label: c.name, count: products.filter(p => p.category_id === c.id).length }))].map(chip => {
+            const active = categoryFilter === chip.key;
+            return (
+              <button
+                key={chip.key}
+                onClick={() => setCategoryFilter(chip.key)}
+                style={{
+                  padding: "6px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "13px",
+                  border: active ? "2px solid #1d4ed8" : "1px solid #d1d5db",
+                  background: active ? "#dbeafe" : "#f9fafb",
+                  color: active ? "#1d4ed8" : "#374151",
+                  fontWeight: active ? 600 : 400,
+                }}
+              >{chip.label} ({chip.count})</button>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── Desktop table / Mobile cards ── */}
       <div className="inv-table-wrap">
         <table className="inv-table">
           <thead>
             <tr>
               <th style={{ textAlign: "left" }}>Product</th>
+              <th style={{ textAlign: "left" }}>Category</th>
               <th style={{ textAlign: "left" }}>SKU</th>
               <th style={{ textAlign: "right" }}>Price</th>
               <th style={{ textAlign: "right" }}>Stock</th>
@@ -3167,7 +3311,7 @@ function App() {
           </thead>
 
           <tbody>
-            {products.map((product) => {
+            {products.filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter).map((product) => {
               const isLowStock = product.status === 'active' && product.quantity_on_hand < product.reorder_level;
               const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
               const inactive = product.status !== "active";
@@ -3176,6 +3320,7 @@ function App() {
                 <React.Fragment key={product.product_id}>
                   <tr className={inactive ? "inv-row-inactive" : ""}>
                     <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
+                    <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{categories.find(c => c.id === product.category_id)?.name ?? "—"}</td>
                     <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
                     <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
                     <td data-label="Stock" style={{ textAlign: "right" }}>
@@ -3200,6 +3345,7 @@ function App() {
                           setEditProdBarcode(product.barcode ?? "");
                           setEditProdPrice(product.selling_price.toString());
                           setEditProdReorder(product.reorder_level.toString());
+                          setEditProdCategory(product.category_id ?? "");
                         }}
                         className="sh-btn sh-btn-print"
                       >{isEditing ? "Cancel" : "Edit"}</button>
@@ -3212,7 +3358,7 @@ function App() {
                   </tr>
                   {isEditing && (
                     <tr className="inv-edit-row">
-                      <td colSpan={6} style={{ background: "#f9fafb", padding: "16px" }}>
+                      <td colSpan={7} style={{ background: "#f9fafb", padding: "16px" }}>
                         <form onSubmit={(e) => handleEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
                           <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Product — {product.product_name}</strong>
                           <input
@@ -3255,6 +3401,16 @@ function App() {
                             min="0"
                             style={{ flex: "1 1 110px", padding: "7px" }}
                           />
+                          <select
+                            value={editProdCategory}
+                            onChange={(e) => setEditProdCategory(e.target.value)}
+                            style={{ flex: "1 1 140px", padding: "7px" }}
+                          >
+                            <option value="">No Category</option>
+                            {categories.filter(c => c.status === "active").map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
                           <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
                             <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${product.average_cost.toFixed(2)}</strong></span>
                             <span>Inventory Value: <strong style={{ color: "#0f172a" }}>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</strong></span>
@@ -4270,23 +4426,22 @@ function App() {
               );
             })}
           </div>
-          <div style={{ overflowX: "auto", marginBottom: "40px" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+          <div style={{ marginBottom: "40px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
               <thead>
-                <tr>
-                  <th>PO Number</th>
-                  <th>Supplier</th>
-                  <th>Status</th>
-                  <th>Subtotal</th>
-                  <th>Notes</th>
-                  <th>Created At</th>
-                  <th></th>
+                <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
+                  <th style={{ textAlign: "left", padding: "8px" }}>PO Number</th>
+                  <th style={{ textAlign: "left", padding: "8px" }}>Supplier</th>
+                  <th style={{ padding: "8px" }}>Status</th>
+                  <th style={{ textAlign: "right", padding: "8px" }}>Subtotal</th>
+                  <th style={{ textAlign: "left", padding: "8px" }}>Created</th>
+                  <th style={{ padding: "8px", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPOs.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>{poStatusFilter === "all" ? "No purchase orders found" : `No ${poStatusFilter} purchase orders`}</td>
+                    <td colSpan={6} style={{ padding: "16px", color: "#94a3b8" }}>{poStatusFilter === "all" ? "No purchase orders found" : `No ${poStatusFilter} purchase orders`}</td>
                   </tr>
                 ) : (
                   filteredPOs.map((po) => {
@@ -4298,96 +4453,89 @@ function App() {
                     const isSelected = selectedPoId === po.id;
                     const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isPartiallyReceived ? "#fef9c3" : isCancelled ? "#e5e7eb" : "#dcfce7";
                     const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isPartiallyReceived ? "#a16207" : isCancelled ? "#6b7280" : "#15803d";
+                    const badgeLabel = isDraft ? "Draft" : isOrdered ? "Awaiting" : isPartiallyReceived ? "Partial" : isCancelled ? "Cancelled" : "Received";
                     const isDraftPO = isDraft;
                     const productItemMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
+                    const moreOpen = poMoreOpen === po.id;
+                    const hasSecondary = isDraft || isOrdered || isPartiallyReceived;
                     return (
                       <React.Fragment key={po.id}>
-                      <tr style={{ backgroundColor: isCancelled ? "#f9fafb" : isSelected ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
-                        <td>{po.po_number}</td>
-                        <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
-                        <td>
-                          <span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: badgeBg, color: badgeColor }}>{po.status === "ordered" ? "awaiting delivery" : po.status === "partially_received" ? "partial" : po.status}</span>
-                          {(() => { const log = getPoEmailLog(po.id); return log ? (
-                            <span style={{ fontSize: "10px", fontWeight: "bold", padding: "2px 6px", borderRadius: "10px", background: "#dbeafe", color: "#1e40af", marginLeft: "6px" }} title={`Emailed ${new Date(log.lastEmailedAt).toLocaleString()}`}>emailed</span>
-                          ) : (isDraft || isOrdered) ? (
-                            <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "10px", background: "#f1f5f9", color: "#94a3b8", marginLeft: "6px" }}>not sent</span>
-                          ) : null; })()}
+                      <tr style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: isCancelled ? "#f9fafb" : isSelected ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
+                        <td style={{ padding: "8px", fontWeight: 500 }}>{po.po_number}</td>
+                        <td style={{ padding: "8px" }}>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
+                        <td style={{ padding: "8px", textAlign: "center" }}>
+                          <span style={{ fontSize: "12px", fontWeight: 700, padding: "3px 10px", borderRadius: "12px", background: badgeBg, color: badgeColor, display: "inline-block" }}>{badgeLabel}</span>
                         </td>
-                        <td>${Number(po.subtotal ?? 0).toFixed(2)}</td>
-                        <td style={{ whiteSpace: "pre-line", maxWidth: "300px" }}>{po.notes || "-"}</td>
-                        <td>{new Date(po.created_at).toLocaleString()}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          {!isCancelled && !isReceived && (
-                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px" }}>
-                              {isSelected ? "Close" : "View/Edit"}
-                            </button>
-                          )}
-                          {isReceived && (
-                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px" }}>
+                        <td style={{ padding: "8px", textAlign: "right", fontWeight: 500 }}>${Number(po.subtotal ?? 0).toFixed(2)}</td>
+                        <td style={{ padding: "8px", fontSize: "13px", color: "#64748b" }}>{new Date(po.created_at).toLocaleDateString()}</td>
+                        <td style={{ padding: "8px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          {/* Primary: View */}
+                          {isCancelled && (
+                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", fontSize: "13px", cursor: "pointer" }}>
                               {isSelected ? "Close" : "View"}
                             </button>
                           )}
-                          {(isDraft || isOrdered) && (
-                            <button
-                              onClick={() => handlePrintPO(po)}
-                              style={{ padding: "4px 10px", marginRight: "4px" }}
-                            >
-                              Print PO
+                          {!isCancelled && (
+                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer" }}>
+                              {isSelected ? "Close" : isDraft ? "View/Edit" : "View"}
                             </button>
                           )}
-                          {(isDraft || isOrdered) && (
-                            <button
-                              onClick={() => handleEmailPO(po)}
-                              style={{ padding: "4px 10px", marginRight: "4px", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "4px" }}
-                            >
-                              Email PO
-                            </button>
-                          )}
-                          {(isDraft || isOrdered) && (
-                            <button
-                              onClick={() => { setSignPoId(po.id); setSignRole("manager"); }}
-                              style={{ padding: "4px 10px", marginRight: "4px", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "4px" }}
-                            >
-                              Sign PO
-                            </button>
-                          )}
+                          {/* Primary: Mark Ordered (draft only) */}
                           {isDraft && (
-                            <button
-                              onClick={() => handleMarkOrdered(po)}
-                              style={{ padding: "4px 10px", marginRight: "4px", background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd", borderRadius: "4px" }}
-                            >
+                            <button onClick={() => handleMarkOrdered(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd", borderRadius: "4px" }}>
                               Mark Ordered
                             </button>
                           )}
-                          {(isDraft || isOrdered || isPartiallyReceived) && (
-                            <button
-                              onClick={() => handleOpenReceive(po)}
-                              style={{ padding: "4px 10px", marginRight: "4px", background: receivingPoId === po.id ? "#d1fae5" : undefined }}
-                            >
+                          {/* Primary: Receive (ordered/partial) */}
+                          {(isOrdered || isPartiallyReceived) && (
+                            <button onClick={() => handleOpenReceive(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: receivingPoId === po.id ? "#d1fae5" : "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "4px" }}>
                               {receivingPoId === po.id ? "Cancel" : isPartiallyReceived ? "Receive More" : "Receive"}
                             </button>
                           )}
+                          {/* Primary: Receive (draft — less prominent) */}
                           {isDraft && (
-                            <button
-                              onClick={() => handleCancelPO(po)}
-                              style={{ padding: "4px 10px", marginRight: "4px" }}
-                            >
-                              Cancel PO
+                            <button onClick={() => handleOpenReceive(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: receivingPoId === po.id ? "#d1fae5" : undefined }}>
+                              {receivingPoId === po.id ? "Cancel" : "Receive"}
                             </button>
                           )}
+                          {/* Primary: Delete (draft only) */}
                           {isDraft && (
-                            <button
-                              onClick={() => handleDeletePO(po)}
-                              style={{ padding: "4px 10px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}
-                            >
+                            <button onClick={() => handleDeletePO(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}>
                               Delete
                             </button>
+                          )}
+                          {/* More menu */}
+                          {(hasSecondary || isReceived) && (
+                            <span style={{ position: "relative", display: "inline-block" }}>
+                              <button onClick={() => setPoMoreOpen(moreOpen ? null : po.id)} style={{ padding: "4px 8px", fontSize: "13px", cursor: "pointer", background: moreOpen ? "#e5e7eb" : undefined }}>
+                                ···
+                              </button>
+                              {moreOpen && (
+                                <div style={{ position: "absolute", right: 0, top: "100%", zIndex: 10, background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: "140px", padding: "4px 0" }}>
+                                  {(isDraft || isOrdered || isPartiallyReceived) && (
+                                    <button onClick={() => { handlePrintPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px" }}>Print PO</button>
+                                  )}
+                                  {(isDraft || isOrdered || isPartiallyReceived) && (
+                                    <button onClick={() => { handleEmailPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#1d4ed8" }}>Email PO</button>
+                                  )}
+                                  {(isDraft || isOrdered || isPartiallyReceived) && (
+                                    <button onClick={() => { setSignPoId(po.id); setSignRole("manager"); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#15803d" }}>Sign PO</button>
+                                  )}
+                                  {isDraft && (
+                                    <button onClick={() => { handleCancelPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#dc2626" }}>Cancel PO</button>
+                                  )}
+                                  {isReceived && (
+                                    <button onClick={() => { handlePrintPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px" }}>Print PO</button>
+                                  )}
+                                </div>
+                              )}
+                            </span>
                           )}
                         </td>
                       </tr>
                       {isSelected && (
                         <tr>
-                          <td colSpan={7} style={{ background: "#f9fafb", padding: "16px", border: "1px solid #c7d2fe" }}>
+                          <td colSpan={6} style={{ background: "#f9fafb", padding: "16px", border: "1px solid #c7d2fe" }}>
                             <strong style={{ display: "block", marginBottom: "12px", color: "#1d4ed8" }}>
                               PO Detail — {po.po_number}
                               <span style={{
@@ -4497,7 +4645,7 @@ function App() {
                       )}
                       {receivingPoId === po.id && (
                         <tr>
-                          <td colSpan={7} style={{ background: "#f0fdf4", padding: "16px", border: "2px solid #16a34a" }}>
+                          <td colSpan={6} style={{ background: "#f0fdf4", padding: "16px", border: "2px solid #16a34a" }}>
                             <strong style={{ display: "block", marginBottom: "12px", color: "#15803d" }}>
                               Receive Inventory — {po.po_number}
                             </strong>
