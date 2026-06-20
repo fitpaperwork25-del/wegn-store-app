@@ -3940,61 +3940,126 @@ function App() {
                         {isExpanded && !isEditing && (
                           <tr>
                             <td colSpan={9} style={{ background: "#f8f9ff", padding: "16px" }}>
-                              <strong>Purchase History</strong>
-                              {custSales.length === 0 ? (
-                                <p style={{ margin: "8px 0 0", color: "#888" }}>No sales recorded for this customer.</p>
-                              ) : (
-                                <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "8px" }}>
-                                  <thead>
-                                    <tr>
-                                      <th>Date</th>
-                                      <th>Total</th>
-                                      <th>Status</th>
-                                      <th></th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {custSales.map(s => (
-                                      <tr key={s.id}>
-                                        <td>{new Date(s.created_at).toLocaleString()}</td>
-                                        <td>${Number(s.total).toFixed(2)}</td>
-                                        <td>{s.status}</td>
-                                        <td>
-                                          <button
-                                            onClick={() => handlePrintReceipt(s)}
-                                            style={{ padding: "2px 10px", cursor: "pointer" }}
-                                          >
-                                            View Receipt
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              )}
-                              <strong style={{ display: "block", marginTop: "16px" }}>Points History</strong>
                               {(() => {
-                                const custLoyalty = loyaltyTransactions.filter(lt => lt.customer_id === row.id).slice(0, 20);
-                                return custLoyalty.length === 0 ? (
-                                  <p style={{ margin: "8px 0 0", color: "#888" }}>No points history yet.</p>
-                                ) : (
-                                  <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "8px", fontSize: "13px" }}>
-                                    <thead>
-                                      <tr><th>Date</th><th>Type</th><th>Points</th><th>Sale</th></tr>
-                                    </thead>
-                                    <tbody>
-                                      {custLoyalty.map(lt => (
-                                        <tr key={lt.id}>
-                                          <td>{new Date(lt.created_at).toLocaleString()}</td>
-                                          <td style={{ color: lt.type === 'earn' ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>{lt.type}</td>
-                                          <td style={{ color: lt.points > 0 ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>
-                                            {lt.points > 0 ? `+${lt.points}` : lt.points}
-                                          </td>
-                                          <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{lt.sale_id ? lt.sale_id.slice(0, 8) + '…' : '—'}</td>
-                                        </tr>
+                                const custLoyalty = loyaltyTransactions.filter(lt => lt.customer_id === row.id);
+                                const lifetimeEarned = custLoyalty.filter(lt => lt.type === 'earn' && lt.points > 0).reduce((s, lt) => s + lt.points, 0);
+                                const lifetimeRedeemed = custLoyalty.filter(lt => lt.type === 'redeem').reduce((s, lt) => s + Math.abs(lt.points), 0);
+                                const custReturns = allReturnItems.filter(ri => custSales.some(s => s.id === ri.sale_id));
+                                const totalReturned = custReturns.reduce((s, ri) => s + ri.quantity_returned, 0);
+                                const avgSpend = row.visitCount > 0 ? row.totalSpend / row.visitCount : 0;
+                                const productNameMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
+
+                                return (
+                                  <>
+                                    {/* Customer Summary */}
+                                    <strong style={{ display: "block", marginBottom: "12px" }}>Customer Summary — {row.name}</strong>
+                                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
+                                      {[
+                                        { label: "Total Visits", value: String(row.visitCount) },
+                                        { label: "Total Spent", value: `$${row.totalSpend.toFixed(2)}` },
+                                        { label: "Avg per Visit", value: `$${avgSpend.toFixed(2)}` },
+                                        { label: "Last Purchase", value: row.lastVisit ? row.lastVisit.toLocaleDateString() : "—" },
+                                        { label: "Points Balance", value: String(row.pointsBalance), color: row.pointsBalance > 0 ? "#7c3aed" : "#888" },
+                                        { label: "Items Returned", value: String(totalReturned), color: totalReturned > 0 ? "#dc2626" : "#888" },
+                                        { label: "Lifetime Earned", value: `+${lifetimeEarned} pts`, color: "#15803d" },
+                                        { label: "Lifetime Redeemed", value: `${lifetimeRedeemed} pts`, color: lifetimeRedeemed > 0 ? "#dc2626" : "#888" },
+                                      ].map(card => (
+                                        <div key={card.label} style={{ border: "1px solid #e5e7eb", borderRadius: "6px", padding: "10px 14px", minWidth: "110px", flex: 1, background: "#fff" }}>
+                                          <div style={{ fontSize: "10px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
+                                          <div style={{ fontSize: "18px", fontWeight: "bold", color: card.color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
+                                        </div>
                                       ))}
-                                    </tbody>
-                                  </table>
+                                    </div>
+
+                                    {/* Purchase History */}
+                                    <strong style={{ display: "block", marginBottom: "8px" }}>Purchase History</strong>
+                                    {custSales.length === 0 ? (
+                                      <p style={{ margin: "0 0 16px", color: "#888" }}>No sales recorded for this customer.</p>
+                                    ) : (
+                                      custSales.map(s => {
+                                        const items = saleItems.filter(si => si.sale_id === s.id);
+                                        const salePayments = allPayments.filter(p => p.sale_id === s.id);
+                                        const saleReturns = allReturnItems.filter(ri => ri.sale_id === s.id);
+                                        const saleLoyalty = custLoyalty.filter(lt => lt.sale_id === s.id);
+                                        const earnedPts = saleLoyalty.filter(lt => lt.type === 'earn' && lt.points > 0).reduce((sum, lt) => sum + lt.points, 0);
+                                        const redeemedPts = saleLoyalty.filter(lt => lt.type === 'redeem').reduce((sum, lt) => sum + Math.abs(lt.points), 0);
+                                        const payMethods = salePayments.map(p => p.payment_method).join(", ") || "—";
+                                        const statusBg = s.status === "completed" ? "#dcfce7" : s.status === "returned" ? "#fef2f2" : s.status === "voided" ? "#e5e7eb" : "#f1f5f9";
+                                        const statusColor = s.status === "completed" ? "#15803d" : s.status === "returned" ? "#dc2626" : s.status === "voided" ? "#6b7280" : "#475569";
+
+                                        return (
+                                          <div key={s.id} style={{ border: "1px solid #e5e7eb", borderRadius: "6px", marginBottom: "12px", background: "#fff" }}>
+                                            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f1f5f9" }}>
+                                              <span style={{ fontWeight: "bold", fontSize: "13px" }}>{new Date(s.created_at).toLocaleString()}</span>
+                                              <span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: statusBg, color: statusColor }}>{s.status}</span>
+                                              <span style={{ fontSize: "13px" }}>Payment: <strong>{payMethods}</strong></span>
+                                              {Number(s.discount_amount) > 0 && (
+                                                <span style={{ fontSize: "13px", color: "#b45309" }}>Discount: −${Number(s.discount_amount).toFixed(2)}</span>
+                                              )}
+                                              {earnedPts > 0 && <span style={{ fontSize: "12px", color: "#15803d", fontWeight: "bold" }}>+{earnedPts} pts earned</span>}
+                                              {redeemedPts > 0 && <span style={{ fontSize: "12px", color: "#7c3aed", fontWeight: "bold" }}>−{redeemedPts} pts redeemed</span>}
+                                              <span style={{ marginLeft: "auto", fontWeight: "bold", fontSize: "15px" }}>${Number(s.total).toFixed(2)}</span>
+                                              <button onClick={() => handlePrintReceipt(s)} style={{ padding: "2px 10px", cursor: "pointer", fontSize: "12px" }}>Receipt</button>
+                                            </div>
+                                            <table cellPadding={6} style={{ width: "100%", fontSize: "13px" }}>
+                                              <thead>
+                                                <tr style={{ background: "#f9fafb" }}>
+                                                  <th style={{ textAlign: "left", padding: "6px 14px" }}>Product</th>
+                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Qty</th>
+                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Unit Price</th>
+                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Line Total</th>
+                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Returned</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {items.map(si => {
+                                                  const retQty = saleReturns.filter(ri => ri.product_id === si.product_id).reduce((s2, ri) => s2 + ri.quantity_returned, 0);
+                                                  return (
+                                                    <tr key={si.product_id}>
+                                                      <td style={{ padding: "4px 14px" }}>{productNameMap[si.product_id] ?? si.product_id.slice(0, 8)}</td>
+                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>{si.quantity}</td>
+                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>${si.unit_price.toFixed(2)}</td>
+                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>${si.line_total.toFixed(2)}</td>
+                                                      <td style={{ textAlign: "right", padding: "4px 14px", color: retQty > 0 ? "#dc2626" : "#ccc", fontWeight: retQty > 0 ? "bold" : "normal" }}>
+                                                        {retQty > 0 ? retQty : "—"}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        );
+                                      })
+                                    )}
+
+                                    {/* Points History (kept) */}
+                                    <strong style={{ display: "block", marginTop: "16px" }}>Points History</strong>
+                                    {(() => {
+                                      const recentLoyalty = custLoyalty.slice(0, 20);
+                                      return recentLoyalty.length === 0 ? (
+                                        <p style={{ margin: "8px 0 0", color: "#888" }}>No points history yet.</p>
+                                      ) : (
+                                        <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "8px", fontSize: "13px" }}>
+                                          <thead>
+                                            <tr><th>Date</th><th>Type</th><th>Points</th><th>Sale</th></tr>
+                                          </thead>
+                                          <tbody>
+                                            {recentLoyalty.map(lt => (
+                                              <tr key={lt.id}>
+                                                <td>{new Date(lt.created_at).toLocaleString()}</td>
+                                                <td style={{ color: lt.type === 'earn' ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>{lt.type}</td>
+                                                <td style={{ color: lt.points > 0 ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>
+                                                  {lt.points > 0 ? `+${lt.points}` : lt.points}
+                                                </td>
+                                                <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{lt.sale_id ? lt.sale_id.slice(0, 8) + '…' : '—'}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      );
+                                    })()}
+                                  </>
                                 );
                               })()}
                             </td>
