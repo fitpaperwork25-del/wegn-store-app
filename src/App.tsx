@@ -270,7 +270,7 @@ function App() {
   const [eodItems, setEodItems] = useState<EodItem[]>([]);
   const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [printPo, setPrintPo] = useState<{ po: PurchaseOrder; items: POItem[]; supplierName: string } | null>(null);
+  const [printPo, setPrintPo] = useState<{ po: PurchaseOrder; items: POItem[]; supplier: Supplier | null } | null>(null);
   const [signPoId, setSignPoId] = useState<string | null>(null);
   const [signRole, setSignRole] = useState<"manager" | "supplier">("manager");
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1250,8 +1250,8 @@ function App() {
       .eq("purchase_order_id", po.id)
       .order("created_at", { ascending: true });
     if (error || !data) { console.error(error); return; }
-    const supplierName = suppliers.find(s => s.id === po.supplier_id)?.name ?? "Unknown";
-    setPrintPo({ po, items: data as POItem[], supplierName });
+    const supplier = suppliers.find(s => s.id === po.supplier_id) ?? null;
+    setPrintPo({ po, items: data as POItem[], supplier });
   }
 
   async function handleVoidSale(saleId: string) {
@@ -5460,115 +5460,139 @@ function App() {
               <div
                 id="po-print-content"
                 style={{
-                  background: "#fff", padding: "40px 44px", width: "720px", maxHeight: "90vh", overflowY: "auto",
-                  fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: "16px", lineHeight: "1.5",
+                  background: "#fff", padding: "36px 40px", width: "760px", maxHeight: "90vh", overflowY: "auto",
+                  fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: "14px", lineHeight: "1.4",
                   boxShadow: "0 4px 24px rgba(0,0,0,0.2)", color: "#1e293b",
                 }}
               >
                 {/* Header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: "14px", borderBottom: "2px solid #0f172a" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                    <img src="/logo.png" alt="" style={{ height: "52px", width: "auto", maxWidth: "52px", objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                    <div>
-                      {businessName && <div style={{ fontWeight: 700, fontSize: "22px", color: "#0f172a" }}>{businessName}</div>}
-                      {businessAddress && <div style={{ fontSize: "14px", color: "#475569" }}>{businessAddress}</div>}
-                      {(businessPhone || businessEmail) && <div style={{ fontSize: "14px", color: "#475569" }}>{[businessPhone, businessEmail].filter(Boolean).join(" | ")}</div>}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "24px", fontWeight: 700, color: "#0f172a", letterSpacing: "0.04em" }}>PURCHASE ORDER</div>
-                    <div style={{ fontSize: "16px", fontWeight: 700, color: "#334155", marginTop: "2px" }}>{printPo.po.po_number}</div>
-                  </div>
-                </div>
-
-                {/* Info boxes */}
-                <div style={{ display: "flex", gap: "14px", margin: "16px 0" }}>
-                  <div style={{ flex: 1, border: "1px solid #cbd5e1", borderRadius: "6px", padding: "12px 16px" }}>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "4px" }}>Supplier</div>
-                    <div style={{ fontWeight: 600, fontSize: "17px" }}>{printPo.supplierName}</div>
-                  </div>
-                  <div style={{ border: "1px solid #cbd5e1", borderRadius: "6px", padding: "12px 16px", minWidth: "130px" }}>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "4px" }}>Date</div>
-                    <div style={{ fontWeight: 600, fontSize: "15px" }}>{new Date(printPo.po.created_at).toLocaleDateString()}</div>
-                  </div>
-                  <div style={{ border: "1px solid #cbd5e1", borderRadius: "6px", padding: "12px 16px", minWidth: "130px" }}>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "4px" }}>Status</div>
-                    <div style={{ fontWeight: 600, fontSize: "15px" }}>{printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status.charAt(0).toUpperCase() + printPo.po.status.slice(1)}</div>
-                  </div>
-                </div>
-
-                {printPo.po.notes && (
-                  <div style={{ fontSize: "14px", color: "#475569", marginBottom: "14px", padding: "10px 14px", background: "#f8fafc", borderRadius: "4px", borderLeft: "3px solid #94a3b8" }}>
-                    <strong style={{ color: "#334155" }}>Notes:</strong> {printPo.po.notes}
-                  </div>
-                )}
-
-                {/* Items table */}
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "15px", border: "1px solid #cbd5e1" }}>
-                  <thead>
-                    <tr style={{ background: "#f1f5f9" }}>
-                      <th style={{ textAlign: "left", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8" }}>Product</th>
-                      <th style={{ textAlign: "center", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8", width: "80px" }}>Qty</th>
-                      <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8", width: "110px" }}>Unit Cost</th>
-                      <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569", borderBottom: "2px solid #94a3b8", width: "110px" }}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {printPo.items.map((item, i) => (
-                      <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
-                        <td style={{ padding: "11px 14px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
-                        <td style={{ padding: "11px 14px", textAlign: "center" }}>{item.quantity}</td>
-                        <td style={{ padding: "11px 14px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
-                        <td style={{ padding: "11px 14px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {/* Grand total */}
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <div style={{ background: "#0f172a", color: "#fff", padding: "12px 24px", fontSize: "17px", fontWeight: 700, borderRadius: "0 0 6px 6px", minWidth: "220px", textAlign: "right" }}>
-                    Grand Total: ${grandTotal.toFixed(2)}
-                  </div>
-                </div>
-
-                {/* Signatures */}
                 {(() => {
+                  const fmtPhone = (p: string) => { const d = p.replace(/\D/g, ""); return d.length === 10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : p; };
+                  const statusLabel = printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status === "received" ? "Received" : "Draft";
+                  const statusBg = printPo.po.status === "ordered" ? "#dbeafe" : printPo.po.status === "received" ? "#dcfce7" : "#f1f5f9";
+                  const statusColor = printPo.po.status === "ordered" ? "#1e40af" : printPo.po.status === "received" ? "#15803d" : "#475569";
                   const sigs = getPoSignatures(printPo.po.id);
                   return (
-                    <div style={{ display: "flex", gap: "40px", marginTop: "32px" }}>
-                      <div style={{ flex: 1 }}>
-                        {sigs.manager ? (
-                          <>
-                            <img src={sigs.manager.dataUrl} alt="Manager signature" style={{ height: "48px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block", marginBottom: "4px" }} />
-                            <div style={{ fontSize: "12px", color: "#64748b" }}>Signed: {new Date(sigs.manager.signedAt).toLocaleString()}</div>
-                          </>
-                        ) : (
-                          <div style={{ borderBottom: "1px solid #334155", marginBottom: "6px", height: "28px" }} />
-                        )}
-                        <div style={{ fontSize: "13px", color: "#64748b" }}>Authorized By</div>
+                    <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: "12px", borderBottom: "3px solid #0f172a" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "16px" }}>
+                        <img src="/logo.png" alt="" style={{ height: "72px", width: "auto", maxWidth: "72px", objectFit: "contain", marginTop: "2px" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                        <div>
+                          {businessName && <div style={{ fontWeight: 800, fontSize: "24px", color: "#0f172a", letterSpacing: "-0.01em" }}>{businessName}</div>}
+                          {businessAddress && <div style={{ fontSize: "13px", color: "#475569", lineHeight: "1.5" }}>{businessAddress}</div>}
+                          {businessPhone && <div style={{ fontSize: "13px", color: "#475569" }}>{fmtPhone(businessPhone)}</div>}
+                          {businessEmail && <div style={{ fontSize: "13px", color: "#475569" }}>{businessEmail}</div>}
+                        </div>
                       </div>
-                      <div style={{ flex: 1 }}>
-                        {sigs.supplier ? (
-                          <>
-                            <img src={sigs.supplier.dataUrl} alt="Supplier signature" style={{ height: "48px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block", marginBottom: "4px" }} />
-                            <div style={{ fontSize: "12px", color: "#64748b" }}>Signed: {new Date(sigs.supplier.signedAt).toLocaleString()}</div>
-                          </>
-                        ) : (
-                          <div style={{ borderBottom: "1px solid #334155", marginBottom: "6px", height: "28px" }} />
-                        )}
-                        <div style={{ fontSize: "13px", color: "#64748b" }}>Supplier Representative</div>
+                      <div style={{ textAlign: "right", minWidth: "220px" }}>
+                        <div style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", letterSpacing: "0.03em" }}>PURCHASE ORDER</div>
+                        <div style={{ fontSize: "17px", fontWeight: 700, color: "#334155", marginTop: "2px", fontFamily: "monospace" }}>{printPo.po.po_number}</div>
+                        <div style={{ fontSize: "13px", color: "#64748b", marginTop: "2px" }}>{new Date(printPo.po.created_at).toLocaleDateString()}</div>
                       </div>
                     </div>
+
+                    {/* Supplier + Details row */}
+                    <div style={{ display: "flex", gap: "12px", margin: "14px 0 10px" }}>
+                      <div style={{ flex: 2, border: "1px solid #cbd5e1", borderRadius: "5px", padding: "10px 14px" }}>
+                        <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "3px" }}>Supplier</div>
+                        <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "2px" }}>{printPo.supplier?.name ?? "Unknown"}</div>
+                        <div style={{ fontSize: "12px", color: printPo.supplier?.contact_name ? "#475569" : "#94a3b8" }}>
+                          Contact: {printPo.supplier?.contact_name || "_______________"}&emsp;
+                          Phone: {printPo.supplier?.phone ? fmtPhone(printPo.supplier.phone) : "_______________"}
+                        </div>
+                        <div style={{ fontSize: "12px", color: printPo.supplier?.email ? "#475569" : "#94a3b8", marginTop: "1px" }}>
+                          Email: {printPo.supplier?.email || "_______________"}
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ border: "1px solid #cbd5e1", borderRadius: "5px", padding: "8px 12px", flex: 1 }}>
+                          <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "2px" }}>Status</div>
+                          <span style={{ fontSize: "13px", fontWeight: 700, padding: "2px 10px", borderRadius: "10px", background: statusBg, color: statusColor }}>{statusLabel}</span>
+                        </div>
+                        <div style={{ border: "1px solid #cbd5e1", borderRadius: "5px", padding: "8px 12px", flex: 1 }}>
+                          <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "2px" }}>Expected Delivery</div>
+                          <div style={{ fontSize: "13px", color: "#94a3b8" }}>_______________</div>
+                        </div>
+                        <div style={{ border: "1px solid #cbd5e1", borderRadius: "5px", padding: "8px 12px", flex: 1 }}>
+                          <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "2px" }}>Prepared By</div>
+                          <div style={{ fontSize: "13px", color: "#94a3b8" }}>_______________</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {printPo.po.notes && (
+                      <div style={{ fontSize: "13px", color: "#475569", marginBottom: "10px", padding: "8px 12px", background: "#f8fafc", borderRadius: "4px", borderLeft: "3px solid #94a3b8" }}>
+                        <strong style={{ color: "#334155" }}>Notes:</strong> {printPo.po.notes}
+                      </div>
+                    )}
+
+                    {/* Items table */}
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", border: "1px solid #94a3b8" }}>
+                      <thead>
+                        <tr style={{ background: "#1e293b" }}>
+                          <th style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff" }}>Product</th>
+                          <th style={{ textAlign: "center", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff", width: "70px" }}>Qty</th>
+                          <th style={{ textAlign: "right", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff", width: "100px" }}>Unit Cost</th>
+                          <th style={{ textAlign: "right", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff", width: "100px" }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {printPo.items.map((item, i) => (
+                          <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
+                            <td style={{ padding: "10px 12px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
+                            <td style={{ padding: "10px 12px", textAlign: "center" }}>{item.quantity}</td>
+                            <td style={{ padding: "10px 12px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
+                            <td style={{ padding: "10px 12px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {/* Grand total box */}
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0" }}>
+                      <div style={{ background: "#f1f5f9", border: "1px solid #94a3b8", borderTop: "none", borderRadius: "0 0 5px 5px", padding: "10px 24px", minWidth: "240px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "14px", fontWeight: 600, color: "#475569" }}>Grand Total</span>
+                        <span style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>${grandTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    {/* Signature blocks */}
+                    <div style={{ display: "flex", gap: "32px", marginTop: "24px" }}>
+                      <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: "5px", padding: "10px 14px" }}>
+                        <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", marginBottom: "6px" }}>Manager Approval</div>
+                        {sigs.manager ? (
+                          <>
+                            <img src={sigs.manager.dataUrl} alt="Manager signature" style={{ height: "44px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block" }} />
+                            <div style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>{new Date(sigs.manager.signedAt).toLocaleString()}</div>
+                          </>
+                        ) : (
+                          <div style={{ borderBottom: "1px solid #334155", height: "36px", marginBottom: "4px" }} />
+                        )}
+                        <div style={{ fontSize: "11px", color: "#94a3b8", borderTop: "1px solid #e2e8f0", paddingTop: "4px", marginTop: "4px" }}>Name: _______________&emsp;Date: ________</div>
+                      </div>
+                      <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: "5px", padding: "10px 14px" }}>
+                        <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", marginBottom: "6px" }}>Supplier Acceptance</div>
+                        {sigs.supplier ? (
+                          <>
+                            <img src={sigs.supplier.dataUrl} alt="Supplier signature" style={{ height: "44px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block" }} />
+                            <div style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>{new Date(sigs.supplier.signedAt).toLocaleString()}</div>
+                          </>
+                        ) : (
+                          <div style={{ borderBottom: "1px solid #334155", height: "36px", marginBottom: "4px" }} />
+                        )}
+                        <div style={{ fontSize: "11px", color: "#94a3b8", borderTop: "1px solid #e2e8f0", paddingTop: "4px", marginTop: "4px" }}>Name: _______________&emsp;Date: ________</div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{ textAlign: "center", marginTop: "18px", paddingTop: "8px", borderTop: "1px solid #e2e8f0", fontSize: "11px", color: "#94a3b8" }}>
+                      Generated by Wegn-Store&emsp;|&emsp;Generated: {new Date().toLocaleString()}
+                    </div>
+                    </>
                   );
                 })()}
 
-                {/* Footer */}
-                <div style={{ textAlign: "center", marginTop: "24px", paddingTop: "12px", borderTop: "2px solid #0f172a", fontSize: "14px", color: "#64748b" }}>
-                  Thank you for your business.
-                </div>
-
-                <div id="po-print-actions" style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "20px" }}>
+                <div id="po-print-actions" style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "16px" }}>
                   <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>
                     Print
                   </button>
