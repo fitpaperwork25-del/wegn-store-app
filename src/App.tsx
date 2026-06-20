@@ -296,6 +296,13 @@ function App() {
     localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
   }
 
+  function getPrefQty(productId: string): number | null {
+    try { const v = localStorage.getItem(`pref-qty-${productId}`); return v ? Number(v) : null; } catch { return null; }
+  }
+  function savePrefQty(productId: string, qty: number) {
+    localStorage.setItem(`pref-qty-${productId}`, String(qty));
+  }
+
   function getPoEmailLog(poId: string): { lastEmailedAt: string; count: number } | null {
     try { const v = localStorage.getItem(`po-email-${poId}`); return v ? JSON.parse(v) : null; } catch { return null; }
   }
@@ -472,6 +479,8 @@ function App() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [cart.length]);
+
+  const fmtPhone = (p: string) => { const d = p.replace(/\D/g, ""); return d.length === 10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : p; };
 
   // Derived from allPayments + sales so it stays current after every sale/void/return.
   // Filters to completed sales only (excludes voided/returned) scoped to current drawer session.
@@ -1616,13 +1625,22 @@ function App() {
 
       if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
 
-      const { error: itemsErr } = await supabase.from("purchase_order_items").insert(
-        items.map(i => ({ purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }))
-      );
-      if (itemsErr) { console.error(itemsErr); }
+      const CHUNK = 30;
+      const rows = items.map(i => ({ purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
+      let chunkInserted = 0;
+      for (let ci = 0; ci < rows.length; ci += CHUNK) {
+        const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
+        if (chunkErr) { console.error(chunkErr); break; }
+        chunkInserted += Math.min(CHUNK, rows.length - ci);
+      }
+
+      if (chunkInserted === 0) {
+        await supabase.from("purchase_orders").delete().eq("id", po.id);
+        continue;
+      }
 
       poCount++;
-      itemCount += items.length;
+      itemCount += chunkInserted;
     }
 
     setReorderSelected(new Set());
@@ -1649,11 +1667,66 @@ function App() {
     await loadProducts();
   }
 
+  async function handleCreateCatalogPO(supplierId: string) {
+    const supProducts = products.filter(p => p.supplier_id === supplierId && p.status === "active");
+    if (supProducts.length === 0) { setMessage({ text: "No products assigned to this supplier", type: "error" }); return; }
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const poNumber = `PO-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+    const items = supProducts.map(p => {
+      const prefQty = getPrefQty(p.product_id);
+      const defaultQty = Math.max(1, p.reorder_level - p.quantity_on_hand);
+      const qty = prefQty ?? defaultQty;
+      const unitCost = p.average_cost ?? 0;
+      return { product_id: p.product_id, product_name: p.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
+    });
+
+    const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
+    const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? "Unknown";
+    const notes = items.length === 1 ? `Catalog: ${items[0].product_name}` : `Catalog: ${items.length} products`;
+
+    const { data: po, error: poErr } = await supabase
+      .from("purchase_orders")
+      .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
+      .select("id")
+      .single();
+
+    if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
+
+    const CHUNK = 30;
+    let insertedCount = 0;
+    const rows = items.map(i => ({ purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(i, i + CHUNK));
+      if (chunkErr) { console.error(chunkErr); break; }
+      insertedCount += Math.min(CHUNK, rows.length - i);
+    }
+
+    if (insertedCount === 0) {
+      await supabase.from("purchase_orders").delete().eq("id", po.id);
+      setMessage({ text: "Failed to add items — PO was not created", type: "error" });
+      await loadPurchaseOrders();
+      return;
+    }
+
+    if (insertedCount < items.length) {
+      await supabase.from("purchase_orders").update({ subtotal: 0, notes: `${notes} (PARTIAL: ${insertedCount}/${items.length} items)` }).eq("id", po.id);
+      setMessage({ text: `PO ${poNumber} created with only ${insertedCount} of ${items.length} items — some inserts failed`, type: "error" });
+    } else {
+      setMessage({ text: `Draft PO ${poNumber} created from ${supplierName} catalog (${items.length} products)`, type: "success" });
+    }
+    await loadPurchaseOrders();
+  }
+
   async function handleCreatePO(e: React.FormEvent) {
     e.preventDefault();
     setMessage(null);
 
     if (!poSupplierId) return;
+    const supName = suppliers.find(s => s.id === poSupplierId)?.name ?? "this supplier";
+    if (!window.confirm(`Create an empty draft PO for ${supName}? You will need to add items manually via View/Edit.`)) return;
 
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -1675,7 +1748,7 @@ function App() {
 
     setPoSupplierId("");
     setPoNotes("");
-    setMessage({ text: "Purchase order created successfully", type: "success" });
+    setMessage({ text: "Empty draft PO created — use View/Edit to add items", type: "success" });
     await loadPurchaseOrders();
   }
 
@@ -3187,100 +3260,164 @@ function App() {
         </button>
       </form>
 
-      <div style={{ overflowX: "auto", marginBottom: "40px" }}>
-        <table border={1} cellPadding={10} style={{ width: "100%" }}>
+      <div style={{ marginBottom: "40px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
           <thead>
-            <tr>
-              <th>Supplier Name</th>
-              <th>Contact Person</th>
-              <th>Phone</th>
-              <th>Email</th>
-              <th>Notes</th>
-              <th>Status</th>
-              <th>Actions</th>
+            <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
+              <th style={{ width: "30px", padding: "10px 8px" }}></th>
+              <th style={{ textAlign: "left", padding: "10px 8px" }}>Supplier</th>
+              <th style={{ textAlign: "right", padding: "10px 8px" }}>POs</th>
+              <th style={{ textAlign: "right", padding: "10px 8px" }}>Total Spend</th>
+              <th style={{ textAlign: "left", padding: "10px 8px" }}>Last Order</th>
+              <th style={{ padding: "10px 8px" }}>Performance</th>
+              <th style={{ padding: "10px 8px" }}>Status</th>
+              <th style={{ padding: "10px 8px" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {suppliers.length === 0 ? (
-              <tr><td colSpan={7}>No suppliers found</td></tr>
+              <tr><td colSpan={8} style={{ padding: "16px", color: "#64748b" }}>No suppliers found</td></tr>
             ) : (
               suppliers.map((s) => {
                 const inactive = s.status !== "active";
                 const isEditing = editingSupplierId === s.id;
+                const isExpanded = expandedCustomerId === `sup-${s.id}`;
+                const pos = purchaseOrders.filter(po => po.supplier_id === s.id);
+                const received = pos.filter(po => po.status === "received");
+                const totalSpend = received.reduce((sum, po) => sum + Number(po.subtotal), 0);
+                const receivedRate = pos.length > 0 ? Math.round((received.length / pos.length) * 100) : 0;
+                const lastPO = pos.length > 0 ? new Date(Math.max(...pos.map(po => new Date(po.created_at).getTime()))) : null;
+                const health = pos.length === 0 ? "none" : receivedRate >= 60 ? "good" : "attention";
+                const healthBg = health === "good" ? "#dcfce7" : health === "attention" ? "#fef3c7" : "#f1f5f9";
+                const healthColor = health === "good" ? "#15803d" : health === "attention" ? "#92400e" : "#94a3b8";
+                const healthLabel = health === "good" ? "Good" : health === "attention" ? "Attention" : "No Activity";
                 return (
                   <React.Fragment key={s.id}>
-                    <tr style={inactive ? { backgroundColor: "#f5f5f5", color: "#999" } : {}}>
-                      <td>{s.name}</td>
-                      <td>{s.contact_name ?? "—"}</td>
-                      <td>{s.phone ?? "—"}</td>
-                      <td>{s.email ?? "—"}</td>
-                      <td>{s.notes ?? "—"}</td>
-                      <td>
-                        <span style={{
-                          fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                          background: inactive ? "#e5e7eb" : "#dcfce7",
-                          color: inactive ? "#6b7280" : "#15803d",
-                        }}>{s.status}</span>
+                    <tr style={{ borderBottom: "1px solid #f1f5f9", ...(inactive ? { backgroundColor: "#f9fafb", color: "#94a3b8" } : {}) }}>
+                      <td style={{ padding: "10px 8px", cursor: "pointer", textAlign: "center" }} onClick={() => setExpandedCustomerId(isExpanded ? null : `sup-${s.id}`)}>
+                        {isExpanded ? "▾" : "▸"}
                       </td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <button
-                          onClick={() => isEditing ? handleCancelEditSupplier() : handleStartEditSupplier(s)}
-                          style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer",
-                            background: isEditing ? "#f3f4f6" : undefined }}
-                        >{isEditing ? "Cancel" : "Edit"}</button>
-                        <button
-                          onClick={() => handleToggleSupplierStatus(s)}
-                          style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer",
-                            color: inactive ? "#15803d" : "#b45309" }}
-                        >{inactive ? "Activate" : "Deactivate"}</button>
-                        <button
-                          onClick={() => handleDeleteSupplier(s.id, s.name)}
-                          style={{ padding: "3px 10px", cursor: "pointer", color: "#b91c1c" }}
-                        >Delete</button>
+                      <td style={{ padding: "10px 8px", fontWeight: 600 }}>{s.name}</td>
+                      <td style={{ padding: "10px 8px", textAlign: "right" }}>{pos.length}</td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: 500 }}>${totalSpend.toFixed(2)}</td>
+                      <td style={{ padding: "10px 8px", fontSize: "13px", color: "#64748b" }}>{lastPO ? lastPO.toLocaleDateString() : "—"}</td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: healthBg, color: healthColor }}>{healthLabel}</span>
+                      </td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "12px", background: inactive ? "#e5e7eb" : "#dcfce7", color: inactive ? "#6b7280" : "#15803d" }}>{s.status}</span>
+                      </td>
+                      <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>
+                        <button onClick={() => isEditing ? handleCancelEditSupplier() : handleStartEditSupplier(s)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", background: isEditing ? "#f3f4f6" : undefined }}>{isEditing ? "Cancel" : "Edit"}</button>
+                        <button onClick={() => handleToggleSupplierStatus(s)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", color: inactive ? "#15803d" : "#b45309" }}>{inactive ? "Activate" : "Deactivate"}</button>
+                        <button onClick={() => handleDeleteSupplier(s.id, s.name)} style={{ padding: "3px 10px", cursor: "pointer", color: "#b91c1c" }}>Delete</button>
                       </td>
                     </tr>
+                    {isExpanded && !isEditing && (() => {
+                      const supProducts = products.filter(p => p.supplier_id === s.id);
+                      const catalogValue = supProducts.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
+                      const avgCost = supProducts.length > 0 ? supProducts.reduce((sum, p) => sum + p.average_cost, 0) / supProducts.length : 0;
+                      return (
+                      <tr>
+                        <td colSpan={8} style={{ background: "#f8fafc", padding: "16px", borderBottom: "1px solid #e2e8f0" }}>
+                          {/* Contact info */}
+                          <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", marginBottom: "12px", fontSize: "13px" }}>
+                            <div><span style={{ color: "#94a3b8" }}>Contact:</span> <strong>{s.contact_name || "—"}</strong></div>
+                            <div><span style={{ color: "#94a3b8" }}>Phone:</span> <strong>{s.phone ? fmtPhone(s.phone) : "—"}</strong></div>
+                            <div><span style={{ color: "#94a3b8" }}>Email:</span> <strong>{s.email || "—"}</strong></div>
+                          </div>
+                          {/* Metrics cards */}
+                          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
+                            {[
+                              { label: "Products Supplied", value: supProducts.length },
+                              { label: "Total POs", value: pos.length },
+                              { label: "Total Spend", value: `$${totalSpend.toFixed(2)}` },
+                              { label: "Inventory Value", value: `$${catalogValue.toFixed(2)}` },
+                              { label: "Avg Cost", value: `$${avgCost.toFixed(2)}` },
+                              { label: "Received Rate", value: pos.length > 0 ? `${receivedRate}%` : "—" },
+                            ].map(card => (
+                              <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 12px", minWidth: "100px", background: "#fff" }}>
+                                <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em" }}>{card.label}</div>
+                                <div style={{ fontSize: "17px", fontWeight: 700, color: "#0f172a" }}>{card.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {s.notes && <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}><strong>Notes:</strong> {s.notes}</div>}
+
+                          {/* Product Catalog */}
+                          <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                              <strong style={{ fontSize: "14px" }}>Product Catalog ({supProducts.length})</strong>
+                              {supProducts.length > 0 && (
+                                <button
+                                  onClick={() => handleCreateCatalogPO(s.id)}
+                                  style={{ padding: "6px 16px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#15803d", color: "#fff", fontWeight: 600, fontSize: "13px" }}
+                                >Create PO From Catalog</button>
+                              )}
+                            </div>
+                            {supProducts.length === 0 ? (
+                              <div style={{ fontSize: "13px", color: "#94a3b8", padding: "8px 0" }}>No products assigned to this supplier yet. Use the Reorder Center to assign products.</div>
+                            ) : (
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                                <thead>
+                                  <tr style={{ borderBottom: "1px solid #e2e8f0", background: "#f1f5f9" }}>
+                                    <th style={{ textAlign: "left", padding: "6px 8px" }}>Product</th>
+                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Stock</th>
+                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Reorder Level</th>
+                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Last Cost</th>
+                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Pref. Order Qty</th>
+                                    <th style={{ padding: "6px 8px" }}>Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {supProducts.map((p, i) => {
+                                    const defaultQty = Math.max(1, p.reorder_level - p.quantity_on_hand);
+                                    const prefQty = getPrefQty(p.product_id);
+                                    const isLow = p.quantity_on_hand < p.reorder_level;
+                                    return (
+                                      <tr key={p.product_id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                                        <td style={{ padding: "6px 8px" }}>{p.product_name}</td>
+                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
+                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
+                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>${p.average_cost.toFixed(2)}</td>
+                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                                          <input
+                                            type="number" min="1"
+                                            value={prefQty ?? defaultQty}
+                                            onChange={(e) => savePrefQty(p.product_id, Math.max(1, Number(e.target.value) || 1))}
+                                            style={{ width: "60px", padding: "3px", textAlign: "right", fontSize: "12px" }}
+                                          />
+                                        </td>
+                                        <td style={{ padding: "6px 8px" }}>
+                                          {isLow ? (
+                                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "10px", background: "#fef2f2", color: "#dc2626" }}>Low Stock</span>
+                                          ) : (
+                                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "10px", background: "#dcfce7", color: "#15803d" }}>OK</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      );
+                    })()}
                     {isEditing && (
                       <tr>
-                        <td colSpan={7} style={{ background: "#f0f4ff", padding: "16px", border: "1px solid #c7d2fe" }}>
-                          <strong style={{ color: "#3730a3", display: "block", marginBottom: "10px" }}>
-                            Edit Supplier — {s.name}
-                          </strong>
+                        <td colSpan={8} style={{ background: "#f0f4ff", padding: "16px", border: "1px solid #c7d2fe" }}>
+                          <strong style={{ color: "#3730a3", display: "block", marginBottom: "10px" }}>Edit Supplier — {s.name}</strong>
                           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                            <input
-                              type="text" placeholder="Supplier Name *" value={editSupName}
-                              onChange={(e) => setEditSupName(e.target.value)}
-                              style={{ flex: "2 1 180px", padding: "7px 10px" }}
-                            />
-                            <input
-                              type="text" placeholder="Contact Person" value={editSupContact}
-                              onChange={(e) => setEditSupContact(e.target.value)}
-                              style={{ flex: "1 1 150px", padding: "7px 10px" }}
-                            />
-                            <input
-                              type="text" placeholder="Phone" value={editSupPhone}
-                              onChange={(e) => setEditSupPhone(e.target.value)}
-                              style={{ flex: "1 1 120px", padding: "7px 10px" }}
-                            />
-                            <input
-                              type="email" placeholder="Email" value={editSupEmail}
-                              onChange={(e) => setEditSupEmail(e.target.value)}
-                              style={{ flex: "1 1 170px", padding: "7px 10px" }}
-                            />
-                            <input
-                              type="text" placeholder="Notes" value={editSupNotes}
-                              onChange={(e) => setEditSupNotes(e.target.value)}
-                              style={{ flex: "2 1 180px", padding: "7px 10px" }}
-                            />
-                            <button
-                              onClick={handleSaveSupplier}
-                              disabled={!editSupName.trim()}
-                              style={{ padding: "7px 18px", cursor: "pointer", fontWeight: "bold",
-                                background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}
-                            >Save</button>
-                            <button
-                              onClick={handleCancelEditSupplier}
-                              style={{ padding: "7px 14px", cursor: "pointer" }}
-                            >Cancel</button>
+                            <input type="text" placeholder="Supplier Name *" value={editSupName} onChange={(e) => setEditSupName(e.target.value)} style={{ flex: "2 1 180px", padding: "7px 10px" }} />
+                            <input type="text" placeholder="Contact Person" value={editSupContact} onChange={(e) => setEditSupContact(e.target.value)} style={{ flex: "1 1 150px", padding: "7px 10px" }} />
+                            <input type="text" placeholder="Phone" value={editSupPhone} onChange={(e) => setEditSupPhone(e.target.value)} style={{ flex: "1 1 120px", padding: "7px 10px" }} />
+                            <input type="email" placeholder="Email" value={editSupEmail} onChange={(e) => setEditSupEmail(e.target.value)} style={{ flex: "1 1 170px", padding: "7px 10px" }} />
+                            <input type="text" placeholder="Notes" value={editSupNotes} onChange={(e) => setEditSupNotes(e.target.value)} style={{ flex: "2 1 180px", padding: "7px 10px" }} />
+                            <button onClick={handleSaveSupplier} disabled={!editSupName.trim()} style={{ padding: "7px 18px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>Save</button>
+                            <button onClick={handleCancelEditSupplier} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
                           </div>
                         </td>
                       </tr>
@@ -3519,53 +3656,6 @@ function App() {
         );
       })()}
 
-      <h2 style={{ marginTop: "40px" }}>Supplier Performance</h2>
-
-      {(() => {
-        const stats = suppliers.map((s) => {
-          const pos = purchaseOrders.filter((po) => po.supplier_id === s.id);
-          const received = pos.filter((po) => po.status === "received");
-          const drafts = pos.filter((po) => po.status === "draft");
-          const totalSpend = received.reduce((sum, po) => sum + Number(po.subtotal), 0);
-          const lastPO = pos.length > 0
-            ? new Date(Math.max(...pos.map((po) => new Date(po.created_at).getTime())))
-            : null;
-          return { name: s.name, totalPOs: pos.length, receivedPOs: received.length, draftPOs: drafts.length, totalSpend, lastPO };
-        });
-
-        return (
-          <div style={{ overflowX: "auto", marginBottom: "40px" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Supplier</th>
-                  <th>Total POs</th>
-                  <th>Received</th>
-                  <th>Draft</th>
-                  <th>Total Spend (received)</th>
-                  <th>Last Order</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.length === 0 ? (
-                  <tr><td colSpan={6}>No suppliers found</td></tr>
-                ) : (
-                  stats.map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td>{row.totalPOs}</td>
-                      <td>{row.receivedPOs}</td>
-                      <td>{row.draftPOs}</td>
-                      <td>${row.totalSpend.toFixed(2)}</td>
-                      <td>{row.lastPO ? row.lastPO.toLocaleDateString() : "—"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
 
       </div>{/* end purchasing */}
 
@@ -5676,7 +5766,6 @@ function App() {
               >
                 {/* Header */}
                 {(() => {
-                  const fmtPhone = (p: string) => { const d = p.replace(/\D/g, ""); return d.length === 10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : p; };
                   const statusLabel = printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status === "received" ? "Received" : "Draft";
                   const statusBg = printPo.po.status === "ordered" ? "#dbeafe" : printPo.po.status === "received" ? "#dcfce7" : "#f1f5f9";
                   const statusColor = printPo.po.status === "ordered" ? "#1e40af" : printPo.po.status === "received" ? "#15803d" : "#475569";
