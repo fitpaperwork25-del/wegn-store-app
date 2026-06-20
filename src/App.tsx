@@ -40,6 +40,7 @@ type POItem = {
   purchase_order_id: string;
   product_id: string;
   quantity: number;
+  quantity_received: number;
   unit_cost: number;
   line_total: number;
   created_at: string;
@@ -220,7 +221,7 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [poStatusFilter, setPoStatusFilter] = useState<"all" | "draft" | "ordered" | "received" | "cancelled">("all");
+  const [poStatusFilter, setPoStatusFilter] = useState<"all" | "draft" | "ordered" | "partially_received" | "received" | "cancelled">("all");
   const [selectedPoId, setSelectedPoId] = useState("");
   const [poItems, setPoItems] = useState<POItem[]>([]);
   const [itemProductId, setItemProductId] = useState("");
@@ -317,7 +318,7 @@ function App() {
 
     const { data, error } = await supabase
       .from("purchase_order_items")
-      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at")
       .eq("purchase_order_id", po.id)
       .order("created_at", { ascending: true });
     if (error || !data) { console.error(error); setMessage({ text: "Failed to load PO items", type: "error" }); return; }
@@ -1021,7 +1022,7 @@ function App() {
   async function loadPOItems(poId: string) {
     const { data, error } = await supabase
       .from("purchase_order_items")
-      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at")
       .eq("purchase_order_id", poId)
       .order("created_at", { ascending: true });
 
@@ -1030,7 +1031,11 @@ function App() {
       return;
     }
 
-    setPoItems((data as POItem[]) || []);
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      quantity_received: item.quantity_received ?? 0,
+    }));
+    setPoItems(items as POItem[]);
   }
 
   async function handleSelectPO(po: PurchaseOrder) {
@@ -1114,7 +1119,7 @@ function App() {
 
     const { data, error } = await supabase
       .from("purchase_order_items")
-      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at")
       .eq("purchase_order_id", po.id)
       .order("created_at", { ascending: true });
 
@@ -1123,12 +1128,18 @@ function App() {
       return;
     }
 
-    const items = (data as POItem[]) || [];
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      quantity_received: item.quantity_received ?? 0,
+    })) as POItem[];
     setReceivingPoId(po.id);
     setReceivingItems(items);
 
     const qtys: Record<string, string> = {};
-    items.forEach((item) => { qtys[item.id] = String(item.quantity); });
+    items.forEach((item) => {
+      const remaining = item.quantity - (item.quantity_received ?? 0);
+      qtys[item.id] = String(Math.max(0, remaining));
+    });
     setReceiveQtys(qtys);
   }
 
@@ -1139,18 +1150,22 @@ function App() {
     setIsConfirmingReceive(true);
 
     try {
+      const receiveNotes: string[] = [];
+
       for (const item of receivingItems) {
         const receiveQty = Number(receiveQtys[item.id] ?? 0);
-        if (receiveQty <= 0) continue;
+        const remaining = item.quantity - (item.quantity_received ?? 0);
+        const clampedQty = Math.min(Math.max(0, receiveQty), remaining);
+        if (clampedQty <= 0) continue;
 
         const product = products.find((p) => p.product_id === item.product_id);
         if (!product) continue;
 
         const quantityBefore = product.quantity_on_hand;
-        const quantityAfter = quantityBefore + receiveQty;
+        const quantityAfter = quantityBefore + clampedQty;
         const oldAvgCost = product.average_cost ?? 0;
-        const newAvgCost = (quantityBefore + receiveQty) > 0
-          ? ((quantityBefore * oldAvgCost) + (receiveQty * item.unit_cost)) / (quantityBefore + receiveQty)
+        const newAvgCost = (quantityBefore + clampedQty) > 0
+          ? ((quantityBefore * oldAvgCost) + (clampedQty * item.unit_cost)) / (quantityBefore + clampedQty)
           : item.unit_cost;
 
         const { error: invError } = await supabase
@@ -1173,26 +1188,63 @@ function App() {
             business_id: product.business_id,
             product_id: item.product_id,
             transaction_type: "receiving",
-            quantity_change: receiveQty,
+            quantity_change: clampedQty,
             quantity_before: quantityBefore,
             quantity_after: quantityAfter,
             reason: `PO ${po.po_number}`,
           });
 
         if (txError) { console.error(txError); }
+
+        const newReceived = (item.quantity_received ?? 0) + clampedQty;
+        await supabase
+          .from("purchase_order_items")
+          .update({ quantity_received: newReceived })
+          .eq("id", item.id);
+
+        const productName = product.product_name;
+        receiveNotes.push(`${productName}: +${clampedQty} (${newReceived}/${item.quantity})`);
       }
+
+      if (receiveNotes.length === 0) {
+        setMessage({ text: "No quantities to receive", type: "error" });
+        return;
+      }
+
+      const { data: updatedItemsData } = await supabase
+        .from("purchase_order_items")
+        .select("quantity, quantity_received")
+        .eq("purchase_order_id", receivingPoId);
+
+      const allItems = (updatedItemsData || []) as { quantity: number; quantity_received: number | null }[];
+      const totalOrdered = allItems.reduce((s, i) => s + i.quantity, 0);
+      const totalReceived = allItems.reduce((s, i) => s + (i.quantity_received ?? 0), 0);
+
+      let newStatus: string;
+      if (totalReceived >= totalOrdered) {
+        newStatus = "received";
+      } else if (totalReceived > 0) {
+        newStatus = "partially_received";
+      } else {
+        newStatus = po.status;
+      }
+
+      const timestamp = new Date().toLocaleString();
+      const historyLine = `[Received ${timestamp}] ${receiveNotes.join("; ")}`;
+      const updatedNotes = po.notes ? `${po.notes}\n${historyLine}` : historyLine;
 
       const { error: statusError } = await supabase
         .from("purchase_orders")
-        .update({ status: "received" })
+        .update({ status: newStatus, notes: updatedNotes })
         .eq("id", receivingPoId);
 
       if (statusError) { console.error(statusError); setMessage({ text: "Failed to update PO status", type: "error" }); return; }
 
+      const statusLabel = newStatus === "received" ? "fully received" : "partially received";
       setReceivingPoId("");
       setReceivingItems([]);
       setReceiveQtys({});
-      setMessage({ text: `${po.po_number} received — inventory updated`, type: "success" });
+      setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated`, type: "success" });
       await loadProducts();
       await loadPurchaseOrders();
       await loadTransactions();
@@ -1312,7 +1364,7 @@ function App() {
   async function handlePrintPO(po: PurchaseOrder) {
     const { data, error } = await supabase
       .from("purchase_order_items")
-      .select("id, purchase_order_id, product_id, quantity, unit_cost, line_total, created_at")
+      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at")
       .eq("purchase_order_id", po.id)
       .order("created_at", { ascending: true });
     if (error || !data) { console.error(error); return; }
@@ -2907,7 +2959,7 @@ function App() {
         const txnCount = todaySales.length;
         const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
         const lowStockCount = products.filter(p => p.quantity_on_hand < p.reorder_level).length;
-        const openPoCount = purchaseOrders.filter(po => po.status === 'draft' || po.status === 'ordered').length;
+        const openPoCount = purchaseOrders.filter(po => po.status === 'draft' || po.status === 'ordered' || po.status === 'partially_received').length;
         const activeCustomerCount = customers.filter(c => c.status === 'active').length;
         const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
         const recentSales = [...sales]
@@ -3996,6 +4048,7 @@ function App() {
           all: purchaseOrders.length,
           draft: purchaseOrders.filter(po => po.status === "draft").length,
           ordered: purchaseOrders.filter(po => po.status === "ordered").length,
+          partially_received: purchaseOrders.filter(po => po.status === "partially_received").length,
           received: purchaseOrders.filter(po => po.status === "received").length,
           cancelled: purchaseOrders.filter(po => po.status === "cancelled").length,
         };
@@ -4003,6 +4056,7 @@ function App() {
           { key: "all", label: "All" },
           { key: "draft", label: "Draft" },
           { key: "ordered", label: "Awaiting Delivery" },
+          { key: "partially_received", label: "Partial" },
           { key: "received", label: "Received" },
           { key: "cancelled", label: "Cancelled" },
         ];
@@ -4059,11 +4113,12 @@ function App() {
                   filteredPOs.map((po) => {
                     const isDraft = po.status === "draft";
                     const isOrdered = po.status === "ordered";
+                    const isPartiallyReceived = po.status === "partially_received";
                     const isCancelled = po.status === "cancelled";
                     const isReceived = po.status === "received";
                     const isSelected = selectedPoId === po.id;
-                    const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isCancelled ? "#e5e7eb" : "#dcfce7";
-                    const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isCancelled ? "#6b7280" : "#15803d";
+                    const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isPartiallyReceived ? "#fef9c3" : isCancelled ? "#e5e7eb" : "#dcfce7";
+                    const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isPartiallyReceived ? "#a16207" : isCancelled ? "#6b7280" : "#15803d";
                     const isDraftPO = isDraft;
                     const productItemMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
                     return (
@@ -4072,7 +4127,7 @@ function App() {
                         <td>{po.po_number}</td>
                         <td>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
                         <td>
-                          <span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: badgeBg, color: badgeColor }}>{po.status === "ordered" ? "awaiting delivery" : po.status}</span>
+                          <span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: badgeBg, color: badgeColor }}>{po.status === "ordered" ? "awaiting delivery" : po.status === "partially_received" ? "partial" : po.status}</span>
                           {(() => { const log = getPoEmailLog(po.id); return log ? (
                             <span style={{ fontSize: "10px", fontWeight: "bold", padding: "2px 6px", borderRadius: "10px", background: "#dbeafe", color: "#1e40af", marginLeft: "6px" }} title={`Emailed ${new Date(log.lastEmailedAt).toLocaleString()}`}>emailed</span>
                           ) : (isDraft || isOrdered) ? (
@@ -4080,7 +4135,7 @@ function App() {
                           ) : null; })()}
                         </td>
                         <td>${Number(po.subtotal ?? 0).toFixed(2)}</td>
-                        <td>{po.notes || "-"}</td>
+                        <td style={{ whiteSpace: "pre-line", maxWidth: "300px" }}>{po.notes || "-"}</td>
                         <td>{new Date(po.created_at).toLocaleString()}</td>
                         <td style={{ whiteSpace: "nowrap" }}>
                           {!isCancelled && !isReceived && (
@@ -4125,12 +4180,12 @@ function App() {
                               Mark Ordered
                             </button>
                           )}
-                          {(isDraft || isOrdered) && (
+                          {(isDraft || isOrdered || isPartiallyReceived) && (
                             <button
                               onClick={() => handleOpenReceive(po)}
                               style={{ padding: "4px 10px", marginRight: "4px", background: receivingPoId === po.id ? "#d1fae5" : undefined }}
                             >
-                              {receivingPoId === po.id ? "Cancel" : "Receive"}
+                              {receivingPoId === po.id ? "Cancel" : isPartiallyReceived ? "Receive More" : "Receive"}
                             </button>
                           )}
                           {isDraft && (
@@ -4158,9 +4213,9 @@ function App() {
                               PO Detail — {po.po_number}
                               <span style={{
                                 marginLeft: "12px", fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                                background: isDraftPO ? "#fef3c7" : po.status === "cancelled" ? "#e5e7eb" : "#dcfce7",
-                                color: isDraftPO ? "#92400e" : po.status === "cancelled" ? "#6b7280" : "#15803d",
-                              }}>{po.status}</span>
+                                background: isDraftPO ? "#fef3c7" : po.status === "cancelled" ? "#e5e7eb" : isPartiallyReceived ? "#fef9c3" : "#dcfce7",
+                                color: isDraftPO ? "#92400e" : po.status === "cancelled" ? "#6b7280" : isPartiallyReceived ? "#a16207" : "#15803d",
+                              }}>{po.status === "partially_received" ? "partial" : po.status}</span>
                             </strong>
 
                             {isDraftPO && (
@@ -4207,7 +4262,9 @@ function App() {
                               <thead>
                                 <tr>
                                   <th>Product</th>
-                                  <th>Quantity</th>
+                                  <th>Ordered</th>
+                                  {!isDraftPO && <th>Received</th>}
+                                  {!isDraftPO && <th>Remaining</th>}
                                   <th>Unit Cost</th>
                                   <th>Line Total</th>
                                   {isDraftPO && <th></th>}
@@ -4216,27 +4273,37 @@ function App() {
                               <tbody>
                                 {poItems.length === 0 ? (
                                   <tr>
-                                    <td colSpan={isDraftPO ? 5 : 4}>No items yet</td>
+                                    <td colSpan={isDraftPO ? 5 : 6}>No items yet</td>
                                   </tr>
                                 ) : (
-                                  poItems.map((item) => (
-                                    <tr key={item.id}>
-                                      <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
-                                      <td>{item.quantity}</td>
-                                      <td>${Number(item.unit_cost).toFixed(2)}</td>
-                                      <td>${Number(item.line_total).toFixed(2)}</td>
-                                      {isDraftPO && (
-                                        <td>
-                                          <button
-                                            onClick={() => handleRemovePOItem(item.id)}
-                                            style={{ padding: "2px 8px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px", cursor: "pointer" }}
-                                          >
-                                            ×
-                                          </button>
-                                        </td>
-                                      )}
-                                    </tr>
-                                  ))
+                                  poItems.map((item) => {
+                                    const rcvd = item.quantity_received ?? 0;
+                                    const rem = item.quantity - rcvd;
+                                    return (
+                                      <tr key={item.id}>
+                                        <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
+                                        <td>{item.quantity}</td>
+                                        {!isDraftPO && <td>{rcvd}</td>}
+                                        {!isDraftPO && (
+                                          <td style={{ fontWeight: rem > 0 ? "bold" : "normal", color: rem > 0 ? "#b45309" : "#15803d" }}>
+                                            {rem}
+                                          </td>
+                                        )}
+                                        <td>${Number(item.unit_cost).toFixed(2)}</td>
+                                        <td>${Number(item.line_total).toFixed(2)}</td>
+                                        {isDraftPO && (
+                                          <td>
+                                            <button
+                                              onClick={() => handleRemovePOItem(item.id)}
+                                              style={{ padding: "2px 8px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px", cursor: "pointer" }}
+                                            >
+                                              ×
+                                            </button>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })
                                 )}
                               </tbody>
                             </table>
@@ -4260,7 +4327,9 @@ function App() {
                               <thead>
                                 <tr>
                                   <th>Product</th>
-                                  <th>Ordered Qty</th>
+                                  <th>Ordered</th>
+                                  <th>Received</th>
+                                  <th>Remaining</th>
                                   <th>Receive Qty</th>
                                   <th>Unit Cost</th>
                                 </tr>
@@ -4268,27 +4337,40 @@ function App() {
                               <tbody>
                                 {receivingItems.length === 0 ? (
                                   <tr>
-                                    <td colSpan={4}>No line items on this PO</td>
+                                    <td colSpan={6}>No line items on this PO</td>
                                   </tr>
                                 ) : (
-                                  receivingItems.map((item) => (
-                                    <tr key={item.id}>
-                                      <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
-                                      <td>{item.quantity}</td>
-                                      <td>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={receiveQtys[item.id] ?? ""}
-                                          onChange={(e) =>
-                                            setReceiveQtys((prev) => ({ ...prev, [item.id]: e.target.value }))
-                                          }
-                                          style={{ width: "80px", padding: "4px" }}
-                                        />
-                                      </td>
-                                      <td>${Number(item.unit_cost).toFixed(2)}</td>
-                                    </tr>
-                                  ))
+                                  receivingItems.map((item) => {
+                                    const alreadyReceived = item.quantity_received ?? 0;
+                                    const remaining = item.quantity - alreadyReceived;
+                                    return (
+                                      <tr key={item.id} style={{ background: remaining <= 0 ? "#f0fdf4" : undefined }}>
+                                        <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
+                                        <td>{item.quantity}</td>
+                                        <td>{alreadyReceived}</td>
+                                        <td style={{ fontWeight: remaining > 0 ? "bold" : "normal", color: remaining > 0 ? "#b45309" : "#15803d" }}>
+                                          {remaining}
+                                        </td>
+                                        <td>
+                                          {remaining > 0 ? (
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max={remaining}
+                                              value={receiveQtys[item.id] ?? ""}
+                                              onChange={(e) =>
+                                                setReceiveQtys((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                              }
+                                              style={{ width: "80px", padding: "4px" }}
+                                            />
+                                          ) : (
+                                            <span style={{ color: "#15803d", fontWeight: "bold" }}>Done</span>
+                                          )}
+                                        </td>
+                                        <td>${Number(item.unit_cost).toFixed(2)}</td>
+                                      </tr>
+                                    );
+                                  })
                                 )}
                               </tbody>
                             </table>
@@ -5766,9 +5848,9 @@ function App() {
               >
                 {/* Header */}
                 {(() => {
-                  const statusLabel = printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status === "received" ? "Received" : "Draft";
-                  const statusBg = printPo.po.status === "ordered" ? "#dbeafe" : printPo.po.status === "received" ? "#dcfce7" : "#f1f5f9";
-                  const statusColor = printPo.po.status === "ordered" ? "#1e40af" : printPo.po.status === "received" ? "#15803d" : "#475569";
+                  const statusLabel = printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status === "received" ? "Received" : printPo.po.status === "partially_received" ? "Partially Received" : "Draft";
+                  const statusBg = printPo.po.status === "ordered" ? "#dbeafe" : printPo.po.status === "received" ? "#dcfce7" : printPo.po.status === "partially_received" ? "#fef9c3" : "#f1f5f9";
+                  const statusColor = printPo.po.status === "ordered" ? "#1e40af" : printPo.po.status === "received" ? "#15803d" : printPo.po.status === "partially_received" ? "#a16207" : "#475569";
                   const sigs = getPoSignatures(printPo.po.id);
                   return (
                     <>
