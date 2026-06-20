@@ -422,6 +422,7 @@ function App() {
   const [posRedeemPoints, setPosRedeemPoints] = useState("");
   const [analyticsRange, setAnalyticsRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
   const [allReturnItems, setAllReturnItems] = useState<{ sale_id: string; product_id: string; quantity_returned: number }[]>([]);
+  const [allPoItems, setAllPoItems] = useState<POItem[]>([]);
   const [allPayments, setAllPayments] = useState<EodPayment[]>([]);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editSupName, setEditSupName] = useState("");
@@ -471,6 +472,7 @@ function App() {
     loadCustomers();
     loadLoyaltyTransactions();
     loadAllReturnItems();
+    loadAllPoItems();
     loadDrawerSession();
     loadEmployees();
     loadStockCounts();
@@ -927,6 +929,17 @@ function App() {
     setAllReturnItems((data as { sale_id: string; product_id: string; quantity_returned: number }[]) ?? []);
   }
 
+  async function loadAllPoItems() {
+    const { data } = await supabase
+      .from('purchase_order_items')
+      .select('id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at');
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      quantity_received: item.quantity_received ?? 0,
+    }));
+    setAllPoItems(items as POItem[]);
+  }
+
   function handleLookupCustomer() {
     const phone = posCustomerPhone.trim();
     if (!phone) return;
@@ -1257,6 +1270,7 @@ function App() {
       setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated`, type: "success" });
       await loadProducts();
       await loadPurchaseOrders();
+      await loadAllPoItems();
       await loadTransactions();
     } catch (err) {
       console.error(err);
@@ -3346,7 +3360,8 @@ function App() {
                 const isExpanded = expandedCustomerId === `sup-${s.id}`;
                 const pos = purchaseOrders.filter(po => po.supplier_id === s.id);
                 const received = pos.filter(po => po.status === "received");
-                const totalSpend = received.reduce((sum, po) => sum + Number(po.subtotal), 0);
+                const nonCancelled = pos.filter(po => po.status !== "cancelled");
+                const totalSpend = nonCancelled.reduce((sum, po) => sum + Number(po.subtotal), 0);
                 const receivedRate = pos.length > 0 ? Math.round((received.length / pos.length) * 100) : 0;
                 const lastPO = pos.length > 0 ? new Date(Math.max(...pos.map(po => new Date(po.created_at).getTime()))) : null;
                 const health = pos.length === 0 ? "none" : receivedRate >= 60 ? "good" : "attention";
@@ -3378,7 +3393,21 @@ function App() {
                     {isExpanded && !isEditing && (() => {
                       const supProducts = products.filter(p => p.supplier_id === s.id);
                       const catalogValue = supProducts.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
-                      const avgCost = supProducts.length > 0 ? supProducts.reduce((sum, p) => sum + p.average_cost, 0) / supProducts.length : 0;
+
+                      const poIds = new Set(pos.map(p => p.id));
+                      const supPoItems = allPoItems.filter(i => poIds.has(i.purchase_order_id));
+                      const nonCancelledPos = pos.filter(po => po.status !== "cancelled");
+                      const totalSpendAll = nonCancelledPos.reduce((sum, po) => sum + Number(po.subtotal), 0);
+                      const avgOrderValue = nonCancelledPos.length > 0 ? totalSpendAll / nonCancelledPos.length : 0;
+                      const draftCount = pos.filter(po => po.status === "draft").length;
+                      const orderedCount = pos.filter(po => po.status === "ordered").length;
+                      const partialCount = pos.filter(po => po.status === "partially_received").length;
+                      const receivedCount = pos.filter(po => po.status === "received").length;
+                      const cancelledCount = pos.filter(po => po.status === "cancelled").length;
+                      const totalOrderedQty = supPoItems.reduce((sum, i) => sum + i.quantity, 0);
+                      const totalReceivedQty = supPoItems.reduce((sum, i) => sum + (i.quantity_received ?? 0), 0);
+                      const totalRemainingQty = totalOrderedQty - totalReceivedQty;
+
                       return (
                       <tr>
                         <td colSpan={8} style={{ background: "#f8fafc", padding: "16px", borderBottom: "1px solid #e2e8f0" }}>
@@ -3388,23 +3417,98 @@ function App() {
                             <div><span style={{ color: "#94a3b8" }}>Phone:</span> <strong>{s.phone ? fmtPhone(s.phone) : "—"}</strong></div>
                             <div><span style={{ color: "#94a3b8" }}>Email:</span> <strong>{s.email || "—"}</strong></div>
                           </div>
-                          {/* Metrics cards */}
+                          {/* Performance Metrics */}
                           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
                             {[
-                              { label: "Products Supplied", value: supProducts.length },
+                              { label: "Total Spend", value: `$${totalSpendAll.toFixed(2)}`, color: "#1d4ed8" },
+                              { label: "Avg Order Value", value: `$${avgOrderValue.toFixed(2)}` },
                               { label: "Total POs", value: pos.length },
-                              { label: "Total Spend", value: `$${totalSpend.toFixed(2)}` },
+                              { label: "Products Supplied", value: supProducts.length },
+                              { label: "Last Order", value: lastPO ? lastPO.toLocaleDateString() : "—" },
                               { label: "Inventory Value", value: `$${catalogValue.toFixed(2)}` },
-                              { label: "Avg Cost", value: `$${avgCost.toFixed(2)}` },
-                              { label: "Received Rate", value: pos.length > 0 ? `${receivedRate}%` : "—" },
                             ].map(card => (
-                              <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 12px", minWidth: "100px", background: "#fff" }}>
+                              <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 12px", minWidth: "110px", flex: 1, background: "#fff" }}>
                                 <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em" }}>{card.label}</div>
-                                <div style={{ fontSize: "17px", fontWeight: 700, color: "#0f172a" }}>{card.value}</div>
+                                <div style={{ fontSize: "17px", fontWeight: 700, color: (card as any).color ?? "#0f172a" }}>{card.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Quantity & Status Metrics */}
+                          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
+                            {[
+                              { label: "Ordered Qty", value: totalOrderedQty },
+                              { label: "Received Qty", value: totalReceivedQty, color: "#15803d" },
+                              { label: "Remaining Qty", value: totalRemainingQty, color: totalRemainingQty > 0 ? "#b45309" : "#15803d" },
+                              { label: "Draft", value: draftCount },
+                              { label: "Ordered", value: orderedCount },
+                              { label: "Partial", value: partialCount, color: partialCount > 0 ? "#a16207" : undefined },
+                              { label: "Received", value: receivedCount, color: "#15803d" },
+                              { label: "Cancelled", value: cancelledCount, color: cancelledCount > 0 ? "#6b7280" : undefined },
+                            ].map(card => (
+                              <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "6px 10px", minWidth: "80px", background: "#fff" }}>
+                                <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em" }}>{card.label}</div>
+                                <div style={{ fontSize: "16px", fontWeight: 700, color: (card as any).color ?? "#0f172a" }}>{card.value}</div>
                               </div>
                             ))}
                           </div>
                           {s.notes && <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}><strong>Notes:</strong> {s.notes}</div>}
+
+                          {/* PO Breakdown Table */}
+                          {pos.length > 0 && (
+                            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px", marginBottom: "16px" }}>
+                              <strong style={{ fontSize: "14px", display: "block", marginBottom: "8px" }}>Purchase Order Breakdown</strong>
+                              <div style={{ overflowX: "auto" }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: "1px solid #e2e8f0", background: "#f1f5f9" }}>
+                                      <th style={{ textAlign: "left", padding: "6px 8px" }}>PO Number</th>
+                                      <th style={{ padding: "6px 8px" }}>Status</th>
+                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Ordered</th>
+                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Received</th>
+                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Remaining</th>
+                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Subtotal</th>
+                                      <th style={{ textAlign: "left", padding: "6px 8px" }}>Date</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {[...pos].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((po, i) => {
+                                      const poItemsForPo = allPoItems.filter(item => item.purchase_order_id === po.id);
+                                      const ordQty = poItemsForPo.reduce((sum, item) => sum + item.quantity, 0);
+                                      const rcvQty = poItemsForPo.reduce((sum, item) => sum + (item.quantity_received ?? 0), 0);
+                                      const remQty = ordQty - rcvQty;
+                                      const stBg = po.status === "received" ? "#dcfce7" : po.status === "partially_received" ? "#fef9c3" : po.status === "ordered" ? "#dbeafe" : po.status === "cancelled" ? "#e5e7eb" : "#f1f5f9";
+                                      const stColor = po.status === "received" ? "#15803d" : po.status === "partially_received" ? "#a16207" : po.status === "ordered" ? "#1e40af" : po.status === "cancelled" ? "#6b7280" : "#475569";
+                                      const stLabel = po.status === "partially_received" ? "partial" : po.status === "ordered" ? "awaiting" : po.status;
+                                      return (
+                                        <tr key={po.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa", color: po.status === "cancelled" ? "#9ca3af" : undefined }}>
+                                          <td style={{ padding: "6px 8px", fontWeight: 500 }}>{po.po_number}</td>
+                                          <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: stBg, color: stColor }}>{stLabel}</span>
+                                          </td>
+                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>{ordQty}</td>
+                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>{rcvQty}</td>
+                                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: remQty > 0 ? "bold" : "normal", color: remQty > 0 ? "#b45309" : "#15803d" }}>{remQty}</td>
+                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>${Number(po.subtotal).toFixed(2)}</td>
+                                          <td style={{ padding: "6px 8px", fontSize: "12px", color: "#64748b" }}>{new Date(po.created_at).toLocaleDateString()}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr style={{ borderTop: "2px solid #e2e8f0", fontWeight: "bold", background: "#f9fafb" }}>
+                                      <td style={{ padding: "6px 8px" }}>Total ({pos.length} POs)</td>
+                                      <td></td>
+                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>{totalOrderedQty}</td>
+                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>{totalReceivedQty}</td>
+                                      <td style={{ padding: "6px 8px", textAlign: "right", color: totalRemainingQty > 0 ? "#b45309" : "#15803d" }}>{totalRemainingQty}</td>
+                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>${nonCancelledPos.reduce((sum, po) => sum + Number(po.subtotal), 0).toFixed(2)}</td>
+                                      <td></td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Product Catalog */}
                           <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px" }}>
