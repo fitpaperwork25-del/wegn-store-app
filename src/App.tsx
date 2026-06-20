@@ -226,7 +226,13 @@ type BulkRow = {
   status: 'valid' | 'missing_name' | 'missing_price' | 'invalid_price' | 'duplicate_barcode';
 };
 
-function App() {
+type AppProps = {
+  userId: string;
+  userEmail: string;
+  onSignOut: () => void;
+};
+
+function App({ userId, userEmail, onSignOut }: AppProps) {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -528,8 +534,9 @@ function App() {
     const { data } = await supabase
       .from("businesses")
       .select("id, name, phone, email, address, tax_rate")
+      .eq("owner_id", userId)
       .limit(1)
-      .single();
+      .maybeSingle();
     if (data) {
       setBusinessId(data.id);
       setBusinessName(data.name ?? "");
@@ -2428,6 +2435,15 @@ function App() {
               {label}
             </button>
           ))}
+          <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "4px", display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "12px", color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "160px" }}>{userEmail}</span>
+            <button
+              onClick={onSignOut}
+              style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
+            >
+              Sign Out
+            </button>
+          </div>
         </nav>
       </div>
 
