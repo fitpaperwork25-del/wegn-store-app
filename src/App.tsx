@@ -485,11 +485,22 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editBizAddress, setEditBizAddress] = useState("");
   const [editBizTaxRate, setEditBizTaxRate] = useState("");
 
+  const [userRole, setUserRole] = useState<string>("owner");
+
   const [activeTab, setActiveTab] = useState<string>('pos');
   const [navOpen, setNavOpen] = useState(false);
 
+  const tabAccess: Record<string, string[]> = {
+    owner: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'employees', 'reports', 'settings'],
+    manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'reports'],
+    cashier: ['dashboard', 'pos', 'customers'],
+    inventory_clerk: ['dashboard', 'inventory', 'purchasing'],
+  };
+  const allowedTabs = tabAccess[userRole] ?? tabAccess.owner;
+
   useEffect(() => {
     loadBusiness();
+    loadUserRole();
     loadProducts();
     loadTransactions();
     loadSuppliers();
@@ -555,6 +566,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setBusinessError("");
     }
     setBusinessLoaded(true);
+  }
+
+  async function loadUserRole() {
+    const { data, error } = await supabase.rpc('auth_user_role');
+    if (error) { console.error("loadUserRole error:", error); return; }
+    if (data) {
+      setUserRole(data);
+      const tabs = tabAccess[data] ?? tabAccess.owner;
+      if (!tabs.includes(activeTab)) setActiveTab(tabs[0]);
+    }
   }
 
   async function handleCreateBusiness(e: React.FormEvent) {
@@ -2455,7 +2476,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             ['employees', 'Staff'],
             ['reports', 'Reports'],
             ['settings', 'Settings'],
-          ] as [string, string][]).map(([key, label]) => (
+          ] as [string, string][]).filter(([key]) => allowedTabs.includes(key)).map(([key, label]) => (
             <button
               key={key}
               onClick={() => { setActiveTab(key); setNavOpen(false); }}
@@ -2477,7 +2498,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             </button>
           ))}
           <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "4px", display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "12px", color: "#94a3b8", whiteSpace: "nowrap" }}>My Account</span>
+            <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "12px", background: "#eff6ff", color: "#1d4ed8", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.05em" }}>{userRole.replace('_', ' ')}</span>
             <button
               onClick={onSignOut}
               style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
@@ -2519,6 +2540,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             </div>
             <button type="submit" style={{ padding: "10px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: "pointer", marginTop: "4px" }}>Create Business</button>
           </form>
+        </div>
+      )}
+
+      {businessId && !allowedTabs.includes(activeTab) && (
+        <div style={{ maxWidth: "480px", margin: "60px auto", textAlign: "center", padding: "32px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "12px" }}>
+          <h2 style={{ margin: "0 0 8px", fontSize: "20px", color: "#b91c1c" }}>Access Restricted</h2>
+          <p style={{ margin: 0, color: "#7f1d1d", fontSize: "14px" }}>You do not have permission to access this area.</p>
         </div>
       )}
 
