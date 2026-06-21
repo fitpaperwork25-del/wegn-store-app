@@ -1430,7 +1430,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setBarcodeInput("");
     if (!code) return;
 
-    const product = products.find((p) => p.barcode === code);
+    const product = products.find((p) => String(p.barcode || "").trim() === code);
     if (!product) { setUnmatchedBarcode(code); setLinkBarcodeMode(false); setLinkBarcodeProductId(""); setMessage({ text: `Scanner worked. Barcode not found in catalog: ${code}`, type: "error" }); return; }
     if (product.status !== "active") { setMessage({ text: "Product is inactive and cannot be sold.", type: "error" }); return; }
     if (product.quantity_on_hand <= 0) { setMessage({ text: `${product.product_name} is out of stock`, type: "error" }); return; }
@@ -1457,7 +1457,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         line_total: product.selling_price,
       }]);
     }
-    setMessage(null);
+    setMessage({ text: `${product.product_name} added to cart`, type: "success" });
     setUnmatchedBarcode("");
   }
 
