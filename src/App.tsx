@@ -1463,6 +1463,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleLinkBarcode() {
     if (!linkBarcodeProductId || !unmatchedBarcode) return;
+    const conflict = products.find(p => p.barcode === unmatchedBarcode && p.product_id !== linkBarcodeProductId);
+    if (conflict) { setMessage({ text: `Barcode already assigned to ${conflict.product_name}`, type: "error" }); return; }
     const { error } = await supabase.from("products").update({ barcode: unmatchedBarcode }).eq("id", linkBarcodeProductId);
     if (error) { console.error(error); setMessage({ text: "Failed to link barcode: " + error.message, type: "error" }); return; }
     setMessage({ text: `Barcode ${unmatchedBarcode} linked successfully`, type: "success" });
@@ -2265,6 +2267,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     if (!newName || !newSellingPrice || !newInitialStock) return;
 
+    const barcode = newBarcode.trim();
+    if (barcode) {
+      const conflict = products.find(p => p.barcode === barcode);
+      if (conflict) { setMessage({ text: `Barcode already assigned to ${conflict.product_name}`, type: "error" }); return; }
+    }
+
     const initialStock = Number(newInitialStock);
 
     const { data: productData, error: productError } = await supabase
@@ -2337,6 +2345,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function handleEditProduct(e: React.FormEvent, productId: string) {
     e.preventDefault();
     if (!editProdName.trim() || !editProdPrice) return;
+    const editBarcode = editProdBarcode.trim();
+    if (editBarcode) {
+      const conflict = products.find(p => p.barcode === editBarcode && p.product_id !== productId);
+      if (conflict) { setMessage({ text: `Barcode already assigned to ${conflict.product_name}`, type: "error" }); return; }
+    }
     const { error } = await supabase
       .from("products")
       .update({
