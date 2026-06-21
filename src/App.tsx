@@ -232,7 +232,7 @@ type AppProps = {
   onSignOut: () => void;
 };
 
-function App({ userId, userEmail, onSignOut }: AppProps) {
+function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -2397,12 +2397,12 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         <div className="app-header-brand">
           <img
             src="/logo.png"
-            alt="Dilla Market"
+            alt={businessName || "Wegn-Store"}
             className="app-logo"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
           />
           <div className="app-brand-text">
-            <span className="app-brand-name">Dilla Market</span>
+            <span className="app-brand-name">{businessName || "Wegn-Store"}</span>
           </div>
         </div>
         <button
@@ -2420,7 +2420,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
             ['inventory', 'Inventory'],
             ['purchasing', 'Purchasing'],
             ['customers', 'Customers'],
-            ['employees', 'Employees'],
+            ['employees', 'Staff'],
             ['reports', 'Reports'],
             ['settings', 'Settings'],
           ] as [string, string][]).map(([key, label]) => (
@@ -2445,7 +2445,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
             </button>
           ))}
           <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "4px", display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "12px", color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "160px" }}>{userEmail}</span>
+            <span style={{ fontSize: "12px", color: "#94a3b8", whiteSpace: "nowrap" }}>My Account</span>
             <button
               onClick={onSignOut}
               style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
@@ -5290,7 +5290,6 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         const cardTotal = eodPayments.filter((p) => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0);
         const otherTotal = eodPayments.filter((p) => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0);
 
-        const todaySaleIds = new Set(todaySales.map(s => s.id));
         const allTodaySaleIds = new Set(sales.filter(s => isToday(s.created_at) && (s.status === "completed" || s.status === "returned")).map(s => s.id));
         const todayReturns = allReturnItems.filter(ri => allTodaySaleIds.has(ri.sale_id));
         const returnedUnits = todayReturns.reduce((sum, ri) => sum + ri.quantity_returned, 0);
@@ -6064,8 +6063,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       <div style={{ display: activeTab === 'employees' ? '' : 'none' }}>
 
       <div className="page-header">
-        <h2 className="page-title">Employees</h2>
-        <p className="page-subtitle">Manage staff, cashier activity, cash drawer, and shift operations</p>
+        <h2 className="page-title">Staff</h2>
+        <p className="page-subtitle">Manage cashiers and cash drawer operations &mdash; staff accounts and permissions coming in v2</p>
       </div>
 
       <form onSubmit={handleAddEmployee} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
@@ -6176,8 +6175,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
               setEditBizTaxRate(String(businessTaxRate));
               setEditingBusiness(true);
             }}
-            style={{ padding: "8px 20px", cursor: "pointer" }}
-          >Edit</button>
+            style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600 }}
+          >Edit Business Profile</button>
         </div>
       ) : (
         <form
@@ -6233,6 +6232,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
           </div>
         </form>
       )}
+
+      <h3 style={{ marginTop: "32px", marginBottom: "12px" }}>Receipt Settings</h3>
+      <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "20px", maxWidth: "480px", marginBottom: "16px" }}>
+        <p style={{ margin: "0 0 8px" }}><strong>Business Name:</strong> {businessName || "—"}</p>
+        <p style={{ margin: "0 0 8px" }}><strong>Phone:</strong> {businessPhone || "—"}</p>
+        <p style={{ margin: "0 0 8px" }}><strong>Address:</strong> {businessAddress || "—"}</p>
+        <p style={{ margin: "0 0 16px" }}><strong>Tax Rate:</strong> {businessTaxRate}%</p>
+        <p style={{ margin: 0, fontSize: "13px", color: "#64748b", fontStyle: "italic" }}>Receipt logo and printer setup coming in v2</p>
+      </div>
 
       </div>{/* end settings */}
 
