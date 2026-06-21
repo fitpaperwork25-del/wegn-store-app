@@ -268,6 +268,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newSku, setNewSku] = useState("");
   const [newBarcode, setNewBarcode] = useState("");
   const [barcodeAutoFill, setBarcodeAutoFill] = useState("");
+  const [unmatchedBarcode, setUnmatchedBarcode] = useState("");
+  const [linkBarcodeMode, setLinkBarcodeMode] = useState(false);
+  const [linkBarcodeProductId, setLinkBarcodeProductId] = useState("");
   const [newCostPrice, setNewCostPrice] = useState("");
   const [newSellingPrice, setNewSellingPrice] = useState("");
   const [newReorderLevel, setNewReorderLevel] = useState("");
@@ -456,7 +459,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [activeCashierId, setActiveCashierId] = useState<string | null>(null);
   const [activeCashierName, setActiveCashierName] = useState("");
   const [newEmpName, setNewEmpName] = useState("");
-  const [newEmpRole, setNewEmpRole] = useState<"cashier" | "manager">("cashier");
+  const [newEmpRole, setNewEmpRole] = useState<"cashier" | "manager" | "inventory_clerk">("cashier");
+  const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
+  const [editEmpRole, setEditEmpRole] = useState("");
   const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProdName, setEditProdName] = useState("");
@@ -1426,7 +1431,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     if (!code) return;
 
     const product = products.find((p) => p.barcode === code);
-    if (!product) { setMessage({ text: `Barcode not recognised: ${code}`, type: "error" }); return; }
+    if (!product) { setUnmatchedBarcode(code); setLinkBarcodeMode(false); setLinkBarcodeProductId(""); setMessage({ text: `Scanner worked. Barcode not found in catalog: ${code}`, type: "error" }); return; }
     if (product.status !== "active") { setMessage({ text: "Product is inactive and cannot be sold.", type: "error" }); return; }
     if (product.quantity_on_hand <= 0) { setMessage({ text: `${product.product_name} is out of stock`, type: "error" }); return; }
 
@@ -1453,6 +1458,18 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       }]);
     }
     setMessage(null);
+    setUnmatchedBarcode("");
+  }
+
+  async function handleLinkBarcode() {
+    if (!linkBarcodeProductId || !unmatchedBarcode) return;
+    const { error } = await supabase.from("products").update({ barcode: unmatchedBarcode }).eq("id", linkBarcodeProductId);
+    if (error) { console.error(error); setMessage({ text: "Failed to link barcode: " + error.message, type: "error" }); return; }
+    setMessage({ text: `Barcode ${unmatchedBarcode} linked successfully`, type: "success" });
+    setUnmatchedBarcode("");
+    setLinkBarcodeMode(false);
+    setLinkBarcodeProductId("");
+    await loadProducts();
   }
 
   function handleAddToCart(e: React.FormEvent) {
@@ -2146,6 +2163,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     await loadEmployees();
   }
 
+  async function handleSaveEmployeeRole(emp: Employee) {
+    if (!editEmpRole || editEmpRole === emp.role) { setEditingEmpId(null); return; }
+    const { error } = await supabase.from("employees").update({ role: editEmpRole }).eq("id", emp.id);
+    if (error) { console.error(error); setMessage({ text: "Failed to update role: " + error.message, type: "error" }); return; }
+    setEditingEmpId(null);
+    setEditEmpRole("");
+    setMessage({ text: `${emp.name} role updated to ${editEmpRole}`, type: "success" });
+    await loadEmployees();
+  }
+
   async function loadProducts() {
     const { data, error } = await supabase
       .from("inventory")
@@ -2568,6 +2595,48 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         onKeyDown={handleBarcodeSubmit}
         className="pos-barcode-input"
       />
+
+      {unmatchedBarcode && (() => {
+        const selectedProduct = linkBarcodeProductId ? products.find(p => p.product_id === linkBarcodeProductId) : null;
+        return (
+        <div style={{ padding: "12px 16px", marginBottom: "12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: linkBarcodeMode ? "12px" : "0" }}>
+            <span style={{ fontSize: "14px", color: "#92400e" }}>Scanner worked. Barcode not found in catalog: <strong>{unmatchedBarcode}</strong></span>
+            <button onClick={() => { setUnmatchedBarcode(""); setLinkBarcodeMode(false); setLinkBarcodeProductId(""); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", color: "#6b7280" }}>✕</button>
+          </div>
+          {!linkBarcodeMode ? (
+            <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+              <button
+                onClick={() => { setBarcodeAutoFill(unmatchedBarcode); setNewBarcode(unmatchedBarcode); setUnmatchedBarcode(""); setActiveTab("inventory"); }}
+                style={{ padding: "6px 16px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
+              >Add New Product</button>
+              <button
+                onClick={() => setLinkBarcodeMode(true)}
+                style={{ padding: "6px 16px", background: "#fff", color: "#1d4ed8", border: "1px solid #1d4ed8", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
+              >Link to Existing Product</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <select value={linkBarcodeProductId} onChange={(e) => setLinkBarcodeProductId(e.target.value)} style={{ padding: "8px", flex: "1 1 200px", fontSize: "13px" }}>
+                  <option value="">Select product...</option>
+                  {products.map(p => (
+                    <option key={p.product_id} value={p.product_id}>{p.product_name}{p.sku ? ` — ${p.sku}` : ""}{p.barcode ? ` — barcode: ${p.barcode}` : ""}</option>
+                  ))}
+                </select>
+                <button onClick={handleLinkBarcode} disabled={!linkBarcodeProductId} style={{ padding: "6px 16px", background: linkBarcodeProductId ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", cursor: linkBarcodeProductId ? "pointer" : "not-allowed", fontWeight: 600, fontSize: "13px" }}>Save</button>
+                <button onClick={() => { setLinkBarcodeMode(false); setLinkBarcodeProductId(""); }} style={{ padding: "6px 16px", background: "#fff", border: "1px solid #ccc", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}>Cancel</button>
+              </div>
+              {selectedProduct?.barcode && (
+                <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", fontSize: "13px", color: "#b91c1c" }}>
+                  This product already has barcode: <strong>{selectedProduct.barcode}</strong>. Linking will replace it with: <strong>{unmatchedBarcode}</strong>.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        );
+      })()}
 
       <form
         onSubmit={handleAddToCart}
@@ -6146,34 +6215,37 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       <div className="page-header">
         <h2 className="page-title">Staff</h2>
-        <p className="page-subtitle">Manage cashiers and cash drawer operations &mdash; staff accounts and permissions coming in v2</p>
+        <p className="page-subtitle">Manage employees, roles, and cash drawer operations</p>
       </div>
 
-      <form onSubmit={handleAddEmployee} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
-        <input
-          type="text"
-          placeholder="Employee name *"
-          value={newEmpName}
-          onChange={(e) => setNewEmpName(e.target.value)}
-          style={{ padding: "8px", flex: "1 1 180px" }}
-          required
-        />
-        <select
-          value={newEmpRole}
-          onChange={(e) => setNewEmpRole(e.target.value as "cashier" | "manager")}
-          style={{ padding: "8px" }}
-        >
-          <option value="cashier">Cashier</option>
-          <option value="manager">Manager</option>
-        </select>
-        <button
-          type="submit"
-          disabled={!newEmpName.trim()}
-          style={{ padding: "8px 20px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}
-        >
-          Add Employee
-        </button>
-      </form>
+      {userRole === "owner" && (
+        <form onSubmit={handleAddEmployee} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
+          <input
+            type="text"
+            placeholder="Employee name *"
+            value={newEmpName}
+            onChange={(e) => setNewEmpName(e.target.value)}
+            style={{ padding: "8px", flex: "1 1 180px" }}
+            required
+          />
+          <select
+            value={newEmpRole}
+            onChange={(e) => setNewEmpRole(e.target.value as "cashier" | "manager" | "inventory_clerk")}
+            style={{ padding: "8px" }}
+          >
+            <option value="cashier">Cashier</option>
+            <option value="manager">Manager</option>
+            <option value="inventory_clerk">Inventory Clerk</option>
+          </select>
+          <button
+            type="submit"
+            disabled={!newEmpName.trim()}
+            style={{ padding: "8px 20px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}
+          >
+            Add Employee
+          </button>
+        </form>
+      )}
 
       <div style={{ overflowX: "auto", marginBottom: "40px" }}>
         <table border={1} cellPadding={10} style={{ width: "100%" }}>
@@ -6183,24 +6255,35 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               <th>Role</th>
               <th>Status</th>
               <th>Added</th>
-              <th></th>
+              {userRole === "owner" && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {employees.length === 0 ? (
-              <tr><td colSpan={5} style={{ color: "#888" }}>No employees yet</td></tr>
+              <tr><td colSpan={userRole === "owner" ? 5 : 4} style={{ color: "#888" }}>No employees yet</td></tr>
             ) : (
               employees.map(emp => {
                 const rowStyle = emp.status === "inactive" ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
+                const isEditing = editingEmpId === emp.id;
+                const roleBg = emp.role === "manager" ? "#fef3c7" : emp.role === "inventory_clerk" ? "#f0fdfa" : "#dbeafe";
+                const roleColor = emp.role === "manager" ? "#92400e" : emp.role === "inventory_clerk" ? "#0d9488" : "#1e40af";
                 return (
                   <tr key={emp.id} style={rowStyle}>
                     <td style={{ fontWeight: "bold" }}>{emp.name}</td>
                     <td>
-                      <span style={{
-                        padding: "2px 8px", borderRadius: "12px", fontSize: "12px",
-                        background: emp.role === "manager" ? "#fef3c7" : "#dbeafe",
-                        color: emp.role === "manager" ? "#92400e" : "#1e40af",
-                      }}>{emp.role}</span>
+                      {isEditing ? (
+                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                          <select value={editEmpRole} onChange={(e) => setEditEmpRole(e.target.value)} style={{ padding: "4px 8px", fontSize: "13px" }}>
+                            <option value="cashier">Cashier</option>
+                            <option value="manager">Manager</option>
+                            <option value="inventory_clerk">Inventory Clerk</option>
+                          </select>
+                          <button onClick={() => handleSaveEmployeeRole(emp)} style={{ padding: "2px 10px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" }}>Save</button>
+                          <button onClick={() => setEditingEmpId(null)} style={{ padding: "2px 10px", cursor: "pointer", border: "1px solid #ccc", borderRadius: "4px", fontSize: "12px", background: "#fff" }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "12px", background: roleBg, color: roleColor }}>{emp.role.replace('_', ' ')}</span>
+                      )}
                     </td>
                     <td>
                       <span style={{
@@ -6210,19 +6293,31 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       }}>{emp.status}</span>
                     </td>
                     <td style={{ color: "#888", fontSize: "13px" }}>{new Date(emp.created_at).toLocaleDateString()}</td>
-                    <td>
-                      <button
-                        onClick={() => handleToggleEmployeeStatus(emp)}
-                        style={{
-                          padding: "3px 12px", cursor: "pointer", borderRadius: "4px",
-                          background: emp.status === "active" ? "#fee2e2" : "#dcfce7",
-                          color: emp.status === "active" ? "#b91c1c" : "#15803d",
-                          border: "none", fontWeight: "bold",
-                        }}
-                      >
-                        {emp.status === "active" ? "Deactivate" : "Activate"}
-                      </button>
-                    </td>
+                    {userRole === "owner" && (
+                      <td>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          {!isEditing && (
+                            <button
+                              onClick={() => { setEditingEmpId(emp.id); setEditEmpRole(emp.role); }}
+                              style={{ padding: "3px 12px", cursor: "pointer", borderRadius: "4px", background: "#eff6ff", color: "#1d4ed8", border: "none", fontWeight: "bold" }}
+                            >
+                              Edit Role
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleToggleEmployeeStatus(emp)}
+                            style={{
+                              padding: "3px 12px", cursor: "pointer", borderRadius: "4px",
+                              background: emp.status === "active" ? "#fee2e2" : "#dcfce7",
+                              color: emp.status === "active" ? "#b91c1c" : "#15803d",
+                              border: "none", fontWeight: "bold",
+                            }}
+                          >
+                            {emp.status === "active" ? "Deactivate" : "Activate"}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })
