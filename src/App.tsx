@@ -613,6 +613,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       const product = products.find(p => p.product_id === line.product_id);
       if (!product) continue;
       await supabase.from('return_items').insert({
+        business_id: businessId,
         sale_id: returningSaleId,
         product_id: line.product_id,
         quantity_returned: line.return_qty,
@@ -653,6 +654,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
           .reduce((sum, lt) => sum + lt.points, 0);
         if (totalEarned > 0) {
           await supabase.from('loyalty_transactions').insert({
+            business_id: businessId,
             customer_id: returnedSale.customer_id,
             sale_id: returningSaleId,
             points: -totalEarned,
@@ -708,6 +710,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     for (const line of stockCountLines) {
       const variance = line.counted_qty - line.system_qty;
       await supabase.from('stock_count_items').insert({
+        business_id: businessId,
         stock_count_id: sc.id,
         product_id: line.product_id,
         system_qty: line.system_qty,
@@ -801,7 +804,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setDrawerLoading(true);
     const { error } = await supabase
       .from('drawer_paid_outs')
-      .insert({ drawer_session_id: drawerSession.id, amount, reason: paidOutReason || null });
+      .insert({ business_id: businessId, drawer_session_id: drawerSession.id, amount, reason: paidOutReason || null });
     if (error) { setMessage({ text: 'Paid out failed: ' + error.message, type: "error" }); setDrawerLoading(false); return; }
     setPaidOutAmount('');
     setPaidOutReason('');
@@ -1043,6 +1046,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setMessage(null);
     if (!newCusName || !newCusPhone) return;
     const { error } = await supabase.from("customers").insert({
+      business_id: businessId,
       name: newCusName,
       phone: newCusPhone,
       email: newCusEmail || null,
@@ -1168,6 +1172,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     const { error: insertError } = await supabase
       .from("purchase_order_items")
       .insert({
+        business_id: businessId,
         purchase_order_id: selectedPoId,
         product_id: itemProductId,
         quantity: qty,
@@ -1534,6 +1539,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
           .reduce((sum, lt) => sum + lt.points, 0);
         if (totalEarned > 0) {
           await supabase.from('loyalty_transactions').insert({
+            business_id: businessId,
             customer_id: sale.customer_id,
             sale_id: saleId,
             points: -totalEarned,
@@ -1600,7 +1606,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .insert({ subtotal, tax: taxAmount, discount_amount: discountAmount, total: finalTotal, status: "open", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
+      .insert({ business_id: businessId, subtotal, tax: taxAmount, discount_amount: discountAmount, total: finalTotal, status: "open", customer_id: posCustomerId || null, cashier_id: activeCashierId || null })
       .select("id")
       .single();
 
@@ -1609,6 +1615,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     const { error: itemsErr } = await supabase
       .from("sale_items")
       .insert(cart.map((c) => ({
+        business_id: businessId,
         sale_id: sale.id,
         product_id: c.product_id,
         quantity: c.quantity,
@@ -1620,7 +1627,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
     const { error: payErr } = await supabase
       .from("payments")
-      .insert({ sale_id: sale.id, payment_method: paymentMethod, amount: finalTotal });
+      .insert({ business_id: businessId, sale_id: sale.id, payment_method: paymentMethod, amount: finalTotal });
 
     if (payErr) { console.error(payErr); }
 
@@ -1654,6 +1661,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         const earnedPoints = Math.floor(Math.max(0, discountedSubtotal));
         if (earnedPoints > 0) {
           const { error: earnErr } = await supabase.from('loyalty_transactions').insert({
+            business_id: businessId,
             customer_id: posCustomerId,
             sale_id: sale.id,
             points: earnedPoints,
@@ -1664,6 +1672,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       }
       if (redeemPts > 0) {
         const { error: redeemErr } = await supabase.from('loyalty_transactions').insert({
+          business_id: businessId,
           customer_id: posCustomerId,
           sale_id: sale.id,
           points: -redeemPts,
@@ -1782,7 +1791,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
 
       const CHUNK = 30;
-      const rows = items.map(i => ({ purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
+      const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
       let chunkInserted = 0;
       for (let ci = 0; ci < rows.length; ci += CHUNK) {
         const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
@@ -1853,7 +1862,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
     const CHUNK = 30;
     let insertedCount = 0;
-    const rows = items.map(i => ({ purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
+    const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
     for (let i = 0; i < rows.length; i += CHUNK) {
       const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(i, i + CHUNK));
       if (chunkErr) { console.error(chunkErr); break; }
