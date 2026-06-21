@@ -40,18 +40,10 @@ export default function AuthGate() {
         return;
       }
       if (signUpData.user) {
-        const { data: existing } = await supabase
-          .from("businesses")
-          .select("id, owner_id")
-          .is("owner_id", null)
-          .limit(1)
-          .maybeSingle();
-        if (existing) {
-          await supabase
-            .from("businesses")
-            .update({ owner_id: signUpData.user.id })
-            .eq("id", existing.id);
-        }
+        await supabase.from("businesses").insert({
+          owner_id: signUpData.user.id,
+          name: "My Store",
+        });
       }
       setSubmitting(false);
       return;

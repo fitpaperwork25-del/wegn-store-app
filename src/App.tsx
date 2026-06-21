@@ -256,6 +256,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [supEmail, setSupEmail] = useState("");
   const [supNotes, setSupNotes] = useState("");
   const [businessId, setBusinessId] = useState("");
+  const [businessLoaded, setBusinessLoaded] = useState(false);
+  const [businessError, setBusinessError] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [receiveQuantity, setReceiveQuantity] = useState("");
   const [adjustProductId, setAdjustProductId] = useState("");
@@ -531,12 +533,18 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     : 0;
 
   async function loadBusiness() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("businesses")
       .select("id, name, phone, email, address, tax_rate")
       .eq("owner_id", userId)
       .limit(1)
       .maybeSingle();
+    if (error) {
+      console.error("loadBusiness error:", error);
+      setBusinessError(error.message);
+      setBusinessLoaded(true);
+      return;
+    }
     if (data) {
       setBusinessId(data.id);
       setBusinessName(data.name ?? "");
@@ -544,7 +552,31 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setBusinessEmail(data.email ?? "");
       setBusinessAddress(data.address ?? "");
       setBusinessTaxRate(Number(data.tax_rate ?? 0));
+      setBusinessError("");
     }
+    setBusinessLoaded(true);
+  }
+
+  async function handleCreateBusiness(e: React.FormEvent) {
+    e.preventDefault();
+    const name = editBizName.trim();
+    if (!name) return;
+    const { error } = await supabase.from("businesses").insert({
+      owner_id: userId,
+      name,
+      phone: editBizPhone.trim() || null,
+      email: editBizEmail.trim() || null,
+      address: editBizAddress.trim() || null,
+      tax_rate: Math.min(100, Math.max(0, parseFloat(editBizTaxRate) || 0)),
+    });
+    if (error) { console.error(error); setMessage({ text: "Failed to create business: " + error.message, type: "error" }); return; }
+    setEditBizName("");
+    setEditBizPhone("");
+    setEditBizEmail("");
+    setEditBizAddress("");
+    setEditBizTaxRate("");
+    setMessage({ text: "Business created", type: "success" });
+    await loadBusiness();
   }
 
   async function handleSaveBusiness(e: React.FormEvent) {
@@ -2468,8 +2500,30 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </div>
       )}
 
+      {businessLoaded && !businessId && (
+        <div style={{ maxWidth: "480px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
+          <h2 style={{ margin: "0 0 8px", fontSize: "22px", color: "#0f172a" }}>Set Up Your Business</h2>
+          <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>
+            {businessError
+              ? `Unable to load business data: ${businessError}`
+              : "Create your business profile to get started."}
+          </p>
+          <form onSubmit={handleCreateBusiness} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <input type="text" placeholder="Business name *" value={editBizName} onChange={(e) => setEditBizName(e.target.value)} required style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }} />
+            <input type="text" placeholder="Phone (optional)" value={editBizPhone} onChange={(e) => setEditBizPhone(e.target.value)} style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }} />
+            <input type="email" placeholder="Email (optional)" value={editBizEmail} onChange={(e) => setEditBizEmail(e.target.value)} style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }} />
+            <input type="text" placeholder="Address (optional)" value={editBizAddress} onChange={(e) => setEditBizAddress(e.target.value)} style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input type="number" min="0" max="100" step="0.01" placeholder="Tax rate %" value={editBizTaxRate} onChange={(e) => setEditBizTaxRate(e.target.value)} style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", width: "150px" }} />
+              <span style={{ fontSize: "13px", color: "#64748b" }}>% Sales tax (0 = no tax)</span>
+            </div>
+            <button type="submit" style={{ padding: "10px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: "pointer", marginTop: "4px" }}>Create Business</button>
+          </form>
+        </div>
+      )}
+
       {/* ── POS TAB ── */}
-      <div style={{ display: activeTab === 'pos' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'pos' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Point of Sale</h2>
@@ -2809,7 +2863,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end pos */}
 
       {/* ── INVENTORY TAB ── */}
-      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Inventory</h2>
@@ -3076,7 +3130,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── DASHBOARD TAB ── */}
-      <div style={{ display: activeTab === 'dashboard' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'dashboard' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Dashboard</h2>
@@ -3221,7 +3275,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end dashboard */}
 
       {/* ── INVENTORY TAB (2) ── */}
-      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Products & Stock</h2>
 
@@ -3458,7 +3512,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── PURCHASING TAB ── */}
-      <div style={{ display: activeTab === 'purchasing' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'purchasing' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Purchasing</h2>
@@ -4007,7 +4061,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end purchasing */}
 
       {/* ── CUSTOMERS TAB ── */}
-      <div style={{ display: activeTab === 'customers' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'customers' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Customers</h2>
@@ -4363,7 +4417,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end customers */}
 
       {/* ── PURCHASING TAB (2) ── */}
-      <div style={{ display: activeTab === 'purchasing' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'purchasing' && businessId ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
 
@@ -4751,7 +4805,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end purchasing */}
 
       {/* ── INVENTORY TAB (3) ── */}
-      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Transaction History</h2>
 
@@ -4791,7 +4845,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── POS TAB (2) ── */}
-      <div style={{ display: activeTab === 'pos' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'pos' && businessId ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Sales History</h2>
 
@@ -4936,7 +4990,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end pos */}
 
       {/* ── REPORTS TAB ── */}
-      <div style={{ display: activeTab === 'reports' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'reports' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Reports</h2>
@@ -5133,7 +5187,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end reports */}
 
       {/* ── EMPLOYEES TAB (2) ── */}
-      <div style={{ display: activeTab === 'employees' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'employees' && businessId ? '' : 'none' }}>
 
       {/* Cash Drawer Management */}
       <h2 style={{ marginTop: "40px" }}>Cash Drawer</h2>
@@ -5490,7 +5544,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end employees */}
 
       {/* ── REPORTS TAB (2) ── */}
-      <div style={{ display: activeTab === 'reports' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'reports' && businessId ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
 
@@ -5862,7 +5916,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end reports */}
 
       {/* ── INVENTORY TAB (4) ── */}
-      <div style={{ display: activeTab === 'inventory' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
 
       {/* Stock Take / Inventory Count */}
       <h2 style={{ marginTop: "40px" }}>Stock Take / Inventory Count</h2>
@@ -6060,7 +6114,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── EMPLOYEES TAB ── */}
-      <div style={{ display: activeTab === 'employees' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'employees' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Staff</h2>
@@ -6152,7 +6206,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end employees */}
 
       {/* ── SETTINGS TAB ── */}
-      <div style={{ display: activeTab === 'settings' ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'settings' && businessId ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Settings</h2>
