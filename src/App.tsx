@@ -212,6 +212,7 @@ type Employee = {
   name: string;
   role: string;
   status: string;
+  pin: string | null;
   created_at: string;
 };
 
@@ -459,7 +460,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [activeCashierId, setActiveCashierId] = useState<string | null>(null);
   const [activeCashierName, setActiveCashierName] = useState("");
   const [newEmpName, setNewEmpName] = useState("");
+  const [newEmpPin, setNewEmpPin] = useState("");
   const [newEmpRole, setNewEmpRole] = useState<"cashier" | "manager" | "inventory_clerk">("cashier");
+  const [staffSession, setStaffSession] = useState<{ id: string; name: string; role: string } | null>(null);
+  const [ownerBypass, setOwnerBypass] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [editEmpRole, setEditEmpRole] = useState("");
   const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
@@ -490,10 +496,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editBizAddress, setEditBizAddress] = useState("");
   const [editBizTaxRate, setEditBizTaxRate] = useState("");
 
-  const [userRole, setUserRole] = useState<string>("owner");
+  const userRole = staffSession ? staffSession.role : "owner";
 
   const [activeTab, setActiveTab] = useState<string>('pos');
   const [navOpen, setNavOpen] = useState(false);
+
+  const hasStaffPins = employees.some(e => e.pin && e.status === "active");
+  const appUnlocked = !hasStaffPins || staffSession !== null || ownerBypass;
 
   const tabAccess: Record<string, string[]> = {
     owner: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'employees', 'reports', 'settings'],
@@ -505,7 +514,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   useEffect(() => {
     loadBusiness();
-    loadUserRole();
     loadProducts();
     loadTransactions();
     loadSuppliers();
@@ -573,14 +581,28 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setBusinessLoaded(true);
   }
 
-  async function loadUserRole() {
-    const { data, error } = await supabase.rpc('auth_user_role');
-    if (error) { console.error("loadUserRole error:", error); return; }
-    if (data) {
-      setUserRole(data);
-      const tabs = tabAccess[data] ?? tabAccess.owner;
-      if (!tabs.includes(activeTab)) setActiveTab(tabs[0]);
-    }
+  function handlePinLogin() {
+    const pin = pinInput.trim();
+    if (!pin) return;
+    const emp = employees.find(e => e.pin === pin && e.status === "active");
+    if (!emp) { setPinError("Invalid PIN or inactive account"); return; }
+    setStaffSession({ id: emp.id, name: emp.name, role: emp.role });
+    setActiveCashierId(emp.id);
+    setActiveCashierName(emp.name);
+    setPinInput("");
+    setPinError("");
+    const tabs = tabAccess[emp.role] ?? tabAccess.owner;
+    setActiveTab(tabs[0]);
+  }
+
+  function handleStaffLogout() {
+    setStaffSession(null);
+    setOwnerBypass(false);
+    setPinInput("");
+    setPinError("");
+    setActiveCashierId(null);
+    setActiveCashierName("");
+    setActiveTab("dashboard");
   }
 
   async function handleCreateBusiness(e: React.FormEvent) {
@@ -1164,7 +1186,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadEmployees() {
     const { data, error } = await supabase
       .from("employees")
-      .select("id, business_id, name, role, status, created_at")
+      .select("id, business_id, name, role, status, pin, created_at")
       .order("created_at", { ascending: false });
     if (error) { console.error(error); return; }
     setEmployees((data as Employee[]) || []);
@@ -2136,17 +2158,24 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleAddEmployee(e: React.FormEvent) {
     e.preventDefault();
-    if (!newEmpName.trim() || !businessId) return;
+    if (!newEmpName.trim() || !newEmpPin.trim() || !businessId) return;
+    const pin = newEmpPin.trim();
+    if (!/^\d{4,6}$/.test(pin)) { setMessage({ text: "PIN must be 4–6 digits", type: "error" }); return; }
+    const duplicate = employees.find(emp => emp.pin === pin);
+    if (duplicate) { setMessage({ text: `PIN already assigned to ${duplicate.name}`, type: "error" }); return; }
     const { error } = await supabase.from("employees").insert({
       business_id: businessId,
       name: newEmpName.trim(),
+      pin,
       role: newEmpRole,
       status: "active",
     });
     if (error) { console.error(error); setMessage({ text: "Failed to add employee: " + error.message, type: "error" }); return; }
     setNewEmpName("");
+    setNewEmpPin("");
     setNewEmpRole("cashier");
-    setMessage({ text: "Employee added", type: "success" });
+    setOwnerBypass(true);
+    setMessage({ text: `Employee added — PIN: ${pin}`, type: "success" });
     await loadEmployees();
   }
 
@@ -2537,14 +2566,24 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               {label}
             </button>
           ))}
-          <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "4px", display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "4px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
             <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "12px", background: "#eff6ff", color: "#1d4ed8", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.05em" }}>{userRole.replace('_', ' ')}</span>
-            <button
-              onClick={onSignOut}
-              style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
-            >
-              Sign Out
-            </button>
+            {staffSession && <span style={{ fontSize: "12px", color: "#64748b" }}>{staffSession.name}</span>}
+            {staffSession ? (
+              <button
+                onClick={() => { handleStaffLogout(); setNavOpen(false); }}
+                style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
+              >
+                Switch User
+              </button>
+            ) : (
+              <button
+                onClick={onSignOut}
+                style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
+              >
+                Sign Out
+              </button>
+            )}
           </div>
         </nav>
       </div>
@@ -2583,6 +2622,33 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </div>
       )}
 
+      {businessId && !staffSession && !ownerBypass && employees.some(e => e.pin && e.status === "active") && (
+        <div style={{ maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Staff Login</h2>
+          <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your PIN to start your shift</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="Enter PIN"
+              value={pinInput}
+              onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
+              autoFocus
+              style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "24px", textAlign: "center", width: "180px", letterSpacing: "0.3em" }}
+            />
+            {pinError && <p style={{ margin: 0, color: "#b91c1c", fontSize: "13px" }}>{pinError}</p>}
+            <button onClick={handlePinLogin} disabled={!pinInput} style={{ padding: "10px 32px", background: pinInput ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: pinInput ? "pointer" : "not-allowed" }}>
+              Clock In
+            </button>
+            <button onClick={() => setOwnerBypass(true)} style={{ padding: "8px 20px", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "13px", marginTop: "8px" }}>
+              Continue as Owner
+            </button>
+          </div>
+        </div>
+      )}
+
       {businessId && !allowedTabs.includes(activeTab) && (
         <div style={{ maxWidth: "480px", margin: "60px auto", textAlign: "center", padding: "32px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "12px" }}>
           <h2 style={{ margin: "0 0 8px", fontSize: "20px", color: "#b91c1c" }}>Access Restricted</h2>
@@ -2591,7 +2657,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       )}
 
       {/* ── POS TAB ── */}
-      <div style={{ display: activeTab === 'pos' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'pos' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Point of Sale</h2>
@@ -2973,7 +3039,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end pos */}
 
       {/* ── INVENTORY TAB ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Inventory</h2>
@@ -3240,7 +3306,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── DASHBOARD TAB ── */}
-      <div style={{ display: activeTab === 'dashboard' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'dashboard' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Dashboard</h2>
@@ -3385,7 +3451,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end dashboard */}
 
       {/* ── INVENTORY TAB (2) ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Products & Stock</h2>
 
@@ -3622,7 +3688,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── PURCHASING TAB ── */}
-      <div style={{ display: activeTab === 'purchasing' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'purchasing' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Purchasing</h2>
@@ -4171,7 +4237,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end purchasing */}
 
       {/* ── CUSTOMERS TAB ── */}
-      <div style={{ display: activeTab === 'customers' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'customers' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Customers</h2>
@@ -4527,7 +4593,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end customers */}
 
       {/* ── PURCHASING TAB (2) ── */}
-      <div style={{ display: activeTab === 'purchasing' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'purchasing' && businessId && appUnlocked ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
 
@@ -4915,7 +4981,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end purchasing */}
 
       {/* ── INVENTORY TAB (3) ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Transaction History</h2>
 
@@ -4955,7 +5021,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── POS TAB (2) ── */}
-      <div style={{ display: activeTab === 'pos' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'pos' && businessId && appUnlocked ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Sales History</h2>
 
@@ -5100,7 +5166,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end pos */}
 
       {/* ── REPORTS TAB ── */}
-      <div style={{ display: activeTab === 'reports' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'reports' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Reports</h2>
@@ -5297,7 +5363,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end reports */}
 
       {/* ── EMPLOYEES TAB (2) ── */}
-      <div style={{ display: activeTab === 'employees' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'employees' && businessId && appUnlocked ? '' : 'none' }}>
 
       {/* Cash Drawer Management */}
       <h2 style={{ marginTop: "40px" }}>Cash Drawer</h2>
@@ -5654,7 +5720,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end employees */}
 
       {/* ── REPORTS TAB (2) ── */}
-      <div style={{ display: activeTab === 'reports' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'reports' && businessId && appUnlocked ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
 
@@ -6026,7 +6092,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end reports */}
 
       {/* ── INVENTORY TAB (4) ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
 
       {/* Stock Take / Inventory Count */}
       <h2 style={{ marginTop: "40px" }}>Stock Take / Inventory Count</h2>
@@ -6224,7 +6290,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end inventory */}
 
       {/* ── EMPLOYEES TAB ── */}
-      <div style={{ display: activeTab === 'employees' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'employees' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Staff</h2>
@@ -6238,7 +6304,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             placeholder="Employee name *"
             value={newEmpName}
             onChange={(e) => setNewEmpName(e.target.value)}
-            style={{ padding: "8px", flex: "1 1 180px" }}
+            style={{ padding: "8px", flex: "1 1 150px" }}
+            required
+          />
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="PIN (4–6 digits) *"
+            value={newEmpPin}
+            onChange={(e) => setNewEmpPin(e.target.value.replace(/\D/g, ""))}
+            maxLength={6}
+            style={{ padding: "8px", width: "140px" }}
             required
           />
           <select
@@ -6252,7 +6328,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </select>
           <button
             type="submit"
-            disabled={!newEmpName.trim()}
+            disabled={!newEmpName.trim() || !newEmpPin.trim()}
             style={{ padding: "8px 20px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}
           >
             Add Employee
@@ -6265,9 +6341,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           <thead>
             <tr style={{ background: "#f3f4f6" }}>
               <th style={{ textAlign: "left" }}>Name</th>
+              <th>PIN</th>
               <th>Role</th>
               <th>Status</th>
-              <th>Added</th>
               {userRole === "owner" && <th>Actions</th>}
             </tr>
           </thead>
@@ -6283,6 +6359,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 return (
                   <tr key={emp.id} style={rowStyle}>
                     <td style={{ fontWeight: "bold" }}>{emp.name}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: "13px", color: "#64748b" }}>{emp.pin ? "****" : "—"}</td>
                     <td>
                       {isEditing ? (
                         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -6305,7 +6382,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                         color: emp.status === "active" ? "#15803d" : "#6b7280",
                       }}>{emp.status}</span>
                     </td>
-                    <td style={{ color: "#888", fontSize: "13px" }}>{new Date(emp.created_at).toLocaleDateString()}</td>
                     {userRole === "owner" && (
                       <td>
                         <div style={{ display: "flex", gap: "6px" }}>
@@ -6342,7 +6418,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end employees */}
 
       {/* ── SETTINGS TAB ── */}
-      <div style={{ display: activeTab === 'settings' && businessId ? '' : 'none' }}>
+      <div style={{ display: activeTab === 'settings' && businessId && appUnlocked ? '' : 'none' }}>
 
       <div className="page-header">
         <h2 className="page-title">Settings</h2>
