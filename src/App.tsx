@@ -2304,6 +2304,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     const initialStock = Number(newInitialStock);
 
+    const costPrice = newCostPrice ? Number(newCostPrice) : 0;
+
     const { data: productData, error: productError } = await supabase
       .from("products")
       .insert({
@@ -2311,9 +2313,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         name: newName,
         sku: newSku || null,
         barcode: newBarcode || null,
-        cost_price: newCostPrice ? Number(newCostPrice) : null,
+        cost_price: costPrice || null,
         selling_price: Number(newSellingPrice),
         reorder_level: newReorderLevel ? Number(newReorderLevel) : 10,
+        average_cost: costPrice,
         status: "active",
         category_id: newProductCategory || null,
       })
