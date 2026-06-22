@@ -1139,17 +1139,24 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleDeleteCategory(cat: Category) {
     const assigned = products.filter(p => p.category_id === cat.id).length;
-    if (assigned > 0 && !window.confirm(`"${cat.name}" has ${assigned} product(s). Deleting will unset their category. Continue?`)) return;
-    if (assigned > 0) {
-      for (const p of products.filter(pr => pr.category_id === cat.id)) {
-        await supabase.from('products').update({ category_id: null }).eq('id', p.product_id);
-      }
-    }
+    if (assigned > 0) { setMessage({ text: `Cannot delete "${cat.name}" — ${assigned} product${assigned !== 1 ? "s" : ""} still assigned. Remove or reassign products first.`, type: "error" }); return; }
+    if (!window.confirm(`Permanently delete category "${cat.name}"?`)) return;
     const { error } = await supabase.from('categories').delete().eq('id', cat.id);
     if (error) { setMessage({ text: "Failed to delete category: " + error.message, type: "error" }); return; }
     setMessage({ text: `Category "${cat.name}" deleted`, type: "success" });
     await loadCategories();
-    await loadProducts();
+  }
+
+  async function handleToggleCategoryStatus(cat: Category) {
+    const newStatus = cat.status === "active" ? "inactive" : "active";
+    if (newStatus === "inactive") {
+      const assigned = products.filter(p => p.category_id === cat.id).length;
+      if (assigned > 0) { setMessage({ text: `Cannot deactivate "${cat.name}" — ${assigned} product${assigned !== 1 ? "s" : ""} still assigned.`, type: "error" }); return; }
+    }
+    const { error } = await supabase.from('categories').update({ status: newStatus }).eq('id', cat.id);
+    if (error) { setMessage({ text: "Failed to update category status: " + error.message, type: "error" }); return; }
+    setMessage({ text: `Category "${cat.name}" ${newStatus === "active" ? "activated" : "deactivated"}`, type: "success" });
+    await loadCategories();
   }
 
   function handleLookupCustomer() {
@@ -3638,11 +3645,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <button type="button" onClick={() => setEditingCatId(null)} style={{ padding: "2px 8px", fontSize: "12px" }}>Cancel</button>
                 </form>
               ) : (
-                <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: "6px", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", background: "#fff", fontSize: "13px" }}>
+                <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: "6px", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", background: cat.status === "inactive" ? "#f5f5f5" : "#fff", fontSize: "13px", opacity: cat.status === "inactive" ? 0.7 : 1 }}>
                   <span style={{ fontWeight: 500 }}>{cat.name}</span>
+                  {cat.description && <span style={{ color: "#94a3b8", fontSize: "11px" }} title={cat.description}>— {cat.description.length > 20 ? cat.description.slice(0, 20) + "…" : cat.description}</span>}
                   <span style={{ color: "#94a3b8", fontSize: "11px" }}>({count})</span>
+                  {cat.status === "inactive" && <span style={{ color: "#b45309", fontSize: "10px", fontWeight: 600 }}>INACTIVE</span>}
                   <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px" }}>Edit</button>
-                  <button onClick={() => handleDeleteCategory(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "3px", color: "#dc2626" }}>Del</button>
+                  <button onClick={() => handleToggleCategoryStatus(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px", color: cat.status === "active" ? "#b45309" : "#15803d" }}>{cat.status === "active" ? "Deactivate" : "Activate"}</button>
+                  {count === 0 && <button onClick={() => handleDeleteCategory(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "3px", color: "#dc2626" }}>Del</button>}
                 </div>
               );
             })}
