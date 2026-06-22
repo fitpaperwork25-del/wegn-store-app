@@ -57,6 +57,7 @@ type Receipt = {
   sale: Sale;
   items: ReceiptItem[];
   paymentMethod: string;
+  paymentReference?: string;
   pointsEarned?: number;
   pointsRedeemed?: number;
 };
@@ -80,6 +81,7 @@ type EodPayment = {
   sale_id: string;
   payment_method: string;
   amount: number;
+  reference?: string | null;
 };
 
 type CartItem = {
@@ -296,7 +298,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [cartProductId, setCartProductId] = useState("");
   const [cartQty, setCartQty] = useState("1");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentRef, setPaymentRef] = useState("");
   const [amountTendered, setAmountTendered] = useState("");
   const [posDiscountType, setPosDiscountType] = useState<"percent" | "fixed">("percent");
   const [posDiscountValue, setPosDiscountValue] = useState("");
@@ -1236,7 +1239,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadAllPayments() {
     const { data } = await supabase
       .from("payments")
-      .select("sale_id, payment_method, amount");
+      .select("sale_id, payment_method, amount, reference");
     setAllPayments((data as EodPayment[]) ?? []);
   }
 
@@ -1603,7 +1606,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     const { data: payments } = await supabase
       .from("payments")
-      .select("payment_method")
+      .select("payment_method, reference")
       .eq("sale_id", sale.id)
       .limit(1)
       .single();
@@ -1616,6 +1619,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       sale,
       items: items as ReceiptItem[],
       paymentMethod: payments?.payment_method ?? "—",
+      paymentReference: payments?.reference ?? undefined,
       pointsEarned: earnRow ? earnRow.points : undefined,
       pointsRedeemed: redeemRow ? Math.abs(redeemRow.points) : undefined,
     });
@@ -1778,7 +1782,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     const { error: payErr } = await supabase
       .from("payments")
-      .insert({ business_id: businessId, sale_id: sale.id, payment_method: paymentMethod, amount: finalTotal });
+      .insert({ business_id: businessId, sale_id: sale.id, payment_method: paymentMethod, amount: finalTotal, reference: paymentRef.trim() || null });
 
     if (payErr) { console.error(payErr); }
 
@@ -1837,6 +1841,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setIsCompletingSale(false);
     setCart([]);
     setAmountTendered("");
+    setPaymentRef("");
     setPosDiscountValue("");
     setPosDiscountType("percent");
     setPosCustomerPhone("");
@@ -3029,22 +3034,28 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
           <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontWeight: "bold" }}>Payment:</span>
-            <label style={{ cursor: "pointer" }}>
+            <select
+              value={paymentMethod}
+              onChange={(e) => { setPaymentMethod(e.target.value); setPaymentRef(""); }}
+              style={{ padding: "8px", fontSize: "14px" }}
+            >
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="telebirr">Telebirr</option>
+              <option value="cbe_birr">CBE Birr</option>
+              <option value="chapa">Chapa</option>
+              <option value="mtn_mobile">MTN Mobile Money</option>
+              <option value="airtel_money">Airtel Money</option>
+            </select>
+            {paymentMethod !== "cash" && paymentMethod !== "card" && (
               <input
-                type="radio"
-                value="cash"
-                checked={paymentMethod === "cash"}
-                onChange={() => setPaymentMethod("cash")}
-              />{" "}Cash
-            </label>
-            <label style={{ cursor: "pointer" }}>
-              <input
-                type="radio"
-                value="card"
-                checked={paymentMethod === "card"}
-                onChange={() => setPaymentMethod("card")}
-              />{" "}Card
-            </label>
+                type="text"
+                placeholder="Reference / phone (optional)"
+                value={paymentRef}
+                onChange={(e) => setPaymentRef(e.target.value)}
+                style={{ width: "200px", padding: "8px" }}
+              />
+            )}
             {paymentMethod === "cash" && (() => {
               const subtotal = cart.reduce((s, c) => s + c.line_total, 0);
               const discountVal = Math.max(0, Number(posDiscountValue) || 0);
@@ -4630,7 +4641,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                         const saleLoyalty = custLoyalty.filter(lt => lt.sale_id === s.id);
                                         const earnedPts = saleLoyalty.filter(lt => lt.type === 'earn' && lt.points > 0).reduce((sum, lt) => sum + lt.points, 0);
                                         const redeemedPts = saleLoyalty.filter(lt => lt.type === 'redeem').reduce((sum, lt) => sum + Math.abs(lt.points), 0);
-                                        const payMethods = salePayments.map(p => p.payment_method).join(", ") || "—";
+                                        const payMethods = salePayments.map(p => p.payment_method + (p.reference ? ` (${p.reference})` : "")).join(", ") || "—";
                                         const statusBg = s.status === "completed" ? "#dcfce7" : s.status === "returned" ? "#fef2f2" : s.status === "voided" ? "#e5e7eb" : "#f1f5f9";
                                         const statusColor = s.status === "completed" ? "#15803d" : s.status === "returned" ? "#dc2626" : s.status === "voided" ? "#6b7280" : "#475569";
 
@@ -7116,7 +7127,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "15px", marginTop: "4px" }}>
                     <span>TOTAL</span><span>${Number(receipt.sale.total).toFixed(2)}</span>
                   </div>
-                  <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod}</div>
+                  <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod}{receipt.paymentReference ? ` (Ref: ${receipt.paymentReference})` : ""}</div>
                 </div>
 
                 {(receipt.pointsEarned !== undefined || receipt.pointsRedeemed !== undefined) && (
