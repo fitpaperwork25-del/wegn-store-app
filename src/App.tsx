@@ -1107,15 +1107,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const query = posCustomerPhone.trim();
     if (!query) return;
     const queryLower = query.toLowerCase();
-    console.log('[LOOKUP DEBUG] query:', query);
-    console.log('[LOOKUP DEBUG] customers:', JSON.stringify(customers.map(c => ({ name: c.name, phone: c.phone, status: c.status }))));
-    const match = customers.find(c => {
-      if (c.name.toLowerCase().includes(queryLower)) {
-        console.log('[LOOKUP DEBUG] comparing:', JSON.stringify(c.name), 'len:', c.name.length, 'chars:', Array.from(c.name).map(ch => ch.charCodeAt(0)), 'vs query:', JSON.stringify(queryLower), 'len:', queryLower.length, 'chars:', Array.from(queryLower).map(ch => ch.charCodeAt(0)));
-      }
-      return c.status === "active" && (c.phone === query || c.name.toLowerCase() === queryLower);
-    });
-    console.log('[LOOKUP DEBUG] match result:', match);
+    const match = customers.find(c => c.status === "active" && (c.phone.trim() === query || c.name.trim().toLowerCase() === queryLower));
     if (match) {
       setPosCustomerId(match.id);
       setPosCustomerName(match.name);
