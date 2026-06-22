@@ -1805,7 +1805,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .from("payments")
       .insert({ business_id: businessId, sale_id: sale.id, payment_method: paymentMethod, amount: finalTotal, reference: paymentRef.trim() || null });
 
-    if (payErr) { console.error(payErr); }
+    if (payErr) { console.error(payErr); setMessage({ text: "Payment recording failed: " + payErr.message, type: "error" }); }
 
     for (const item of cart) {
       const product = products.find((p) => p.product_id === item.product_id);
