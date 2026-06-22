@@ -1104,9 +1104,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   function handleLookupCustomer() {
-    const phone = posCustomerPhone.trim();
-    if (!phone) return;
-    const match = customers.find(c => c.phone === phone && c.status === "active");
+    const query = posCustomerPhone.trim();
+    if (!query) return;
+    const queryLower = query.toLowerCase();
+    const match = customers.find(c => c.status === "active" && (c.phone === query || c.name.toLowerCase() === queryLower));
     if (match) {
       setPosCustomerId(match.id);
       setPosCustomerName(match.name);
@@ -1117,7 +1118,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     } else {
       setPosCustomerId(null);
       setPosCustomerName("");
-      setMessage({ text: `No customer found for ${phone} — sale will be anonymous`, type: "error" });
+      setMessage({ text: `No customer found for ${query} — sale will be anonymous`, type: "error" });
     }
   }
 
@@ -2774,7 +2775,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
         <input
           type="text"
-          placeholder="Customer phone (optional)"
+          placeholder="Customer name or phone"
           value={posCustomerPhone}
           onChange={(e) => { setPosCustomerPhone(e.target.value); setPosCustomerId(null); setPosCustomerName(""); }}
           style={{ padding: "8px", width: "220px" }}
