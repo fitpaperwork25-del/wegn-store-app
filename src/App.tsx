@@ -145,6 +145,19 @@ type ReturnLineItem = {
   return_qty: number;
 };
 
+type ReturnRecord = {
+  id: string;
+  sale_id: string;
+  product_id: string;
+  quantity_returned: number;
+  reason: string | null;
+  return_number: string | null;
+  return_reason: string | null;
+  notes: string | null;
+  processed_by: string | null;
+  created_at: string;
+};
+
 type StockCountLine = {
   product_id: string;
   inventory_id: string;
@@ -427,6 +440,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [returningSaleId, setReturningSaleId] = useState<string | null>(null);
   const [returnLines, setReturnLines] = useState<ReturnLineItem[]>([]);
   const [returnReason, setReturnReason] = useState("");
+  const [returnReasonDropdown, setReturnReasonDropdown] = useState("");
+  const [returnNotes, setReturnNotes] = useState("");
+  const [returnHistory, setReturnHistory] = useState<ReturnRecord[]>([]);
+  const [expandedReturnSaleId, setExpandedReturnSaleId] = useState<string | null>(null);
   const [returnLoading, setReturnLoading] = useState(false);
   const [stockCountLines, setStockCountLines] = useState<StockCountLine[]>([]);
   const [stockCountActive, setStockCountActive] = useState(false);
@@ -524,6 +541,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadCustomers();
     loadLoyaltyTransactions();
     loadAllReturnItems();
+    loadReturnHistory();
     loadAllPoItems();
     loadCategories();
     loadDrawerSession();
@@ -681,14 +699,20 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .filter(l => l.available_qty > 0);
     setReturnLines(lines);
     setReturnReason("");
+    setReturnReasonDropdown("");
+    setReturnNotes("");
     setReturningSaleId(sale.id);
   }
 
   async function handleConfirmReturn() {
     if (!returningSaleId) return;
+    if (!returnReasonDropdown) { setMessage({ text: "Please select a return reason", type: "error" }); return; }
     const toReturn = returnLines.filter(l => l.return_qty > 0);
     if (toReturn.length === 0) return;
     setReturnLoading(true);
+    const retNum = nextReturnNumber();
+    const reasonText = returnReasonDropdown === "Other" ? (returnReason || "Other") : returnReasonDropdown;
+    const processedBy = staffSession ? staffSession.id : null;
     for (const line of toReturn) {
       const product = products.find(p => p.product_id === line.product_id);
       if (!product) continue;
@@ -697,7 +721,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         sale_id: returningSaleId,
         product_id: line.product_id,
         quantity_returned: line.return_qty,
-        reason: returnReason || null,
+        reason: reasonText,
+        return_number: retNum,
+        return_reason: returnReasonDropdown,
+        notes: returnNotes || null,
+        processed_by: processedBy,
       });
       const newQty = product.quantity_on_hand + line.return_qty;
       await supabase.from('inventory').update({ quantity_on_hand: newQty }).eq('id', product.inventory_id);
@@ -747,13 +775,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setReturningSaleId(null);
     setReturnLines([]);
     setReturnReason("");
+    setReturnReasonDropdown("");
+    setReturnNotes("");
     setReturnLoading(false);
-    setMessage({ text: "Return processed", type: "success" });
+    setMessage({ text: `Return ${retNum} processed`, type: "success" });
     await loadProducts();
     await loadTransactions();
     await loadSales();
     await loadLoyaltyTransactions();
     await loadAllReturnItems();
+    await loadReturnHistory();
   }
 
   function handleStartCount() {
@@ -1038,6 +1069,23 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .from('return_items')
       .select('sale_id, product_id, quantity_returned');
     setAllReturnItems((data as { sale_id: string; product_id: string; quantity_returned: number }[]) ?? []);
+  }
+
+  async function loadReturnHistory() {
+    const { data } = await supabase
+      .from('return_items')
+      .select('id, sale_id, product_id, quantity_returned, reason, return_number, return_reason, notes, processed_by, created_at')
+      .order('created_at', { ascending: false });
+    setReturnHistory((data as ReturnRecord[]) ?? []);
+  }
+
+  function nextReturnNumber(): string {
+    const existing = returnHistory.filter(r => r.return_number).map(r => {
+      const m = r.return_number!.match(/^RET-(\d+)$/);
+      return m ? Number(m[1]) : 0;
+    });
+    const max = existing.length > 0 ? Math.max(...existing) : 0;
+    return `RET-${String(max + 1).padStart(6, '0')}`;
   }
 
   async function loadAllPoItems() {
@@ -5133,14 +5181,39 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                   ))}
                                 </tbody>
                               </table>
-                              <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "10px", flexWrap: "wrap" }}>
-                                <input
-                                  type="text"
-                                  placeholder="Reason (optional)"
-                                  value={returnReason}
-                                  onChange={(e) => setReturnReason(e.target.value)}
-                                  style={{ flex: "1 1 200px", padding: "7px" }}
-                                />
+                              <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginTop: "10px", flexWrap: "wrap" }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: "1 1 200px" }}>
+                                  <select
+                                    value={returnReasonDropdown}
+                                    onChange={(e) => setReturnReasonDropdown(e.target.value)}
+                                    style={{ padding: "7px", fontSize: "13px" }}
+                                    required
+                                  >
+                                    <option value="">Select reason *</option>
+                                    <option value="Damaged">Damaged</option>
+                                    <option value="Expired">Expired</option>
+                                    <option value="Customer changed mind">Customer changed mind</option>
+                                    <option value="Wrong item sold">Wrong item sold</option>
+                                    <option value="Pricing issue">Pricing issue</option>
+                                    <option value="Other">Other</option>
+                                  </select>
+                                  {returnReasonDropdown === "Other" && (
+                                    <input
+                                      type="text"
+                                      placeholder="Specify reason"
+                                      value={returnReason}
+                                      onChange={(e) => setReturnReason(e.target.value)}
+                                      style={{ padding: "7px" }}
+                                    />
+                                  )}
+                                  <input
+                                    type="text"
+                                    placeholder="Notes (optional)"
+                                    value={returnNotes}
+                                    onChange={(e) => setReturnNotes(e.target.value)}
+                                    style={{ padding: "7px" }}
+                                  />
+                                </div>
                                 <button
                                   onClick={handleConfirmReturn}
                                   disabled={returnLoading || returnLines.every(l => l.return_qty === 0)}
@@ -6090,6 +6163,104 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               </div>
             </div>
           </>
+        );
+      })()}
+
+      {/* Return History */}
+      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Return History</h3>
+      {(() => {
+        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
+        const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
+        const employeeMap = Object.fromEntries(employees.map(e => [e.id, e.name]));
+        const grouped: Record<string, ReturnRecord[]> = {};
+        for (const r of returnHistory) {
+          const key = r.return_number || r.id;
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(r);
+        }
+        const groups = Object.entries(grouped).sort((a, b) => {
+          const da = new Date(a[1][0].created_at).getTime();
+          const db = new Date(b[1][0].created_at).getTime();
+          return db - da;
+        });
+        return groups.length === 0 ? (
+          <p style={{ color: "#888", fontSize: "14px" }}>No returns recorded yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%", fontSize: "13px" }}>
+              <thead>
+                <tr style={{ background: "#f3f4f6" }}>
+                  <th style={{ textAlign: "left" }}>Return #</th>
+                  <th style={{ textAlign: "left" }}>Sale</th>
+                  <th>Date</th>
+                  <th>Customer</th>
+                  <th>Processed By</th>
+                  <th>Reason</th>
+                  <th style={{ textAlign: "right" }}>Refund Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map(([key, items]) => {
+                  const first = items[0];
+                  const sale = sales.find(s => s.id === first.sale_id);
+                  const custName = sale?.customer_id ? (customerMap[sale.customer_id] ?? "—") : "—";
+                  const empName = first.processed_by ? (employeeMap[first.processed_by] ?? "—") : "Owner";
+                  const refundValue = items.reduce((sum, r) => {
+                    const si = saleItems.find(s => s.sale_id === r.sale_id && s.product_id === r.product_id);
+                    return sum + (si ? r.quantity_returned * si.unit_price : 0);
+                  }, 0);
+                  const isExpanded = expandedReturnSaleId === key;
+                  return (
+                    <React.Fragment key={key}>
+                      <tr
+                        style={{ cursor: "pointer", background: isExpanded ? "#faf5ff" : "inherit" }}
+                        onClick={() => setExpandedReturnSaleId(isExpanded ? null : key)}
+                      >
+                        <td style={{ fontFamily: "monospace", fontWeight: "bold", color: "#7c3aed" }}>{first.return_number || "—"}</td>
+                        <td style={{ fontFamily: "monospace", color: "#475569" }}>{first.sale_id.slice(0, 8)}…</td>
+                        <td>{new Date(first.created_at).toLocaleString()}</td>
+                        <td>{custName}</td>
+                        <td>{empName}</td>
+                        <td>{first.return_reason || first.reason || "—"}</td>
+                        <td style={{ textAlign: "right", fontWeight: "bold" }}>${refundValue.toFixed(2)}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={7} style={{ background: "#faf5ff", padding: "12px" }}>
+                            {first.notes && <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#64748b" }}><strong>Notes:</strong> {first.notes}</p>}
+                            <table border={1} cellPadding={6} style={{ width: "100%", fontSize: "12px" }}>
+                              <thead>
+                                <tr style={{ background: "#e5e7eb" }}>
+                                  <th style={{ textAlign: "left" }}>Product</th>
+                                  <th>Qty Returned</th>
+                                  <th style={{ textAlign: "right" }}>Unit Price</th>
+                                  <th style={{ textAlign: "right" }}>Refund</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map(r => {
+                                  const si = saleItems.find(s => s.sale_id === r.sale_id && s.product_id === r.product_id);
+                                  const unitPrice = si?.unit_price ?? 0;
+                                  return (
+                                    <tr key={r.id}>
+                                      <td>{productMap[r.product_id] ?? r.product_id.slice(0, 8)}</td>
+                                      <td style={{ textAlign: "center" }}>{r.quantity_returned}</td>
+                                      <td style={{ textAlign: "right" }}>${unitPrice.toFixed(2)}</td>
+                                      <td style={{ textAlign: "right" }}>${(r.quantity_returned * unitPrice).toFixed(2)}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         );
       })()}
 
