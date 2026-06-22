@@ -120,7 +120,7 @@ type ProductStock = {
   barcode: string | null;
   selling_price: number;
   quantity_on_hand: number;
-  reorder_level: number;
+  reorder_level: number | null;
   status: string;
   average_cost: number;
   supplier_id: string | null;
@@ -1915,7 +1915,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     for (const [supplierId, productIds] of Object.entries(bySupplier)) {
       const items = productIds.map(pid => {
         const product = products.find(p => p.product_id === pid)!;
-        const qty = Number(reorderQtys[pid] ?? (product.reorder_level - product.quantity_on_hand));
+        const qty = Number(reorderQtys[pid] ?? ((product.reorder_level ?? 0) - product.quantity_on_hand));
         const unitCost = product.average_cost ?? 0;
         return { product_id: pid, product_name: product.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
       });
@@ -1986,7 +1986,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     const items = supProducts.map(p => {
       const prefQty = getPrefQty(p.product_id);
-      const defaultQty = Math.max(1, p.reorder_level - p.quantity_on_hand);
+      const defaultQty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
       const qty = prefQty ?? defaultQty;
       const unitCost = p.average_cost ?? 0;
       return { product_id: p.product_id, product_name: p.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
@@ -2290,7 +2290,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         barcode: item.products?.barcode,
         selling_price: item.products?.selling_price,
         quantity_on_hand: item.quantity_on_hand,
-        reorder_level: item.products?.reorder_level ?? 10,
+        reorder_level: item.products?.reorder_level ?? null,
         status: item.products?.status,
         average_cost: item.products?.average_cost ?? 0,
         supplier_id: item.products?.supplier_id ?? null,
@@ -3410,7 +3410,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
         const txnCount = todaySales.length;
         const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
-        const lowStockCount = products.filter(p => p.quantity_on_hand < p.reorder_level).length;
+        const lowStockCount = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length;
         const openPoCount = purchaseOrders.filter(po => po.status === 'draft' || po.status === 'ordered' || po.status === 'partially_received').length;
         const activeCustomerCount = customers.filter(c => c.status === 'active').length;
         const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
@@ -3543,7 +3543,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {/* ── Inventory Summary Cards ── */}
       {(() => {
         const totalProducts = products.length;
-        const lowStockItems = products.filter(p => p.status === 'active' && p.quantity_on_hand < p.reorder_level).length;
+        const lowStockItems = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length;
         const inventoryValue = products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
         const activeSupplierCount = suppliers.filter(s => s.status === 'active').length;
         return (
@@ -3575,6 +3575,43 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <div className="dash-card-label">Active Suppliers</div>
                 <div className="dash-card-value">{activeSupplierCount}</div>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Low Stock Alert ── */}
+      {(() => {
+        const lowStockProducts = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level);
+        if (lowStockProducts.length === 0) return null;
+        return (
+          <div style={{ marginBottom: "24px", border: "1px solid #fecaca", borderRadius: "8px", overflow: "hidden" }}>
+            <div style={{ padding: "10px 16px", background: "#fef2f2", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <strong style={{ color: "#b91c1c", fontSize: "14px" }}>Low Stock Alert — {lowStockProducts.length} product{lowStockProducts.length !== 1 ? "s" : ""} below reorder level</strong>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+                <thead>
+                  <tr style={{ background: "#fef2f2" }}>
+                    <th style={{ textAlign: "left" }}>Product</th>
+                    <th style={{ textAlign: "left" }}>Category</th>
+                    <th style={{ textAlign: "right" }}>Stock</th>
+                    <th style={{ textAlign: "right" }}>Reorder Level</th>
+                    <th style={{ textAlign: "right" }}>Shortage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lowStockProducts.sort((a, b) => a.quantity_on_hand - (a.reorder_level ?? 0) - (b.quantity_on_hand - (b.reorder_level ?? 0))).map(p => (
+                    <tr key={p.product_id}>
+                      <td style={{ fontWeight: 500 }}>{p.product_name}</td>
+                      <td style={{ color: "#64748b" }}>{categories.find(c => c.id === p.category_id)?.name ?? "—"}</td>
+                      <td style={{ textAlign: "right", fontWeight: 600, color: p.quantity_on_hand === 0 ? "#dc2626" : "#b45309" }}>{p.quantity_on_hand}</td>
+                      <td style={{ textAlign: "right" }}>{p.reorder_level}</td>
+                      <td style={{ textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{(p.reorder_level ?? 0) - p.quantity_on_hand}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         );
@@ -3652,7 +3689,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
           <tbody>
             {products.filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter).map((product) => {
-              const isLowStock = product.status === 'active' && product.quantity_on_hand < product.reorder_level;
+              const isLowStock = product.status === 'active' && product.reorder_level !== null && product.quantity_on_hand < product.reorder_level;
               const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
               const inactive = product.status !== "active";
               const isEditing = editingProductId === product.product_id;
@@ -3684,7 +3721,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                           setEditProdSku(product.sku ?? "");
                           setEditProdBarcode(product.barcode ?? "");
                           setEditProdPrice(product.selling_price.toString());
-                          setEditProdReorder(product.reorder_level.toString());
+                          setEditProdReorder(product.reorder_level?.toString() ?? "");
                           setEditProdCategory(product.category_id ?? "");
                         }}
                         className="sh-btn sh-btn-print"
@@ -3754,7 +3791,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                           <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
                             <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${product.average_cost.toFixed(2)}</strong></span>
                             <span>Inventory Value: <strong style={{ color: "#0f172a" }}>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</strong></span>
-                            <span>Reorder Level: <strong style={{ color: "#0f172a" }}>{product.reorder_level}</strong></span>
+                            <span>Reorder Level: <strong style={{ color: "#0f172a" }}>{product.reorder_level ?? "—"}</strong></span>
                             <span>Barcode: <strong style={{ color: "#0f172a" }}>{product.barcode ?? "—"}</strong></span>
                           </div>
                           <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
@@ -4033,9 +4070,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                 </thead>
                                 <tbody>
                                   {supProducts.map((p, i) => {
-                                    const defaultQty = Math.max(1, p.reorder_level - p.quantity_on_hand);
+                                    const defaultQty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
                                     const prefQty = getPrefQty(p.product_id);
-                                    const isLow = p.quantity_on_hand < p.reorder_level;
+                                    const isLow = p.reorder_level !== null && p.quantity_on_hand < p.reorder_level;
                                     return (
                                       <tr key={p.product_id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
                                         <td style={{ padding: "6px 8px" }}>{p.product_name}</td>
@@ -4095,7 +4132,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <h2 style={{ marginTop: "40px" }}>Reorder Center</h2>
 
       {(() => {
-        const lowStock = products.filter((p) => p.quantity_on_hand < p.reorder_level && p.status === "active");
+        const lowStock = products.filter((p) => p.reorder_level !== null && p.quantity_on_hand < p.reorder_level && p.status === "active");
         if (lowStock.length === 0) {
           return <p style={{ color: "#16a34a" }}>All products are sufficiently stocked.</p>;
         }
@@ -4104,7 +4141,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const filtered = reorderFilter === "missing" ? missingSup : reorderFilter === "ready" ? readyToOrder : lowStock;
         const selectedCount = lowStock.filter(p => reorderSelected.has(p.product_id)).length;
         const estValue = lowStock.filter(p => reorderSelected.has(p.product_id)).reduce((sum, p) => {
-          const qty = Number(reorderQtys[p.product_id] ?? (p.reorder_level - p.quantity_on_hand));
+          const qty = Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand));
           return sum + qty * (p.average_cost || 0);
         }, 0);
         const involvedSuppliers = new Set(lowStock.map(p => reorderSuppliers[p.product_id] || p.supplier_id).filter(Boolean));
@@ -4228,7 +4265,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             const supName = sid === "__unassigned__" ? "No Supplier Assigned" : (supplierMap[sid] ?? "Unknown");
             const isCollapsed = collapsedSuppliers.has(sid);
             const groupValue = items.reduce((sum, p) => {
-              const qty = Number(reorderQtys[p.product_id] ?? (p.reorder_level - p.quantity_on_hand));
+              const qty = Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand));
               return sum + qty * (p.average_cost || 0);
             }, 0);
             const groupSelected = items.filter(p => reorderSelected.has(p.product_id)).length;
@@ -4284,7 +4321,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             <td style={{ padding: "6px 8px" }}>{p.product_name}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{p.reorder_level - p.quantity_on_hand}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{(p.reorder_level ?? 0) - p.quantity_on_hand}</td>
                             <td style={{ padding: "6px 8px" }}>
                               <select
                                 value={reorderSuppliers[p.product_id] ?? savedSupplier}
@@ -4300,7 +4337,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>
                               <input
                                 type="number" min="1"
-                                value={reorderQtys[p.product_id] ?? String(p.reorder_level - p.quantity_on_hand)}
+                                value={reorderQtys[p.product_id] ?? String((p.reorder_level ?? 0) - p.quantity_on_hand)}
                                 onChange={(e) => setReorderQtys((prev) => ({ ...prev, [p.product_id]: e.target.value }))}
                                 style={{ width: "60px", padding: "3px", textAlign: "right" }}
                               />
@@ -5874,7 +5911,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {/* 2. Low Stock Report */}
       <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Low Stock Report</h3>
       {(() => {
-        const lowStock = products.filter(p => p.quantity_on_hand < p.reorder_level);
+        const lowStock = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level);
         return (
           <div style={{ overflowX: "auto" }}>
             <table border={1} cellPadding={10} style={{ width: "100%" }}>
@@ -5896,7 +5933,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       <td>{p.quantity_on_hand}</td>
                       <td>{p.reorder_level}</td>
                       <td style={{ color: "red", fontWeight: "bold" }}>
-                        {p.reorder_level - p.quantity_on_hand}
+                        {(p.reorder_level ?? 0) - p.quantity_on_hand}
                       </td>
                     </tr>
                   ))
