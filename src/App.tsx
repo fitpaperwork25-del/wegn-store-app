@@ -1237,9 +1237,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function loadAllPayments() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("payments")
       .select("sale_id, payment_method, amount, reference");
+    if (error) {
+      const { data: fallback } = await supabase
+        .from("payments")
+        .select("sale_id, payment_method, amount");
+      setAllPayments((fallback as EodPayment[]) ?? []);
+      return;
+    }
     setAllPayments((data as EodPayment[]) ?? []);
   }
 
@@ -1604,12 +1611,26 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     if (itemsErr || !items) { console.error(itemsErr); return; }
 
-    const { data: payments } = await supabase
+    let payMethod = "—";
+    let payRef: string | undefined;
+    const { data: payFull } = await supabase
       .from("payments")
       .select("payment_method, reference")
       .eq("sale_id", sale.id)
       .limit(1)
-      .single();
+      .maybeSingle();
+    if (payFull) {
+      payMethod = payFull.payment_method ?? "—";
+      payRef = payFull.reference ?? undefined;
+    } else {
+      const { data: payFallback } = await supabase
+        .from("payments")
+        .select("payment_method")
+        .eq("sale_id", sale.id)
+        .limit(1)
+        .maybeSingle();
+      if (payFallback) payMethod = payFallback.payment_method ?? "—";
+    }
 
     const saleLoyalty = loyaltyTransactions.filter(lt => lt.sale_id === sale.id);
     const earnRow = saleLoyalty.find(lt => lt.type === 'earn');
@@ -1618,8 +1639,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setReceipt({
       sale,
       items: items as ReceiptItem[],
-      paymentMethod: payments?.payment_method ?? "—",
-      paymentReference: payments?.reference ?? undefined,
+      paymentMethod: payMethod,
+      paymentReference: payRef,
       pointsEarned: earnRow ? earnRow.points : undefined,
       pointsRedeemed: redeemRow ? Math.abs(redeemRow.points) : undefined,
     });
