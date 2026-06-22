@@ -1107,6 +1107,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const query = posCustomerPhone.trim();
     if (!query) return;
     const queryLower = query.toLowerCase();
+    console.log('[LOOKUP DEBUG] query:', query);
+    console.log('[LOOKUP DEBUG] customers:', JSON.stringify(customers.map(c => ({ name: c.name, phone: c.phone, status: c.status }))));
     const match = customers.find(c => c.status === "active" && (c.phone === query || c.name.toLowerCase() === queryLower));
     if (match) {
       setPosCustomerId(match.id);
