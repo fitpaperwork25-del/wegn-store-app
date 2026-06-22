@@ -278,6 +278,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
+  const [adjustNotes, setAdjustNotes] = useState("");
   const [newName, setNewName] = useState("");
   const [newSku, setNewSku] = useState("");
   const [newBarcode, setNewBarcode] = useState("");
@@ -2515,7 +2516,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     const qty = Number(adjustQuantity);
 
-    if (!adjustProductId || !adjustQuantity || isNaN(qty)) {
+    if (!adjustProductId || !adjustQuantity || isNaN(qty) || qty === 0) {
       return;
     }
 
@@ -2526,25 +2527,39 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     }
 
     const reductionTypes = ["damaged", "expired", "lost"];
-    const delta = reductionTypes.includes(adjustType) ? -Math.abs(qty) : qty;
+    const increaseTypes = ["found"];
+    const delta = reductionTypes.includes(adjustType) ? -Math.abs(qty)
+      : increaseTypes.includes(adjustType) ? Math.abs(qty)
+      : qty;
 
     const quantityBefore = product.quantity_on_hand;
     const quantityAfter = quantityBefore + delta;
+
+    if (quantityAfter < 0) {
+      setMessage({ text: `Cannot adjust: resulting stock would be ${quantityAfter}. Current stock: ${quantityBefore}.`, type: "error" });
+      return;
+    }
+
+    const txType = adjustType === "found" ? "correction" : adjustType;
+    const reasonParts = [adjustType === "found" ? "Found/correction" : adjustType];
+    if (adjustReason) reasonParts.push(adjustReason);
+    if (adjustNotes) reasonParts.push(`Notes: ${adjustNotes}`);
 
     const { error: txError } = await supabase
       .from("inventory_transactions")
       .insert({
         business_id: product.business_id,
         product_id: product.product_id,
-        transaction_type: adjustType,
+        transaction_type: txType,
         quantity_change: delta,
         quantity_before: quantityBefore,
         quantity_after: quantityAfter,
-        reason: adjustReason || null,
+        reason: reasonParts.join(" — "),
       });
 
     if (txError) {
       console.error(txError);
+      setMessage({ text: "Adjustment failed: " + txError.message, type: "error" });
       return;
     }
 
@@ -2555,12 +2570,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     if (updateError) {
       console.error(updateError);
+      setMessage({ text: "Inventory update failed: " + updateError.message, type: "error" });
       return;
     }
 
     setAdjustQuantity("");
     setAdjustReason("");
-    setMessage({ text: "Inventory adjusted successfully", type: "success" });
+    setAdjustNotes("");
+    setMessage({ text: `Inventory adjusted: ${product.product_name} ${delta > 0 ? "+" : ""}${delta} (${quantityBefore} → ${quantityAfter})`, type: "success" });
     await loadProducts();
     await loadTransactions();
   }
@@ -3144,38 +3161,54 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             <option value="">Select product...</option>
             {products.map((product) => (
               <option key={product.product_id} value={product.product_id}>
-                {product.product_name}
+                {product.product_name} (stock: {product.quantity_on_hand})
               </option>
             ))}
           </select>
           <select
             value={adjustType}
             onChange={(e) => setAdjustType(e.target.value)}
-            style={{ flex: "1 1 140px", padding: "8px" }}
+            style={{ flex: "1 1 160px", padding: "8px" }}
           >
-            <option value="damaged">damaged</option>
-            <option value="expired">expired</option>
-            <option value="lost">lost</option>
-            <option value="correction">correction</option>
+            <option value="damaged">Damaged (−)</option>
+            <option value="expired">Expired (−)</option>
+            <option value="lost">Lost (−)</option>
+            <option value="found">Found / Extra (+)</option>
+            <option value="correction">Correction (±)</option>
           </select>
           <input
             type="number"
             placeholder={adjustType === "correction" ? "Qty (±)" : "Quantity"}
             value={adjustQuantity}
             onChange={(e) => setAdjustQuantity(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
+            style={{ flex: "1 1 100px", padding: "8px" }}
           />
           <input
             type="text"
             placeholder="Reason (optional)"
             value={adjustReason}
             onChange={(e) => setAdjustReason(e.target.value)}
-            style={{ flex: "2 1 200px", padding: "8px" }}
+            style={{ flex: "1 1 160px", padding: "8px" }}
+          />
+          <input
+            type="text"
+            placeholder="Notes (optional)"
+            value={adjustNotes}
+            onChange={(e) => setAdjustNotes(e.target.value)}
+            style={{ flex: "1 1 160px", padding: "8px" }}
           />
           <button type="submit" className="pos-add-btn">
             Adjust
           </button>
         </form>
+        {adjustProductId && (() => {
+          const p = products.find(pr => pr.product_id === adjustProductId);
+          return p ? (
+            <div style={{ marginTop: "8px", fontSize: "13px", color: "#64748b" }}>
+              Current stock: <strong>{p.quantity_on_hand}</strong> &nbsp;|&nbsp; Avg cost: <strong>${p.average_cost.toFixed(2)}</strong>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       <div className="section-card">
