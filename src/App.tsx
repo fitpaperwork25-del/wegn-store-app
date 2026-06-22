@@ -1131,7 +1131,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       phone: newCusPhone,
       email: newCusEmail || null,
     });
-    if (error) { console.error(error); setMessage({ text: "Failed to add customer: " + error.message, type: "error" }); return; }
+    if (error) { console.error(error); setMessage({ text: error.message.includes("duplicate") ? "Phone number already registered." : "Failed to add customer: " + error.message, type: "error" }); return; }
     setNewCusName("");
     setNewCusPhone("");
     setNewCusEmail("");
