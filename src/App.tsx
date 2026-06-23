@@ -297,6 +297,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [txDateRange, setTxDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [txHistoryOpen, setTxHistoryOpen] = useState(false);
   const [productsTableOpen, setProductsTableOpen] = useState(false);
+  const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [cartProductId, setCartProductId] = useState("");
@@ -5276,8 +5277,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {/* ── POS TAB (2) ── */}
       <div style={{ display: activeTab === 'pos' && businessId && appUnlocked ? '' : 'none' }}>
 
-      <h2 style={{ marginTop: "40px" }}>Sales History</h2>
-
+      <button
+        onClick={() => setSalesHistoryOpen(o => !o)}
+        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{salesHistoryOpen ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Sales History</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>
+          ({salesDateRange === 'today' ? 'Today' : salesDateRange === '7d' ? 'Last 7 Days' : salesDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {sales.filter(s => s.status !== 'open').length} sales)
+        </span>
+      </button>
+      {salesHistoryOpen && <>
       <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
           <button
@@ -5456,6 +5466,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </tbody>
         </table>
       </div>
+      </>}
 
       </div>{/* end pos */}
 
