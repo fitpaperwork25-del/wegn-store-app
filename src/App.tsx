@@ -510,6 +510,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newProductCategory, setNewProductCategory] = useState("");
   const [editProdCategory, setEditProdCategory] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [productSearch, setProductSearch] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessEmail, setBusinessEmail] = useState("");
@@ -3734,6 +3735,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <span style={{ fontSize: "13px", color: "#64748b" }}>({products.length} products)</span>
       </button>
       {productsTableOpen && <>
+      <input
+        type="text"
+        placeholder="Search by product, SKU, or barcode…"
+        value={productSearch}
+        onChange={(e) => setProductSearch(e.target.value)}
+        style={{ width: "100%", padding: "8px 12px", marginBottom: "12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
+      />
       {/* ── Category Filter ── */}
       {categories.length > 0 && (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
@@ -3772,7 +3780,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </thead>
 
           <tbody>
-            {products.filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter).map((product) => {
+            {(() => {
+              const filtered = products.filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter).filter(p => {
+                if (!productSearch.trim()) return true;
+                const q = productSearch.trim().toLowerCase();
+                return p.product_name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.barcode ?? "").toLowerCase().includes(q);
+              });
+              if (filtered.length === 0) return (
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
+              );
+              return filtered.map((product) => {
               const isLowStock = product.status === 'active' && product.reorder_level !== null && product.quantity_on_hand < product.reorder_level;
               const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
               const inactive = product.status !== "active";
@@ -3886,7 +3903,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   )}
                 </React.Fragment>
               );
-            })}
+            });
+            })()}
           </tbody>
         </table>
       </div>
