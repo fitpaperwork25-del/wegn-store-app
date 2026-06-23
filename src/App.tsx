@@ -491,6 +491,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [editEmpRole, setEditEmpRole] = useState("");
   const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
+  const [salesDateRange, setSalesDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProdName, setEditProdName] = useState("");
   const [editProdSku, setEditProdSku] = useState("");
@@ -555,6 +556,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }, []);
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
+  useEffect(() => { loadSales(); }, [salesDateRange]);
 
   useEffect(() => {
     if (cart.length === 0) return;
@@ -1231,10 +1233,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function loadSales() {
-    const { data, error } = await supabase
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const rangeStart: string | null =
+      salesDateRange === 'today' ? startOfDay.toISOString() :
+      salesDateRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString() :
+      salesDateRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString() :
+      null;
+    let query = supabase
       .from("sales")
       .select("id, cashier_id, customer_id, subtotal, tax, discount_amount, total, status, created_at")
       .order("created_at", { ascending: false });
+    if (rangeStart) query = query.gte("created_at", rangeStart);
+    const { data, error } = await query;
     if (error) { console.error(error); return; }
     setSales((data as Sale[]) || []);
   }
@@ -5207,6 +5218,22 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <div style={{ display: activeTab === 'pos' && businessId && appUnlocked ? '' : 'none' }}>
 
       <h2 style={{ marginTop: "40px" }}>Sales History</h2>
+
+      <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setSalesDateRange(key as typeof salesDateRange)}
+            style={{
+              padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px",
+              background: salesDateRange === key ? "#1d4ed8" : "#fff",
+              color: salesDateRange === key ? "#fff" : "#333",
+              border: salesDateRange === key ? "1px solid #1d4ed8" : "1px solid #ccc",
+              fontWeight: salesDateRange === key ? "bold" : "normal",
+            }}
+          >{label}</button>
+        ))}
+      </div>
 
       {employees.length > 0 && (
         <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px" }}>
