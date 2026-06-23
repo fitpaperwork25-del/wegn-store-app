@@ -5190,40 +5190,86 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {/* ── INVENTORY TAB (3) ── */}
       <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
 
-      <h2 style={{ marginTop: "40px" }}>Transaction History</h2>
-
-      <div style={{ overflowX: "auto" }}>
-        <table border={1} cellPadding={10} style={{ width: "100%" }}>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Product</th>
-              <th>Type</th>
-              <th>Change</th>
-              <th>Before</th>
-              <th>After</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.length === 0 ? (
-              <tr>
-                <td colSpan={6}>No transactions found</td>
-              </tr>
-            ) : (
-              transactions.map((tx) => (
-                <tr key={tx.id}>
-                  <td>{new Date(tx.created_at).toLocaleString()}</td>
-                  <td>{tx.products?.name}</td>
-                  <td>{tx.transaction_type}</td>
-                  <td>{tx.quantity_change}</td>
-                  <td>{tx.quantity_before}</td>
-                  <td>{tx.quantity_after}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <button
+        onClick={() => setTxHistoryOpen(o => !o)}
+        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{txHistoryOpen ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Transaction History</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>
+          ({txDateRange === 'today' ? 'Today' : txDateRange === '7d' ? 'Last 7 Days' : txDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {transactions.length} records)
+        </span>
+      </button>
+      {txHistoryOpen && <>
+      <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTxDateRange(key as typeof txDateRange)}
+            style={{
+              padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px",
+              background: txDateRange === key ? "#1d4ed8" : "#fff",
+              color: txDateRange === key ? "#fff" : "#333",
+              border: txDateRange === key ? "1px solid #1d4ed8" : "1px solid #ccc",
+              fontWeight: txDateRange === key ? "bold" : "normal",
+            }}
+          >{label}</button>
+        ))}
       </div>
+      <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {["all", "sale", "receiving", "return", "void", "damaged", "expired", "lost", "correction"].map((f) => (
+          <button
+            key={f}
+            onClick={() => setMovementFilter(f)}
+            style={{
+              padding: "6px 14px", borderRadius: "4px", border: "1px solid #ccc", cursor: "pointer",
+              backgroundColor: movementFilter === f ? "#333" : "#fff",
+              color: movementFilter === f ? "#fff" : "#333",
+              fontWeight: movementFilter === f ? "bold" : "normal",
+            }}
+          >{f.charAt(0).toUpperCase() + f.slice(1)}</button>
+        ))}
+      </div>
+      {(() => {
+        const filtered = movementFilter === "all"
+          ? transactions
+          : transactions.filter(tx => tx.transaction_type === movementFilter);
+        return (
+          <div style={{ overflowX: "auto" }}>
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Product</th>
+                  <th>Type</th>
+                  <th>Change</th>
+                  <th>Before</th>
+                  <th>After</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={6}>No transactions</td></tr>
+                ) : (
+                  filtered.map((tx) => (
+                    <tr key={tx.id}>
+                      <td>{new Date(tx.created_at).toLocaleString()}</td>
+                      <td>{tx.products?.name}</td>
+                      <td>{tx.transaction_type}</td>
+                      <td style={{ color: tx.quantity_change < 0 ? "red" : "green", fontWeight: "bold" }}>
+                        {tx.quantity_change > 0 ? `+${tx.quantity_change}` : tx.quantity_change}
+                      </td>
+                      <td>{tx.quantity_before}</td>
+                      <td>{tx.quantity_after}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+      </>}
 
       </div>{/* end inventory */}
 
