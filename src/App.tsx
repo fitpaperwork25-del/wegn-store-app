@@ -295,6 +295,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [movementFilter, setMovementFilter] = useState("all");
   const [txDateRange, setTxDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
+  const [txHistoryOpen, setTxHistoryOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [cartProductId, setCartProductId] = useState("");
@@ -6033,8 +6034,18 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       })()}
 
       {/* 3. Product Movement Report */}
-      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Product Movement</h3>
-      <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+      <button
+        onClick={() => setTxHistoryOpen(o => !o)}
+        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{txHistoryOpen ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Transaction History</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>
+          ({txDateRange === 'today' ? 'Today' : txDateRange === '7d' ? 'Last 7 Days' : txDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {transactions.length} records)
+        </span>
+      </button>
+      {txHistoryOpen && <>
+      <div style={{ marginTop: "8px", marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -6107,6 +6118,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </div>
         );
       })()}
+      </>}
 
       {/* 4. Purchase Order Report */}
       <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Purchase Order Report</h3>
