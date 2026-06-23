@@ -1743,6 +1743,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       return;
     }
 
+    if (paymentMethod === "other" && !paymentRef.trim()) {
+      setMessage({ text: "Please specify the payment method", type: "error" });
+      return;
+    }
+
     for (const item of cart) {
       const product = products.find((p) => p.product_id === item.product_id);
       if (!product || item.quantity > product.quantity_on_hand) {
@@ -3067,13 +3072,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               <option value="chapa">Chapa</option>
               <option value="mtn_mobile">MTN Mobile Money</option>
               <option value="airtel_money">Airtel Money</option>
+              <option value="other">Other (specify)</option>
             </select>
             {paymentMethod !== "cash" && paymentMethod !== "card" && (
               <input
                 type="text"
-                placeholder="Reference / phone (optional)"
+                placeholder={paymentMethod === "other" ? "Specify payment method *" : "Reference / phone (optional)"}
                 value={paymentRef}
                 onChange={(e) => setPaymentRef(e.target.value)}
+                required={paymentMethod === "other"}
                 style={{ width: "200px", padding: "8px" }}
               />
             )}
@@ -4662,7 +4669,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                         const saleLoyalty = custLoyalty.filter(lt => lt.sale_id === s.id);
                                         const earnedPts = saleLoyalty.filter(lt => lt.type === 'earn' && lt.points > 0).reduce((sum, lt) => sum + lt.points, 0);
                                         const redeemedPts = saleLoyalty.filter(lt => lt.type === 'redeem').reduce((sum, lt) => sum + Math.abs(lt.points), 0);
-                                        const payMethods = salePayments.map(p => p.payment_method + (p.reference ? ` (${p.reference})` : "")).join(", ") || "—";
+                                        const payMethods = salePayments.map(p => p.payment_method === "other" && p.reference ? p.reference : p.payment_method + (p.payment_method !== "other" && p.reference ? ` (${p.reference})` : "")).join(", ") || "—";
                                         const statusBg = s.status === "completed" ? "#dcfce7" : s.status === "returned" ? "#fef2f2" : s.status === "voided" ? "#e5e7eb" : "#f1f5f9";
                                         const statusColor = s.status === "completed" ? "#15803d" : s.status === "returned" ? "#dc2626" : s.status === "voided" ? "#6b7280" : "#475569";
 
@@ -7148,7 +7155,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "15px", marginTop: "4px" }}>
                     <span>TOTAL</span><span>${Number(receipt.sale.total).toFixed(2)}</span>
                   </div>
-                  <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod}{receipt.paymentReference ? ` (Ref: ${receipt.paymentReference})` : ""}</div>
+                  <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod === "other" && receipt.paymentReference ? receipt.paymentReference : receipt.paymentMethod}{receipt.paymentMethod !== "other" && receipt.paymentReference ? ` (Ref: ${receipt.paymentReference})` : ""}</div>
                 </div>
 
                 {(receipt.pointsEarned !== undefined || receipt.pointsRedeemed !== undefined) && (
