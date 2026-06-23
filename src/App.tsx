@@ -527,6 +527,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const userRole = staffSession ? staffSession.role : "owner";
   const canDeactivateProducts = userRole === "owner" || userRole === "manager";
   const canAdjustInventory = userRole === "owner" || userRole === "manager";
+  const canEditProducts = userRole === "owner" || userRole === "manager";
 
   const [activeTab, setActiveTab] = useState<string>('pos');
   const [navOpen, setNavOpen] = useState(false);
@@ -3825,7 +3826,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       <span className={`inv-badge ${inactive ? "inv-badge-muted" : "inv-badge-success"}`}>{product.status}</span>
                     </td>
                     <td data-label="Actions" style={{ whiteSpace: "nowrap" }}>
-                      <button
+                      {canEditProducts && <button
                         onClick={() => {
                           if (isEditing) { setEditingProductId(null); return; }
                           setEditingProductId(product.product_id);
@@ -3837,7 +3838,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                           setEditProdCategory(product.category_id ?? "");
                         }}
                         className="sh-btn sh-btn-print"
-                      >{isEditing ? "Cancel" : "Edit"}</button>
+                      >{isEditing ? "Cancel" : "Edit"}</button>}
                       {canDeactivateProducts && <button
                         onClick={() => handleToggleProductStatus(product)}
                         className={`sh-btn ${inactive ? "sh-btn-return" : "sh-btn-void"}`}
@@ -3845,7 +3846,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       >{inactive ? "Activate" : "Deactivate"}</button>}
                     </td>
                   </tr>
-                  {isEditing && (
+                  {canEditProducts && isEditing && (
                     <tr className="inv-edit-row">
                       <td colSpan={7} style={{ background: "#f9fafb", padding: "16px" }}>
                         <form onSubmit={(e) => handleEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
