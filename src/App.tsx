@@ -294,6 +294,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newInitialStock, setNewInitialStock] = useState("");
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [movementFilter, setMovementFilter] = useState("all");
+  const [txDateRange, setTxDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [cartProductId, setCartProductId] = useState("");
@@ -552,6 +553,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadEmployees();
     loadStockCounts();
   }, []);
+
+  useEffect(() => { loadTransactions(); }, [txDateRange]);
 
   useEffect(() => {
     if (cart.length === 0) return;
@@ -2339,10 +2342,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function loadTransactions() {
-    const { data: txData, error: txError } = await supabase
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const rangeStart: string | null =
+      txDateRange === 'today' ? startOfDay.toISOString() :
+      txDateRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString() :
+      txDateRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString() :
+      null;
+    let query = supabase
       .from("inventory_transactions")
       .select("id, created_at, transaction_type, quantity_change, quantity_before, quantity_after, product_id")
       .order("created_at", { ascending: false });
+    if (rangeStart) query = query.gte("created_at", rangeStart);
+    const { data: txData, error: txError } = await query;
 
     if (txError) {
       console.error(txError);
@@ -5995,6 +6007,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       {/* 3. Product Movement Report */}
       <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Product Movement</h3>
+      <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTxDateRange(key as typeof txDateRange)}
+            style={{
+              padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px",
+              background: txDateRange === key ? "#1d4ed8" : "#fff",
+              color: txDateRange === key ? "#fff" : "#333",
+              border: txDateRange === key ? "1px solid #1d4ed8" : "1px solid #ccc",
+              fontWeight: txDateRange === key ? "bold" : "normal",
+            }}
+          >{label}</button>
+        ))}
+      </div>
       <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {["all", "sale", "receiving", "damaged", "adjustment"].map((f) => (
           <button
