@@ -511,6 +511,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editProdCategory, setEditProdCategory] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [productSearch, setProductSearch] = useState("");
+  const productSearchRef = useRef<HTMLInputElement>(null);
   const [businessName, setBusinessName] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessEmail, setBusinessEmail] = useState("");
@@ -3735,13 +3736,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <span style={{ fontSize: "13px", color: "#64748b" }}>({products.length} products)</span>
       </button>
       {productsTableOpen && <>
-      <input
-        type="text"
-        placeholder="Search by product, SKU, or barcode…"
-        value={productSearch}
-        onChange={(e) => setProductSearch(e.target.value)}
-        style={{ width: "100%", padding: "8px 12px", marginBottom: "12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
-      />
+      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+        <input
+          ref={productSearchRef}
+          type="text"
+          placeholder="Search by product, SKU, or barcode…"
+          value={productSearch}
+          onChange={(e) => setProductSearch(e.target.value)}
+          style={{ flex: 1, padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
+        />
+        <button
+          type="button"
+          onClick={() => productSearchRef.current?.focus()}
+          style={{ padding: "8px 14px", border: "1px solid #d1d5db", borderRadius: "6px", background: "#f9fafb", cursor: "pointer", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap" }}
+        >Scan</button>
+      </div>
       {/* ── Category Filter ── */}
       {categories.length > 0 && (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
