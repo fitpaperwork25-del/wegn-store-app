@@ -296,6 +296,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [movementFilter, setMovementFilter] = useState("all");
   const [txDateRange, setTxDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [txHistoryOpen, setTxHistoryOpen] = useState(false);
+  const [productsTableOpen, setProductsTableOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [cartProductId, setCartProductId] = useState("");
@@ -3723,6 +3724,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         )}
       </div>
 
+      <button
+        onClick={() => setProductsTableOpen(o => !o)}
+        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{productsTableOpen ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Products & Stock</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.length} products)</span>
+      </button>
+      {productsTableOpen && <>
       {/* ── Category Filter ── */}
       {categories.length > 0 && (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
@@ -3879,6 +3889,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </tbody>
         </table>
       </div>
+
+      </>}
 
       </div>{/* end inventory */}
 
