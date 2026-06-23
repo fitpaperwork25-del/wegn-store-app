@@ -526,6 +526,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   const userRole = staffSession ? staffSession.role : "owner";
   const canDeactivateProducts = userRole === "owner" || userRole === "manager";
+  const canAdjustInventory = userRole === "owner" || userRole === "manager";
 
   const [activeTab, setActiveTab] = useState<string>('pos');
   const [navOpen, setNavOpen] = useState(false);
@@ -3222,7 +3223,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </form>
       </div>
 
-      <div className="section-card">
+      {canAdjustInventory && <div className="section-card">
         <h3 className="section-card-title">Adjust Inventory</h3>
         <form
           onSubmit={handleAdjust}
@@ -3284,7 +3285,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             </div>
           ) : null;
         })()}
-      </div>
+      </div>}
 
       <div className="section-card">
         <h3 className="section-card-title">Add Product</h3>
