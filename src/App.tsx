@@ -82,6 +82,7 @@ type EodPayment = {
   payment_method: string;
   amount: number;
   reference?: string | null;
+  payment_type?: string;
 };
 
 type CartItem = {
@@ -585,9 +586,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             .filter(s => s.status === 'completed' && new Date(s.created_at) >= openedAt)
             .map(s => s.id)
         );
-        return allPayments
-          .filter(p => p.payment_method === 'cash' && validIds.has(p.sale_id))
+        const cashIn = allPayments
+          .filter(p => p.payment_method === 'cash' && p.payment_type !== 'refund' && validIds.has(p.sale_id))
           .reduce((sum, p) => sum + Number(p.amount), 0);
+        const cashRefunds = allPayments
+          .filter(p => p.payment_method === 'cash' && p.payment_type === 'refund' && validIds.has(p.sale_id))
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+        return cashIn - cashRefunds;
       })()
     : 0;
 
@@ -756,6 +761,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         reason: `Return for sale ${returningSaleId.slice(0, 8)}${returnReason ? ': ' + returnReason : ''}`,
       });
     }
+    const refundAmount = toReturn.reduce((sum, line) => {
+      const si = saleItems.find(s => s.sale_id === returningSaleId && s.product_id === line.product_id);
+      return sum + (si ? line.return_qty * si.unit_price : 0);
+    }, 0);
+    if (refundAmount > 0) {
+      const originalPayment = allPayments.find(p => p.sale_id === returningSaleId && p.payment_type !== 'refund');
+      await supabase.from('payments').insert({
+        business_id: businessId,
+        sale_id: returningSaleId,
+        payment_method: originalPayment?.payment_method ?? 'cash',
+        amount: refundAmount,
+        payment_type: 'refund',
+        reference: retNum,
+      });
+    }
     // Only mark fully returned when every line across the sale is exhausted
     const origSaleItems = saleItems.filter(si => si.sale_id === returningSaleId);
     const allFullyReturned = origSaleItems.every(si => {
@@ -800,6 +820,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     await loadTransactions();
     await loadSales();
     await loadLoyaltyTransactions();
+    await loadAllPayments();
     await loadAllReturnItems();
     await loadReturnHistory();
   }
@@ -1261,7 +1282,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadAllPayments() {
     const { data, error } = await supabase
       .from("payments")
-      .select("sale_id, payment_method, amount, reference");
+      .select("sale_id, payment_method, amount, reference, payment_type");
     if (error) {
       const { data: fallback } = await supabase
         .from("payments")
@@ -1929,7 +1950,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       const { data: payments } = await supabase
         .from("payments")
-        .select("sale_id, payment_method, amount")
+        .select("sale_id, payment_method, amount, payment_type")
         .in("sale_id", todaySaleIds);
 
       setEodItems((items as EodItem[]) || []);
@@ -4731,7 +4752,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                     ) : (
                                       custSales.map(s => {
                                         const items = saleItems.filter(si => si.sale_id === s.id);
-                                        const salePayments = allPayments.filter(p => p.sale_id === s.id);
+                                        const salePayments = allPayments.filter(p => p.sale_id === s.id && p.payment_type !== 'refund');
                                         const saleReturns = allReturnItems.filter(ri => ri.sale_id === s.id);
                                         const saleLoyalty = custLoyalty.filter(lt => lt.sale_id === s.id);
                                         const earnedPts = saleLoyalty.filter(lt => lt.type === 'earn' && lt.points > 0).reduce((sum, lt) => sum + lt.points, 0);
@@ -5538,9 +5559,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const discounts = periodSales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
         const taxCollected = periodSales.reduce((sum, s) => sum + Number(s.tax), 0);
 
-        const cashTotal = periodPayments.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0);
-        const cardTotal = periodPayments.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0);
-        const otherTotal = periodPayments.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0);
+        const periodSaleP = periodPayments.filter(p => p.payment_type !== 'refund');
+        const periodRefundP = periodPayments.filter(p => p.payment_type === 'refund');
+        const cashTotal = periodSaleP.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0) - periodRefundP.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0);
+        const cardTotal = periodSaleP.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0) - periodRefundP.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0);
+        const otherTotal = periodSaleP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0) - periodRefundP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0);
 
         // Daily revenue breakdown
         const byDay: Record<string, { revenue: number; count: number }> = {};
@@ -5851,9 +5874,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const avgSale = todaySales.length > 0 ? grossRevenue / todaySales.length : 0;
         const itemsSold = eodItems.reduce((sum, i) => sum + i.quantity, 0);
         const discountsTotal = todaySales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
-        const cashTotal = eodPayments.filter((p) => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0);
-        const cardTotal = eodPayments.filter((p) => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0);
-        const otherTotal = eodPayments.filter((p) => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0);
+        const eodSalePayments = eodPayments.filter(p => p.payment_type !== 'refund');
+        const eodRefundPayments = eodPayments.filter(p => p.payment_type === 'refund');
+        const cashTotal = eodSalePayments.filter(p => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0);
+        const cardTotal = eodSalePayments.filter(p => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0);
+        const otherTotal = eodSalePayments.filter(p => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0);
 
         const allTodaySaleIds = new Set(sales.filter(s => isToday(s.created_at) && (s.status === "completed" || s.status === "returned")).map(s => s.id));
         const todayReturns = allReturnItems.filter(ri => allTodaySaleIds.has(ri.sale_id));
@@ -5985,7 +6010,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     <tr><td colSpan={5}>No sales today</td></tr>
                   ) : (
                     todaySales.map((s) => {
-                      const method = eodPayments.find((p) => p.sale_id === s.id)?.payment_method ?? "—";
+                      const method = eodPayments.find((p) => p.sale_id === s.id && p.payment_type !== 'refund')?.payment_method ?? "—";
                       const disc = Number(s.discount_amount);
                       return (
                         <tr key={s.id}>
