@@ -525,6 +525,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editBizTaxRate, setEditBizTaxRate] = useState("");
 
   const userRole = staffSession ? staffSession.role : "owner";
+  const canDeactivateProducts = userRole === "owner" || userRole === "manager";
 
   const [activeTab, setActiveTab] = useState<string>('pos');
   const [navOpen, setNavOpen] = useState(false);
@@ -3836,11 +3837,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                         }}
                         className="sh-btn sh-btn-print"
                       >{isEditing ? "Cancel" : "Edit"}</button>
-                      <button
+                      {canDeactivateProducts && <button
                         onClick={() => handleToggleProductStatus(product)}
                         className={`sh-btn ${inactive ? "sh-btn-return" : "sh-btn-void"}`}
                         style={{ marginLeft: "6px" }}
-                      >{inactive ? "Activate" : "Deactivate"}</button>
+                      >{inactive ? "Activate" : "Deactivate"}</button>}
                     </td>
                   </tr>
                   {isEditing && (
