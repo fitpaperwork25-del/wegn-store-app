@@ -526,9 +526,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editBizTaxRate, setEditBizTaxRate] = useState("");
 
   const userRole = staffSession ? staffSession.role : "owner";
-  const canDeactivateProducts = userRole === "owner" || userRole === "manager";
-  const canAdjustInventory = userRole === "owner" || userRole === "manager";
-  const canEditProducts = userRole === "owner" || userRole === "manager";
+  const isOwnerOrManager = userRole === "owner" || userRole === "manager";
+  const canDeactivateProducts = isOwnerOrManager;
+  const canAdjustInventory = isOwnerOrManager;
+  const canEditProducts = isOwnerOrManager;
+  const canAddProducts = isOwnerOrManager;
+  const canManageCategories = isOwnerOrManager;
+  const canBulkImport = isOwnerOrManager;
+  const canManageStaff = userRole === "owner";
+  const canVoidSales = isOwnerOrManager;
 
   const [activeTab, setActiveTab] = useState<string>('pos');
   const [navOpen, setNavOpen] = useState(false);
@@ -538,7 +544,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   const tabAccess: Record<string, string[]> = {
     owner: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'employees', 'reports', 'settings'],
-    manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'reports'],
+    manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'reports', 'settings'],
     cashier: ['dashboard', 'pos', 'customers'],
     inventory_clerk: ['dashboard', 'inventory', 'purchasing'],
   };
@@ -1147,6 +1153,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleAddCategory(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManageCategories) return;
     if (!newCatName.trim()) return;
     const { error } = await supabase.from('categories').insert({
       business_id: businessId,
@@ -1163,6 +1170,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleEditCategory(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManageCategories) return;
     if (!editingCatId || !editCatName.trim()) return;
     const { error } = await supabase.from('categories').update({
       name: editCatName.trim(),
@@ -1175,6 +1183,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function handleDeleteCategory(cat: Category) {
+    if (!canManageCategories) return;
     const assigned = products.filter(p => p.category_id === cat.id).length;
     if (assigned > 0) { setMessage({ text: `Cannot delete "${cat.name}" — ${assigned} product${assigned !== 1 ? "s" : ""} still assigned. Remove or reassign products first.`, type: "error" }); return; }
     if (!window.confirm(`Permanently delete category "${cat.name}"?`)) return;
@@ -1185,6 +1194,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function handleToggleCategoryStatus(cat: Category) {
+    if (!canManageCategories) return;
     const newStatus = cat.status === "active" ? "inactive" : "active";
     if (newStatus === "inactive") {
       const assigned = products.filter(p => p.category_id === cat.id).length;
@@ -1701,6 +1711,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function handleVoidSale(saleId: string) {
+    if (!canVoidSales) return;
     const sale = sales.find((s) => s.id === saleId);
     if (!sale || sale.status !== "completed") return;
     if (!window.confirm(`Void sale $${Number(sale.total).toFixed(2)}? This will reverse inventory.`)) return;
@@ -2289,6 +2300,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleAddEmployee(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManageStaff) return;
     if (!newEmpName.trim() || !newEmpPin.trim() || !businessId) return;
     const pin = newEmpPin.trim();
     if (!/^\d{4,6}$/.test(pin)) { setMessage({ text: "PIN must be 4–6 digits", type: "error" }); return; }
@@ -2311,6 +2323,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function handleToggleEmployeeStatus(emp: Employee) {
+    if (!canManageStaff) return;
     const newStatus = emp.status === "active" ? "inactive" : "active";
     if (newStatus === "inactive" && !window.confirm(`Deactivate employee "${emp.name}"?`)) return;
     const { error } = await supabase.from("employees").update({ status: newStatus }).eq("id", emp.id);
@@ -2326,6 +2339,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function handleSaveEmployeeRole(emp: Employee) {
+    if (!canManageStaff) return;
     if (!editEmpRole || editEmpRole === emp.role) { setEditingEmpId(null); return; }
     const { error } = await supabase.from("employees").update({ role: editEmpRole }).eq("id", emp.id);
     if (error) { console.error(error); setMessage({ text: "Failed to update role: " + error.message, type: "error" }); return; }
@@ -2432,6 +2446,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleAddProduct(e: React.FormEvent) {
     e.preventDefault();
+    if (!canAddProducts) return;
     setMessage(null);
 
     if (!newName || !newSellingPrice || !newInitialStock) return;
@@ -2516,6 +2531,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleEditProduct(e: React.FormEvent, productId: string) {
     e.preventDefault();
+    if (!canEditProducts) return;
     if (!editProdName.trim() || !editProdPrice) return;
     const editBarcode = editProdBarcode.trim();
     if (editBarcode) {
@@ -2540,6 +2556,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function handleToggleProductStatus(product: ProductStock) {
+    if (!canDeactivateProducts) return;
     const newStatus = product.status === "active" ? "inactive" : "active";
     if (newStatus === "inactive" && !window.confirm(`Deactivate product "${product.product_name}"? It will no longer appear in POS.`)) return;
     const { error } = await supabase
@@ -2602,6 +2619,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleAdjust(e: React.FormEvent) {
     e.preventDefault();
+    if (!canAdjustInventory) return;
     setMessage(null);
 
     const qty = Number(adjustQuantity);
@@ -3309,7 +3327,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         })()}
       </div>}
 
-      <div className="section-card">
+      {canAddProducts && <div className="section-card">
         <h3 className="section-card-title">Add Product</h3>
         <form
           onSubmit={handleAddProduct}
@@ -3387,9 +3405,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             <button onClick={() => setBarcodeAutoFill("")} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "15px", color: "#64748b" }}>✕</button>
           </div>
         )}
-      </div>
+      </div>}
 
-      <div className="section-card">
+      {canBulkImport && <div className="section-card">
         <h3 className="section-card-title">Bulk Import Products</h3>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={downloadCsvTemplate} style={{ padding: "8px 16px" }}>
@@ -3484,7 +3502,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             <div><span style={{ fontSize: "13px", color: "#666" }}>Failed</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#b91c1c" }}>{bulkResults.failed}</div></div>
           </div>
         )}
-      </div>
+      </div>}
 
       </div>{/* end inventory */}
 
@@ -3718,11 +3736,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {/* ── Categories ── */}
       <div style={{ marginBottom: "24px" }}>
         <h3 style={{ marginBottom: "8px" }}>Categories</h3>
-        <form onSubmit={handleAddCategory} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
+        {canManageCategories && <form onSubmit={handleAddCategory} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
           <input type="text" placeholder="Category name *" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} required style={{ flex: "2 1 160px", padding: "7px" }} />
           <input type="text" placeholder="Description" value={newCatDesc} onChange={(e) => setNewCatDesc(e.target.value)} style={{ flex: "2 1 200px", padding: "7px" }} />
           <button type="submit" style={{ padding: "7px 16px" }}>Add Category</button>
-        </form>
+        </form>}
         {categories.length > 0 && (
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             {categories.map(cat => {
@@ -3741,9 +3759,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   {cat.description && <span style={{ color: "#94a3b8", fontSize: "11px" }} title={cat.description}>— {cat.description.length > 20 ? cat.description.slice(0, 20) + "…" : cat.description}</span>}
                   <span style={{ color: "#94a3b8", fontSize: "11px" }}>({count})</span>
                   {cat.status === "inactive" && <span style={{ color: "#b45309", fontSize: "10px", fontWeight: 600 }}>INACTIVE</span>}
-                  <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px" }}>Edit</button>
-                  <button onClick={() => handleToggleCategoryStatus(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px", color: cat.status === "active" ? "#b45309" : "#15803d" }}>{cat.status === "active" ? "Deactivate" : "Activate"}</button>
-                  {count === 0 && <button onClick={() => handleDeleteCategory(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "3px", color: "#dc2626" }}>Del</button>}
+                  {canManageCategories && <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px" }}>Edit</button>}
+                  {canManageCategories && <button onClick={() => handleToggleCategoryStatus(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px", color: cat.status === "active" ? "#b45309" : "#15803d" }}>{cat.status === "active" ? "Deactivate" : "Activate"}</button>}
+                  {canManageCategories && count === 0 && <button onClick={() => handleDeleteCategory(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "3px", color: "#dc2626" }}>Del</button>}
                 </div>
               );
             })}
@@ -5408,7 +5426,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       <td>{new Date(s.created_at).toLocaleString()}</td>
                       <td style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <button onClick={() => handlePrintReceipt(s)} className="sh-btn sh-btn-print">Print</button>
-                        {s.status === "completed" && (
+                        {s.status === "completed" && canVoidSales && (
                           <button
                             onClick={() => handleVoidSale(s.id)}
                             disabled={voidingId === s.id}
@@ -6781,7 +6799,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <p className="page-subtitle">Manage employees, roles, and cash drawer operations</p>
       </div>
 
-      {userRole === "owner" && (
+      {canManageStaff && (
         <form onSubmit={handleAddEmployee} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
           <input
             type="text"
@@ -6828,12 +6846,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               <th>PIN</th>
               <th>Role</th>
               <th>Status</th>
-              {userRole === "owner" && <th>Actions</th>}
+              {canManageStaff && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {employees.length === 0 ? (
-              <tr><td colSpan={userRole === "owner" ? 5 : 4} style={{ color: "#888" }}>No employees yet</td></tr>
+              <tr><td colSpan={canManageStaff ? 5 : 4} style={{ color: "#888" }}>No employees yet</td></tr>
             ) : (
               employees.map(emp => {
                 const rowStyle = emp.status === "inactive" ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
@@ -6866,7 +6884,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                         color: emp.status === "active" ? "#15803d" : "#6b7280",
                       }}>{emp.status}</span>
                     </td>
-                    {userRole === "owner" && (
+                    {canManageStaff && (
                       <td>
                         <div style={{ display: "flex", gap: "6px" }}>
                           {!isEditing && (
