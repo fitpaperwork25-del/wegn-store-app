@@ -126,6 +126,9 @@ type ProductStock = {
   reorder_level: number | null;
   status: string;
   average_cost: number;
+  estimated_overhead_pct: number;
+  target_margin_percent: number | null;
+  minimum_margin_percent: number | null;
   supplier_id: string | null;
   category_id: string | null;
 };
@@ -293,6 +296,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newSellingPrice, setNewSellingPrice] = useState("");
   const [newReorderLevel, setNewReorderLevel] = useState("");
   const [newInitialStock, setNewInitialStock] = useState("");
+  const [newOverhead, setNewOverhead] = useState("");
+  const [newTargetMargin, setNewTargetMargin] = useState("");
+  const [newMinMargin, setNewMinMargin] = useState("");
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [movementFilter, setMovementFilter] = useState("all");
   const [txDateRange, setTxDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
@@ -510,6 +516,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editCatDesc, setEditCatDesc] = useState("");
   const [newProductCategory, setNewProductCategory] = useState("");
   const [editProdCategory, setEditProdCategory] = useState("");
+  const [editProdOverhead, setEditProdOverhead] = useState("");
+  const [editProdTargetMargin, setEditProdTargetMargin] = useState("");
+  const [editProdMinMargin, setEditProdMinMargin] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [productSearch, setProductSearch] = useState("");
   const productSearchRef = useRef<HTMLInputElement>(null);
@@ -2365,6 +2374,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           reorder_level,
           status,
           average_cost,
+          estimated_overhead_pct,
+          target_margin_percent,
+          minimum_margin_percent,
           supplier_id,
           category_id
         )
@@ -2388,6 +2400,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         reorder_level: item.products?.reorder_level ?? null,
         status: item.products?.status,
         average_cost: item.products?.average_cost ?? 0,
+        estimated_overhead_pct: item.products?.estimated_overhead_pct ?? 0,
+        target_margin_percent: item.products?.target_margin_percent ?? null,
+        minimum_margin_percent: item.products?.minimum_margin_percent ?? null,
         supplier_id: item.products?.supplier_id ?? null,
         category_id: item.products?.category_id ?? null,
       })) || [];
@@ -2472,6 +2487,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         selling_price: Number(newSellingPrice),
         reorder_level: newReorderLevel ? Number(newReorderLevel) : 10,
         average_cost: costPrice,
+        estimated_overhead_pct: newOverhead ? Number(newOverhead) : 0,
+        target_margin_percent: newTargetMargin ? Number(newTargetMargin) : null,
+        minimum_margin_percent: newMinMargin ? Number(newMinMargin) : null,
         status: "active",
         category_id: newProductCategory || null,
       })
@@ -2522,6 +2540,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setNewSellingPrice("");
     setNewReorderLevel("");
     setNewInitialStock("");
+    setNewOverhead("");
+    setNewTargetMargin("");
+    setNewMinMargin("");
     setNewProductCategory("");
     setBarcodeAutoFill("");
     setMessage({ text: "Product added successfully", type: "success" });
@@ -2546,6 +2567,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         barcode: editProdBarcode.trim() || null,
         selling_price: Number(editProdPrice),
         reorder_level: editProdReorder ? Number(editProdReorder) : 10,
+        estimated_overhead_pct: editProdOverhead ? Number(editProdOverhead) : 0,
+        target_margin_percent: editProdTargetMargin ? Number(editProdTargetMargin) : null,
+        minimum_margin_percent: editProdMinMargin ? Number(editProdMinMargin) : null,
         category_id: editProdCategory || null,
       })
       .eq("id", productId);
@@ -3387,6 +3411,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          <input type="number" min="0" placeholder="Overhead %" value={newOverhead} onChange={(e) => setNewOverhead(e.target.value)} step="0.1" style={{ flex: "1 1 100px", padding: "8px" }} />
+          <input type="number" min="0" placeholder="Target Margin %" value={newTargetMargin} onChange={(e) => setNewTargetMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
+          <input type="number" min="0" placeholder="Min Margin %" value={newMinMargin} onChange={(e) => setNewMinMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
           <input
             type="number"
             min="0"
@@ -3874,6 +3901,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                           setEditProdBarcode(product.barcode ?? "");
                           setEditProdPrice(product.selling_price.toString());
                           setEditProdReorder(product.reorder_level?.toString() ?? "");
+                          setEditProdOverhead(product.estimated_overhead_pct?.toString() ?? "0");
+                          setEditProdTargetMargin(product.target_margin_percent?.toString() ?? "");
+                          setEditProdMinMargin(product.minimum_margin_percent?.toString() ?? "");
                           setEditProdCategory(product.category_id ?? "");
                         }}
                         className="sh-btn sh-btn-print"
@@ -3940,12 +3970,29 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                           </select>
-                          <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
-                            <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${product.average_cost.toFixed(2)}</strong></span>
-                            <span>Inventory Value: <strong style={{ color: "#0f172a" }}>${(product.quantity_on_hand * product.average_cost).toFixed(2)}</strong></span>
-                            <span>Reorder Level: <strong style={{ color: "#0f172a" }}>{product.reorder_level ?? "—"}</strong></span>
-                            <span>Barcode: <strong style={{ color: "#0f172a" }}>{product.barcode ?? "—"}</strong></span>
+                          <div style={{ width: "100%", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                            <input type="number" placeholder="Overhead %" value={editProdOverhead} onChange={(e) => setEditProdOverhead(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 100px", padding: "7px" }} />
+                            <input type="number" placeholder="Target Margin %" value={editProdTargetMargin} onChange={(e) => setEditProdTargetMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
+                            <input type="number" placeholder="Min Margin %" value={editProdMinMargin} onChange={(e) => setEditProdMinMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
                           </div>
+                          {(() => {
+                            const avgCost = product.average_cost;
+                            const oh = Number(editProdOverhead) || 0;
+                            const tm = Number(editProdTargetMargin) || 0;
+                            const mm = Number(editProdMinMargin) || 0;
+                            const breakEven = avgCost * (1 + oh / 100);
+                            const minSafe = mm > 0 ? breakEven * (1 + mm / 100) : null;
+                            const target = tm > 0 ? breakEven * (1 + tm / 100) : null;
+                            return (
+                              <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
+                                <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${avgCost.toFixed(2)}</strong></span>
+                                <span>Break-even: <strong style={{ color: "#64748b" }}>${breakEven.toFixed(2)}</strong></span>
+                                {minSafe !== null && <span>Min Safe: <strong style={{ color: "#b45309" }}>${minSafe.toFixed(2)}</strong></span>}
+                                {target !== null && <span>Target: <strong style={{ color: "#15803d" }}>${target.toFixed(2)}</strong></span>}
+                                <span>Listed: <strong style={{ color: "#1d4ed8" }}>${product.selling_price.toFixed(2)}</strong></span>
+                              </div>
+                            );
+                          })()}
                           <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
                           <button type="button" onClick={() => setEditingProductId(null)} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
                         </form>
