@@ -527,12 +527,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [businessEmail, setBusinessEmail] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
   const [businessTaxRate, setBusinessTaxRate] = useState(0);
+  const [sellingPolicy, setSellingPolicy] = useState<"fixed_pricing" | "negotiated_pricing" | "negotiated_with_approval">("fixed_pricing");
   const [editingBusiness, setEditingBusiness] = useState(false);
   const [editBizName, setEditBizName] = useState("");
   const [editBizPhone, setEditBizPhone] = useState("");
   const [editBizEmail, setEditBizEmail] = useState("");
   const [editBizAddress, setEditBizAddress] = useState("");
   const [editBizTaxRate, setEditBizTaxRate] = useState("");
+  const [editBizSellingPolicy, setEditBizSellingPolicy] = useState("fixed_pricing");
 
   const userRole = staffSession ? staffSession.role : "owner";
   const isOwnerOrManager = userRole === "owner" || userRole === "manager";
@@ -614,7 +616,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadBusiness() {
     const { data, error } = await supabase
       .from("businesses")
-      .select("id, name, phone, email, address, tax_rate")
+      .select("id, name, phone, email, address, tax_rate, selling_policy")
       .eq("owner_id", userId)
       .limit(1)
       .maybeSingle();
@@ -631,6 +633,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setBusinessEmail(data.email ?? "");
       setBusinessAddress(data.address ?? "");
       setBusinessTaxRate(Number(data.tax_rate ?? 0));
+      setSellingPolicy(data.selling_policy ?? "fixed_pricing");
       setBusinessError("");
     }
     setBusinessLoaded(true);
@@ -686,15 +689,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     e.preventDefault();
     if (!editBizName.trim() || !businessId) return;
     const parsedTaxRate = Math.min(100, Math.max(0, parseFloat(editBizTaxRate) || 0));
+    const updatePayload: Record<string, unknown> = {
+      name: editBizName.trim(),
+      phone: editBizPhone.trim() || null,
+      email: editBizEmail.trim() || null,
+      address: editBizAddress.trim() || null,
+      tax_rate: parsedTaxRate,
+    };
+    if (userRole === "owner") {
+      updatePayload.selling_policy = editBizSellingPolicy;
+    }
     const { error } = await supabase
       .from("businesses")
-      .update({
-        name: editBizName.trim(),
-        phone: editBizPhone.trim() || null,
-        email: editBizEmail.trim() || null,
-        address: editBizAddress.trim() || null,
-        tax_rate: parsedTaxRate,
-      })
+      .update(updatePayload)
       .eq("id", businessId);
     if (error) { console.error(error); setMessage({ text: "Failed to update business: " + error.message, type: "error" }); return; }
     setEditingBusiness(false);
@@ -6980,7 +6987,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           <p style={{ margin: "0 0 8px" }}><strong>Phone:</strong> {businessPhone || "—"}</p>
           <p style={{ margin: "0 0 8px" }}><strong>Email:</strong> {businessEmail || "—"}</p>
           <p style={{ margin: "0 0 8px" }}><strong>Address:</strong> {businessAddress || "—"}</p>
-          <p style={{ margin: "0 0 16px" }}><strong>Tax Rate:</strong> {businessTaxRate}%</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Tax Rate:</strong> {businessTaxRate}%</p>
+          <p style={{ margin: "0 0 16px" }}><strong>Selling Policy:</strong> {sellingPolicy === "fixed_pricing" ? "Fixed Prices" : sellingPolicy === "negotiated_pricing" ? "Negotiated Prices" : "Negotiated Prices with Approval"}</p>
           <button
             onClick={() => {
               setEditBizName(businessName);
@@ -6988,6 +6996,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               setEditBizEmail(businessEmail);
               setEditBizAddress(businessAddress);
               setEditBizTaxRate(String(businessTaxRate));
+              setEditBizSellingPolicy(sellingPolicy);
               setEditingBusiness(true);
             }}
             style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600 }}
@@ -7040,6 +7049,25 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               style={{ padding: "8px", width: "150px" }}
             />
             <span style={{ fontSize: "13px", color: "#64748b" }}>% Sales tax (0 = no tax)</span>
+          </div>
+          <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "14px", background: "#fff" }}>
+            <strong style={{ fontSize: "14px", display: "block", marginBottom: "10px" }}>Selling Policy</strong>
+            {userRole !== "owner" && (
+              <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Only the business owner can change this setting</p>
+            )}
+            {([
+              { value: "fixed_pricing", label: "Fixed Prices", desc: "No negotiated prices — sales use listed price only" },
+              { value: "negotiated_pricing", label: "Negotiated Prices", desc: "Staff may negotiate prices within policy" },
+              { value: "negotiated_with_approval", label: "Negotiated Prices with Approval", desc: "Negotiation allowed — approval workflow coming soon" },
+            ] as { value: string; label: string; desc: string }[]).map(opt => (
+              <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 0", cursor: userRole === "owner" ? "pointer" : "default", opacity: userRole !== "owner" ? 0.6 : 1 }}>
+                <input type="radio" name="selling_policy" value={opt.value} checked={editBizSellingPolicy === opt.value} onChange={() => setEditBizSellingPolicy(opt.value)} disabled={userRole !== "owner"} style={{ marginTop: "3px" }} />
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: "14px" }}>{opt.label}</div>
+                  <div style={{ fontSize: "12px", color: "#64748b" }}>{opt.desc}</div>
+                </div>
+              </label>
+            ))}
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
             <button type="submit" style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
