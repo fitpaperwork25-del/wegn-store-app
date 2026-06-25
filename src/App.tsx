@@ -2785,6 +2785,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     }
   }
 
+  async function handleSessionItemCostChange(itemId: string, newCost: number) {
+    const item = sessionItems.find(i => i.id === itemId);
+    if (!item) return;
+    const totalCost = newCost * item.quantity_received;
+    setSessionItems(prev => prev.map(i => i.id === itemId ? { ...i, unit_cost: newCost } : i));
+    const { error } = await supabase.from("receiving_items").update({ unit_cost: newCost, total_cost: totalCost }).eq("id", itemId);
+    if (error) {
+      console.error("[ReceivingSession] Cost update error:", error);
+      setSessionItems(prev => prev.map(i => i.id === itemId ? { ...i, unit_cost: item.unit_cost } : i));
+      setMessage({ text: "Failed to save cost: " + error.message, type: "error" });
+    }
+  }
+
   async function handleSessionItemQty(itemId: string, delta: number) {
     const item = sessionItems.find(i => i.id === itemId);
     if (!item) return;
@@ -2816,6 +2829,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         }
         const qtyBefore = product.quantity_on_hand;
         const qtyAfter = qtyBefore + item.quantity_received;
+        const oldAvgCost = product.average_cost ?? 0;
+        const newAvgCost = qtyAfter > 0
+          ? ((qtyBefore * oldAvgCost) + (item.quantity_received * item.unit_cost)) / qtyAfter
+          : item.unit_cost;
 
         const { error: invError } = await supabase.from("inventory").update({ quantity_on_hand: qtyAfter }).eq("id", product.inventory_id);
         if (invError) {
@@ -2824,6 +2841,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           setIsPostingSession(false);
           return;
         }
+
+        const { error: avgCostError } = await supabase.from("products").update({ average_cost: newAvgCost }).eq("id", item.product_id);
+        if (avgCostError) { console.error("[ReceivingSession] Post: avg cost update failed", avgCostError); }
 
         const { error: txError } = await supabase.from("inventory_transactions").insert({
           business_id: product.business_id,
@@ -3901,10 +3921,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             type="number"
                             step="0.01"
                             min="0"
-                            value={item.unit_cost}
+                            defaultValue={item.unit_cost}
+                            key={`cost-${item.id}-${item.unit_cost}`}
                             onChange={(e) => {
                               const val = Math.max(0, Number(e.target.value) || 0);
                               setSessionItems(prev => prev.map(i => i.id === item.id ? { ...i, unit_cost: val } : i));
+                            }}
+                            onBlur={(e) => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              handleSessionItemCostChange(item.id, val);
                             }}
                             onClick={(e) => e.stopPropagation()}
                             style={{ width: "80px", padding: "4px 6px", fontSize: "13px", textAlign: "right", border: "1px solid #cbd5e1", borderRadius: "4px" }}
