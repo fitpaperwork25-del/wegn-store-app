@@ -311,6 +311,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
+  const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
+  const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
+  const [editPaymentDate, setEditPaymentDate] = useState("");
+  const [editPaymentAmount, setEditPaymentAmount] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState("cash");
+  const [editPaymentReference, setEditPaymentReference] = useState("");
+  const [editPaymentNotes, setEditPaymentNotes] = useState("");
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [adjustProductId, setAdjustProductId] = useState("");
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
@@ -2706,6 +2714,51 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setIsSavingInvoice(false);
   }
 
+  async function loadSessionPayments(sessionId: string) {
+    const { data, error } = await supabase
+      .from("supplier_payments")
+      .select("id, amount, payment_date, payment_method, reference, notes")
+      .eq("receiving_session_id", sessionId)
+      .order("created_at", { ascending: true });
+    if (error) { console.error("[SupplierPayment] Load error:", error); return; }
+    setSessionPayments(prev => ({ ...prev, [sessionId]: (data ?? []) as { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[] }));
+  }
+
+  async function handleSavePayment(sessionId: string, supplierId: string) {
+    if (isSavingPayment) return;
+    const amount = parseFloat(editPaymentAmount) || 0;
+    if (amount <= 0 || !editPaymentDate || !editPaymentMethod) {
+      setMessage({ text: "Payment date, amount, and method are required", type: "error" });
+      return;
+    }
+    setIsSavingPayment(true);
+    const { data, error } = await supabase.from("supplier_payments").insert({
+      business_id: businessId,
+      supplier_id: supplierId,
+      receiving_session_id: sessionId,
+      payment_date: editPaymentDate,
+      amount,
+      payment_method: editPaymentMethod,
+      reference: editPaymentReference.trim() || null,
+      notes: editPaymentNotes.trim() || null,
+    }).select("id, amount, payment_date, payment_method, reference, notes").single();
+    if (error) {
+      console.error("[SupplierPayment] Save error:", error);
+      setMessage({ text: "Failed to record payment: " + error.message, type: "error" });
+      setIsSavingPayment(false);
+      return;
+    }
+    setSessionPayments(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), data as { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }] }));
+    setPaymentPanelSessionId(null);
+    setEditPaymentDate("");
+    setEditPaymentAmount("");
+    setEditPaymentMethod("cash");
+    setEditPaymentReference("");
+    setEditPaymentNotes("");
+    setMessage({ text: `Payment of $${amount.toFixed(2)} recorded`, type: "success" });
+    setIsSavingPayment(false);
+  }
+
   async function loadSessionHistory() {
     if (!businessId) return;
     const { data, error } = await supabase
@@ -4148,8 +4201,87 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isInvoiceOpen ? "#1d4ed8" : "none", color: isInvoiceOpen ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px" }}
                   >{isInvoiceOpen ? "Close Invoice" : "Invoice"}</button>
                 )}
+                {session.status === "completed" && session.approved_by && session.invoice_total > 0 && (() => {
+                  const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
+                  const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
+                  const isPaymentOpen = paymentPanelSessionId === session.id;
+                  if (remaining <= 0) {
+                    return <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: "#dcfce7", color: "#15803d" }}>Paid</span>;
+                  }
+                  return (
+                    <button
+                      onClick={async () => {
+                        if (isPaymentOpen) { setPaymentPanelSessionId(null); return; }
+                        setPaymentPanelSessionId(session.id);
+                        setEditPaymentDate(new Date().toISOString().slice(0, 10));
+                        setEditPaymentAmount(String(remaining));
+                        setEditPaymentMethod("cash");
+                        setEditPaymentReference("");
+                        setEditPaymentNotes("");
+                        await loadSessionPayments(session.id);
+                      }}
+                      style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isPaymentOpen ? "#15803d" : "none", color: isPaymentOpen ? "#fff" : "#15803d", border: "1px solid #86efac", borderRadius: "5px" }}
+                    >{isPaymentOpen ? "Close Payment" : "Record Payment"}</button>
+                  );
+                })()}
                 <span style={{ fontSize: "12px", color: "#1d4ed8" }}>{isExpanded ? "▲ Hide" : "▼ Details"}</span>
               </div>
+              {paymentPanelSessionId === session.id && (() => {
+                const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
+                const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
+                return (
+                <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#f0fdf4" }}>
+                  <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "6px", color: "#0f172a" }}>Record Payment</div>
+                  <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>
+                    Invoice total: <strong>${Number(session.invoice_total).toFixed(2)}</strong> &nbsp;·&nbsp;
+                    Paid: <strong>${paid.toFixed(2)}</strong> &nbsp;·&nbsp;
+                    Remaining: <strong style={{ color: "#dc2626" }}>${remaining.toFixed(2)}</strong>
+                  </div>
+                  {(sessionPayments[session.id] ?? []).length > 0 && (
+                    <div style={{ marginBottom: "10px" }}>
+                      {(sessionPayments[session.id] ?? []).map(p => (
+                        <div key={p.id} style={{ fontSize: "12px", color: "#64748b", padding: "2px 0" }}>
+                          {p.payment_date} · <strong>${Number(p.amount).toFixed(2)}</strong> · {p.payment_method}{p.reference ? ` · ${p.reference}` : ""}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Payment Date</label>
+                      <input type="date" value={editPaymentDate} onChange={(e) => setEditPaymentDate(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Amount ($)</label>
+                      <input type="number" step="0.01" min="0" max={remaining} value={editPaymentAmount} onChange={(e) => setEditPaymentAmount(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Payment Method</label>
+                      <select value={editPaymentMethod} onChange={(e) => setEditPaymentMethod(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
+                        <option value="cash">Cash</option>
+                        <option value="check">Check</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="card">Card</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Reference</label>
+                      <input type="text" placeholder="Check #, wire ref, etc." value={editPaymentReference} onChange={(e) => setEditPaymentReference(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Notes</label>
+                      <input type="text" placeholder="Optional" value={editPaymentNotes} onChange={(e) => setEditPaymentNotes(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleSavePayment(session.id, session.supplier_id ?? "")}
+                    disabled={isSavingPayment || !session.supplier_id}
+                    style={{ padding: "8px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isSavingPayment ? 0.6 : 1 }}
+                  >{isSavingPayment ? "Saving..." : "Save Payment"}</button>
+                </div>
+                );
+              })()}
               {isInvoiceOpen && (
                 <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#fafbff" }}>
                   <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "10px", color: "#0f172a" }}>Supplier Invoice</div>
