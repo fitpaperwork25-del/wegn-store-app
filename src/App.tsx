@@ -301,7 +301,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newSessionNotes, setNewSessionNotes] = useState("");
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isPostingSession, setIsPostingSession] = useState(false);
-  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string }[]>([]);
+  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
   const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
   const [editInvoiceDate, setEditInvoiceDate] = useState("");
@@ -2646,15 +2646,36 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     await loadProducts();
   }
 
+  function computeInvoiceVariance(
+    items: { quantity_received: number; unit_cost: number; total_cost: number | null }[],
+    freightCost: number,
+    additionalCost: number,
+    invoiceTotal: number,
+  ) {
+    const itemsTotal = items.reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0);
+    const calculatedTotal = itemsTotal + freightCost + additionalCost;
+    const varianceAmount = Math.round((invoiceTotal - calculatedTotal) * 100) / 100;
+    const invoiceStatus = Math.abs(varianceAmount) <= 0.01 ? "matched" : "variance";
+    return { calculatedTotal: Math.round(calculatedTotal * 100) / 100, varianceAmount, invoiceStatus };
+  }
+
   async function handleSaveInvoice(sessionId: string) {
     if (isSavingInvoice) return;
     setIsSavingInvoice(true);
+    const invoiceTotal = parseFloat(editInvoiceTotal) || 0;
+    const freightCost = parseFloat(editFreightCost) || 0;
+    const additionalCost = parseFloat(editAdditionalCost) || 0;
+    const items = sessionHistoryItems[sessionId] ?? [];
+    const { calculatedTotal, varianceAmount, invoiceStatus } = computeInvoiceVariance(items, freightCost, additionalCost, invoiceTotal);
     const { error } = await supabase.from("receiving_sessions").update({
       invoice_number: editInvoiceNumber.trim() || null,
       invoice_date: editInvoiceDate || null,
-      invoice_total: parseFloat(editInvoiceTotal) || 0,
-      freight_cost: parseFloat(editFreightCost) || 0,
-      additional_cost: parseFloat(editAdditionalCost) || 0,
+      invoice_total: invoiceTotal,
+      freight_cost: freightCost,
+      additional_cost: additionalCost,
+      calculated_total: calculatedTotal,
+      variance_amount: varianceAmount,
+      invoice_status: invoiceStatus,
     }).eq("id", sessionId);
     if (error) {
       console.error("[Invoice] Save error:", error);
@@ -2666,9 +2687,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       ...s,
       invoice_number: editInvoiceNumber.trim() || null,
       invoice_date: editInvoiceDate || null,
-      invoice_total: parseFloat(editInvoiceTotal) || 0,
-      freight_cost: parseFloat(editFreightCost) || 0,
-      additional_cost: parseFloat(editAdditionalCost) || 0,
+      invoice_total: invoiceTotal,
+      freight_cost: freightCost,
+      additional_cost: additionalCost,
+      calculated_total: calculatedTotal,
+      variance_amount: varianceAmount,
+      invoice_status: invoiceStatus,
     } : s));
     setInvoicePanelSessionId(null);
     setMessage({ text: "Invoice saved", type: "success" });
@@ -2679,7 +2703,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     if (!businessId) return;
     const { data, error } = await supabase
       .from("receiving_sessions")
-      .select("id, status, supplier_id, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status")
+      .select("id, status, supplier_id, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status, calculated_total, variance_amount")
       .eq("business_id", businessId)
       .in("status", ["completed", "cancelled"])
       .order("created_at", { ascending: false })
@@ -2696,7 +2720,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("receiving_session_id", sessionId)
       .order("created_at", { ascending: true });
     if (error) { console.error("[SessionHistory] Load items error:", error); return; }
-    setSessionHistoryItems(prev => ({ ...prev, [sessionId]: (data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[] }));
+    const items = (data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[];
+    setSessionHistoryItems(prev => ({ ...prev, [sessionId]: items }));
+    const session = sessionHistory.find(s => s.id === sessionId);
+    if (session && session.invoice_total > 0) {
+      const { calculatedTotal, varianceAmount, invoiceStatus } = computeInvoiceVariance(items, session.freight_cost, session.additional_cost, session.invoice_total);
+      if (Math.abs(calculatedTotal - session.calculated_total) > 0.01 || invoiceStatus !== session.invoice_status) {
+        await supabase.from("receiving_sessions").update({ calculated_total: calculatedTotal, variance_amount: varianceAmount, invoice_status: invoiceStatus }).eq("id", sessionId);
+        setSessionHistory(prev => prev.map(s => s.id === sessionId ? { ...s, calculated_total: calculatedTotal, variance_amount: varianceAmount, invoice_status: invoiceStatus } : s));
+      }
+    }
   }
 
   async function loadActiveReceivingSession() {
