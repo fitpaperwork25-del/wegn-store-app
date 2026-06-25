@@ -301,7 +301,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newSessionNotes, setNewSessionNotes] = useState("");
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isPostingSession, setIsPostingSession] = useState(false);
-  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number }[]>([]);
+  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
   const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
   const [editInvoiceDate, setEditInvoiceDate] = useState("");
@@ -2667,6 +2667,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const additionalCost = parseFloat(editAdditionalCost) || 0;
     const items = sessionHistoryItems[sessionId] ?? [];
     const { calculatedTotal, varianceAmount, invoiceStatus } = computeInvoiceVariance(items, freightCost, additionalCost, invoiceTotal);
+    const autoApprovedAt = invoiceStatus === "matched" ? new Date().toISOString() : null;
     const { error } = await supabase.from("receiving_sessions").update({
       invoice_number: editInvoiceNumber.trim() || null,
       invoice_date: editInvoiceDate || null,
@@ -2676,6 +2677,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       calculated_total: calculatedTotal,
       variance_amount: varianceAmount,
       invoice_status: invoiceStatus,
+      approved_by: invoiceStatus === "matched" ? "auto" : null,
+      approved_at: autoApprovedAt,
+      approval_note: invoiceStatus === "matched" ? "Automatically approved — invoice matched" : null,
     }).eq("id", sessionId);
     if (error) {
       console.error("[Invoice] Save error:", error);
@@ -2693,6 +2697,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       calculated_total: calculatedTotal,
       variance_amount: varianceAmount,
       invoice_status: invoiceStatus,
+      approved_by: invoiceStatus === "matched" ? "auto" : null,
+      approved_at: autoApprovedAt,
+      approval_note: invoiceStatus === "matched" ? "Automatically approved — invoice matched" : null,
     } : s));
     setInvoicePanelSessionId(null);
     setMessage({ text: "Invoice saved", type: "success" });
@@ -2703,7 +2710,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     if (!businessId) return;
     const { data, error } = await supabase
       .from("receiving_sessions")
-      .select("id, status, supplier_id, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status, calculated_total, variance_amount")
+      .select("id, status, supplier_id, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status, calculated_total, variance_amount, approved_by, approved_at, approval_note")
       .eq("business_id", businessId)
       .in("status", ["completed", "cancelled"])
       .order("created_at", { ascending: false })
@@ -4196,6 +4203,22 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                         <span style={{ fontSize: "12px", fontWeight: 600, color: summaryColor }}>{previewMatched ? "Matched" : "Variance"}</span>
                       </div>
                     </div>
+                    );
+                  })()}
+                  {(() => {
+                    const previewMatched = Math.abs((parseFloat(editInvoiceTotal) || 0) - ((sessionHistoryItems[session.id] ?? []).reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0) + (parseFloat(editFreightCost) || 0) + (parseFloat(editAdditionalCost) || 0))) <= 0.01;
+                    return previewMatched ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", marginBottom: "12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px" }}>
+                        <span style={{ fontSize: "16px" }}>🟢</span>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#15803d" }}>Automatically Approved</span>
+                        <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>Invoice will be approved on save</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", marginBottom: "12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px" }}>
+                        <span style={{ fontSize: "16px" }}>🔴</span>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#dc2626" }}>Approval Required</span>
+                        <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>Variance must be resolved before approval</span>
+                      </div>
                     );
                   })()}
                   <button
