@@ -291,9 +291,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [sessionItems, setSessionItems] = useState<{ id: string; product_id: string; quantity_received: number; unit_cost: number }[]>([]);
   const [sessionScanInput, setSessionScanInput] = useState("");
   const [sessionExceptions, setSessionExceptions] = useState<{ barcode: string; reason: string }[]>([]);
+  const sessionScanRef = useRef<HTMLInputElement>(null);
+  const [lastScannedProduct, setLastScannedProduct] = useState<{ name: string; qty: number } | null>(null);
+  const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
+  const lastScannedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [newSessionSupplierId, setNewSessionSupplierId] = useState("");
   const [newSessionNotes, setNewSessionNotes] = useState("");
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isPostingSession, setIsPostingSession] = useState(false);
   const [adjustProductId, setAdjustProductId] = useState("");
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
@@ -2701,27 +2707,63 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setMessage({ text: "Receiving session cancelled", type: "success" });
   }
 
+  function playScanBeep(success: boolean) {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = success ? 880 : 220;
+      osc.type = success ? "sine" : "square";
+      gain.gain.value = 0.15;
+      osc.start();
+      osc.stop(ctx.currentTime + (success ? 0.1 : 0.25));
+      osc.onended = () => ctx.close();
+    } catch (_) { /* audio not available */ }
+  }
+
   async function handleSessionScan(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter" || !activeReceivingSession) return;
     e.preventDefault();
     const code = e.currentTarget.value.trim();
     setSessionScanInput("");
+    setTimeout(() => sessionScanRef.current?.focus(), 0);
     if (!code) return;
 
     const product = products.find(p => String(p.barcode || "").trim() === code);
     if (!product) {
+      playScanBeep(false);
       setSessionExceptions(prev => prev.some(ex => ex.barcode === code) ? prev : [...prev, { barcode: code, reason: "Unknown barcode" }]);
       setMessage({ text: `Barcode not found: ${code}`, type: "error" });
       return;
     }
 
+    playScanBeep(true);
+    setHighlightedProductId(product.product_id);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => setHighlightedProductId(null), 1000);
+    if (lastScannedTimerRef.current) clearTimeout(lastScannedTimerRef.current);
+
     const existing = sessionItems.find(i => i.product_id === product.product_id);
     if (existing) {
       const newQty = existing.quantity_received + 1;
-      const { error } = await supabase.from("receiving_items").update({ quantity_received: newQty }).eq("id", existing.id);
-      if (error) { console.error("[ReceivingSession] Update qty error:", error); setMessage({ text: "Failed to update quantity: " + error.message, type: "error" }); return; }
       setSessionItems(prev => prev.map(i => i.id === existing.id ? { ...i, quantity_received: newQty } : i));
+      setLastScannedProduct({ name: product.product_name, qty: newQty });
+      lastScannedTimerRef.current = setTimeout(() => setLastScannedProduct(null), 2000);
+      setMessage({ text: `${product.product_name} scanned (+1, total: ${newQty})`, type: "success" });
+      const { error } = await supabase.from("receiving_items").update({ quantity_received: newQty }).eq("id", existing.id);
+      if (error) {
+        console.error("[ReceivingSession] Update qty error:", error);
+        setSessionItems(prev => prev.map(i => i.id === existing.id ? { ...i, quantity_received: newQty - 1 } : i));
+        setMessage({ text: "Failed to save quantity: " + error.message, type: "error" });
+      }
     } else {
+      const tempId = `temp-${Date.now()}`;
+      setSessionItems(prev => [...prev, { id: tempId, product_id: product.product_id, quantity_received: 1, unit_cost: product.average_cost ?? 0 }]);
+      setLastScannedProduct({ name: product.product_name, qty: 1 });
+      lastScannedTimerRef.current = setTimeout(() => setLastScannedProduct(null), 2000);
+      setMessage({ text: `${product.product_name} scanned (+1)`, type: "success" });
       const { data, error } = await supabase.from("receiving_items").insert({
         business_id: businessId,
         receiving_session_id: activeReceivingSession.id,
@@ -2729,10 +2771,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         quantity_received: 1,
         unit_cost: product.average_cost ?? 0,
       }).select("id, product_id, quantity_received, unit_cost").single();
-      if (error) { console.error("[ReceivingSession] Insert item error:", error); setMessage({ text: "Failed to add item: " + error.message, type: "error" }); return; }
-      setSessionItems(prev => [...prev, data as { id: string; product_id: string; quantity_received: number; unit_cost: number }]);
+      if (error) {
+        console.error("[ReceivingSession] Insert item error:", error);
+        setSessionItems(prev => prev.filter(i => i.id !== tempId));
+        setMessage({ text: "Failed to add item: " + error.message, type: "error" });
+      } else {
+        setSessionItems(prev => prev.map(i => i.id === tempId ? { ...i, id: (data as { id: string }).id } : i));
+      }
     }
-    setMessage({ text: `${product.product_name} scanned (+1)`, type: "success" });
   }
 
   async function handleSessionItemQty(itemId: string, delta: number) {
@@ -2749,6 +2795,72 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const { error } = await supabase.from("receiving_items").delete().eq("id", itemId);
     if (error) { console.error("[ReceivingSession] Remove item error:", error); setMessage({ text: "Failed to remove item: " + error.message, type: "error" }); return; }
     setSessionItems(prev => prev.filter(i => i.id !== itemId));
+  }
+
+  async function handlePostReceivingSession() {
+    if (!activeReceivingSession || sessionItems.length === 0 || isPostingSession) return;
+    setIsPostingSession(true);
+    try {
+      const notes: string[] = [];
+      for (const item of sessionItems) {
+        const product = products.find(p => p.product_id === item.product_id);
+        if (!product) {
+          console.error("[ReceivingSession] Post: product not found", item.product_id);
+          setMessage({ text: `Product not found for item ${item.product_id.slice(0, 8)}`, type: "error" });
+          setIsPostingSession(false);
+          return;
+        }
+        const qtyBefore = product.quantity_on_hand;
+        const qtyAfter = qtyBefore + item.quantity_received;
+
+        const { error: invError } = await supabase.from("inventory").update({ quantity_on_hand: qtyAfter }).eq("id", product.inventory_id);
+        if (invError) {
+          console.error("[ReceivingSession] Post: inventory update failed", { product_id: item.product_id, error: invError });
+          setMessage({ text: `Failed to update stock for ${product.product_name}: ${invError.message}`, type: "error" });
+          setIsPostingSession(false);
+          return;
+        }
+
+        const { error: txError } = await supabase.from("inventory_transactions").insert({
+          business_id: product.business_id,
+          product_id: item.product_id,
+          transaction_type: "receiving",
+          quantity_change: item.quantity_received,
+          quantity_before: qtyBefore,
+          quantity_after: qtyAfter,
+          reason: "Receiving Session",
+          reference_id: activeReceivingSession.id,
+          created_by: activeCashierId || null,
+        });
+        if (txError) {
+          console.error("[ReceivingSession] Post: transaction insert failed", { product_id: item.product_id, error: txError });
+          setMessage({ text: `Failed to record transaction for ${product.product_name}: ${txError.message}`, type: "error" });
+          setIsPostingSession(false);
+          return;
+        }
+        notes.push(`${product.product_name}: +${item.quantity_received}`);
+      }
+
+      const { error: statusError } = await supabase.from("receiving_sessions").update({ status: "completed" }).eq("id", activeReceivingSession.id);
+      if (statusError) {
+        console.error("[ReceivingSession] Post: status update failed", statusError);
+        setMessage({ text: "Inventory updated but failed to mark session as posted: " + statusError.message, type: "error" });
+        setIsPostingSession(false);
+        return;
+      }
+
+      setActiveReceivingSession(null);
+      setSessionItems([]);
+      setSessionExceptions([]);
+      setMessage({ text: `Session posted: ${notes.join(", ")}`, type: "success" });
+      await loadProducts();
+      await loadTransactions();
+    } catch (err) {
+      console.error("[ReceivingSession] Post: unexpected error", err);
+      setMessage({ text: "Post receiving failed unexpectedly", type: "error" });
+    } finally {
+      setIsPostingSession(false);
+    }
   }
 
   function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -3741,6 +3853,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               </div>
             </div>
             <input
+              ref={sessionScanRef}
               type="text"
               autoFocus
               placeholder="Scan barcode and press Enter"
@@ -3750,10 +3863,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               style={{ width: "100%", padding: "10px 14px", fontSize: "15px", border: "2px solid #86efac", borderRadius: "8px", marginBottom: "12px", boxSizing: "border-box", outline: "none" }}
             />
 
+            {lastScannedProduct && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", marginBottom: "10px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "6px", fontSize: "13px", color: "#15803d", animation: "fadeIn 0.15s ease-out" }}>
+                <span style={{ fontWeight: 600 }}>Last scanned:</span> {lastScannedProduct.name} (+1)
+              </div>
+            )}
+
             {sessionItems.length > 0 && (
               <div style={{ marginBottom: "12px" }}>
-                <div style={{ fontSize: "12px", fontWeight: 600, color: "#334155", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>
-                  Session Items ({sessionItems.reduce((s, i) => s + i.quantity_received, 0)} total)
+                <div style={{ display: "flex", gap: "16px", alignItems: "center", fontSize: "13px", marginBottom: "8px" }}>
+                  <span style={{ fontWeight: 600, color: "#334155" }}>Products: <span style={{ color: "#1d4ed8" }}>{sessionItems.length}</span></span>
+                  <span style={{ fontWeight: 600, color: "#334155" }}>Units: <span style={{ color: "#1d4ed8" }}>{sessionItems.reduce((s, i) => s + i.quantity_received, 0)}</span></span>
                 </div>
                 <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
                   <thead>
@@ -3767,8 +3887,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <tbody>
                     {sessionItems.map(item => {
                       const prod = products.find(p => p.product_id === item.product_id);
+                      const isHighlighted = highlightedProductId === item.product_id;
                       return (
-                      <tr key={item.id}>
+                      <tr key={item.id} style={{ background: isHighlighted ? "#dcfce7" : undefined, transition: "background 0.3s ease-out" }}>
                         <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
                         <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{prod?.barcode ?? "—"}</td>
                         <td style={{ textAlign: "right" }}>
@@ -3805,9 +3926,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             )}
 
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <div style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, background: "#e2e8f0", color: "#94a3b8", border: "none", borderRadius: "6px", cursor: "default" }}>Post Receiving (coming soon)</div>
+              <button
+                onClick={handlePostReceivingSession}
+                disabled={sessionItems.length === 0 || isPostingSession}
+                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: sessionItems.length === 0 || isPostingSession ? "not-allowed" : "pointer", background: sessionItems.length === 0 ? "#e2e8f0" : "#15803d", color: sessionItems.length === 0 ? "#94a3b8" : "#fff", border: "none", borderRadius: "6px", opacity: isPostingSession ? 0.6 : 1 }}
+              >{isPostingSession ? "Posting..." : `Post Receiving (${sessionItems.reduce((s, i) => s + i.quantity_received, 0)} items)`}</button>
               <button
                 onClick={handleCancelReceivingSession}
+                disabled={isPostingSession}
                 style={{ padding: "8px 16px", fontSize: "13px", cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px" }}
               >Cancel Session</button>
             </div>
