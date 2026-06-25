@@ -2621,7 +2621,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const code = rapidReceiveInput.trim();
+    const code = e.currentTarget.value.trim();
     setRapidReceiveInput("");
     if (!code) return;
 
