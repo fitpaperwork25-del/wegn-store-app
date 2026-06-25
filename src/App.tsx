@@ -288,6 +288,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [rapidReceiveExceptions, setRapidReceiveExceptions] = useState<{ barcode: string; reason: string }[]>([]);
   const [isPostingRapidReceive, setIsPostingRapidReceive] = useState(false);
   const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string } | null>(null);
+  const [sessionItems, setSessionItems] = useState<{ id: string; product_id: string; quantity_received: number; unit_cost: number }[]>([]);
+  const [sessionScanInput, setSessionScanInput] = useState("");
+  const [sessionExceptions, setSessionExceptions] = useState<{ barcode: string; reason: string }[]>([]);
   const [newSessionSupplierId, setNewSessionSupplierId] = useState("");
   const [newSessionNotes, setNewSessionNotes] = useState("");
   const [isStartingSession, setIsStartingSession] = useState(false);
@@ -2635,6 +2638,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .maybeSingle();
     if (error) { console.error("[ReceivingSession] Load error:", error); return; }
     setActiveReceivingSession(data ?? null);
+    if (data) { await loadSessionItems(data.id); } else { setSessionItems([]); }
+  }
+
+  async function loadSessionItems(sessionId: string) {
+    const { data, error } = await supabase
+      .from("receiving_items")
+      .select("id, product_id, quantity_received, unit_cost")
+      .eq("receiving_session_id", sessionId)
+      .order("created_at", { ascending: true });
+    if (error) { console.error("[ReceivingSession] Load items error:", error); return; }
+    setSessionItems((data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
   }
 
   async function handleStartReceivingSession() {
@@ -2657,6 +2671,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       return;
     }
     setActiveReceivingSession(data);
+    setSessionItems([]);
+    setSessionExceptions([]);
     setNewSessionSupplierId("");
     setNewSessionNotes("");
     setIsStartingSession(false);
@@ -2665,6 +2681,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handleCancelReceivingSession() {
     if (!activeReceivingSession) return;
+    const { error: delError } = await supabase
+      .from("receiving_items")
+      .delete()
+      .eq("receiving_session_id", activeReceivingSession.id);
+    if (delError) { console.error("[ReceivingSession] Delete items error:", delError); }
     const { error } = await supabase
       .from("receiving_sessions")
       .update({ status: "cancelled" })
@@ -2675,7 +2696,59 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       return;
     }
     setActiveReceivingSession(null);
+    setSessionItems([]);
+    setSessionExceptions([]);
     setMessage({ text: "Receiving session cancelled", type: "success" });
+  }
+
+  async function handleSessionScan(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter" || !activeReceivingSession) return;
+    e.preventDefault();
+    const code = e.currentTarget.value.trim();
+    setSessionScanInput("");
+    if (!code) return;
+
+    const product = products.find(p => String(p.barcode || "").trim() === code);
+    if (!product) {
+      setSessionExceptions(prev => prev.some(ex => ex.barcode === code) ? prev : [...prev, { barcode: code, reason: "Unknown barcode" }]);
+      setMessage({ text: `Barcode not found: ${code}`, type: "error" });
+      return;
+    }
+
+    const existing = sessionItems.find(i => i.product_id === product.product_id);
+    if (existing) {
+      const newQty = existing.quantity_received + 1;
+      const { error } = await supabase.from("receiving_items").update({ quantity_received: newQty }).eq("id", existing.id);
+      if (error) { console.error("[ReceivingSession] Update qty error:", error); setMessage({ text: "Failed to update quantity: " + error.message, type: "error" }); return; }
+      setSessionItems(prev => prev.map(i => i.id === existing.id ? { ...i, quantity_received: newQty } : i));
+    } else {
+      const { data, error } = await supabase.from("receiving_items").insert({
+        business_id: businessId,
+        receiving_session_id: activeReceivingSession.id,
+        product_id: product.product_id,
+        quantity_received: 1,
+        unit_cost: product.average_cost ?? 0,
+      }).select("id, product_id, quantity_received, unit_cost").single();
+      if (error) { console.error("[ReceivingSession] Insert item error:", error); setMessage({ text: "Failed to add item: " + error.message, type: "error" }); return; }
+      setSessionItems(prev => [...prev, data as { id: string; product_id: string; quantity_received: number; unit_cost: number }]);
+    }
+    setMessage({ text: `${product.product_name} scanned (+1)`, type: "success" });
+  }
+
+  async function handleSessionItemQty(itemId: string, delta: number) {
+    const item = sessionItems.find(i => i.id === itemId);
+    if (!item) return;
+    const newQty = item.quantity_received + delta;
+    if (newQty <= 0) { await handleSessionItemRemove(itemId); return; }
+    const { error } = await supabase.from("receiving_items").update({ quantity_received: newQty }).eq("id", itemId);
+    if (error) { console.error("[ReceivingSession] Qty update error:", error); setMessage({ text: "Failed to update quantity: " + error.message, type: "error" }); return; }
+    setSessionItems(prev => prev.map(i => i.id === itemId ? { ...i, quantity_received: newQty } : i));
+  }
+
+  async function handleSessionItemRemove(itemId: string) {
+    const { error } = await supabase.from("receiving_items").delete().eq("id", itemId);
+    if (error) { console.error("[ReceivingSession] Remove item error:", error); setMessage({ text: "Failed to remove item: " + error.message, type: "error" }); return; }
+    setSessionItems(prev => prev.filter(i => i.id !== itemId));
   }
 
   function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -3667,13 +3740,77 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <span style={{ color: "#64748b" }}>Started:</span><span>{new Date(activeReceivingSession.created_at).toLocaleString()}</span>
               </div>
             </div>
-            <div style={{ padding: "16px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "8px", marginBottom: "12px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
-              Barcode scanning will be enabled in the next step.
+            <input
+              type="text"
+              autoFocus
+              placeholder="Scan barcode and press Enter"
+              value={sessionScanInput}
+              onChange={(e) => setSessionScanInput(e.target.value)}
+              onKeyDown={handleSessionScan}
+              style={{ width: "100%", padding: "10px 14px", fontSize: "15px", border: "2px solid #86efac", borderRadius: "8px", marginBottom: "12px", boxSizing: "border-box", outline: "none" }}
+            />
+
+            {sessionItems.length > 0 && (
+              <div style={{ marginBottom: "12px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "#334155", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>
+                  Session Items ({sessionItems.reduce((s, i) => s + i.quantity_received, 0)} total)
+                </div>
+                <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc" }}>
+                      <th style={{ textAlign: "left" }}>Product</th>
+                      <th style={{ textAlign: "left" }}>Barcode</th>
+                      <th style={{ textAlign: "right" }}>Qty</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sessionItems.map(item => {
+                      const prod = products.find(p => p.product_id === item.product_id);
+                      return (
+                      <tr key={item.id}>
+                        <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
+                        <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{prod?.barcode ?? "—"}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <button onClick={() => handleSessionItemQty(item.id, -1)} style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>-</button>
+                            <span style={{ minWidth: "24px", textAlign: "center", fontWeight: 600 }}>{item.quantity_received}</span>
+                            <button onClick={() => handleSessionItemQty(item.id, 1)} style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button onClick={() => handleSessionItemRemove(item.id)} title="Remove" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", fontSize: "11px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {sessionExceptions.length > 0 && (
+              <div style={{ marginBottom: "12px", padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "#92400e", marginBottom: "4px" }}>Exceptions ({sessionExceptions.length})</div>
+                {sessionExceptions.map((ex, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "#92400e", padding: "2px 0" }}>
+                    <span><code style={{ background: "#fef3c7", padding: "1px 4px", borderRadius: "3px" }}>{ex.barcode}</code> — {ex.reason}</span>
+                    <button onClick={() => setSessionExceptions(prev => prev.filter((_, j) => j !== i))} style={{ padding: "2px 6px", fontSize: "10px", cursor: "pointer", background: "none", border: "1px solid #fde68a", borderRadius: "3px", color: "#92400e" }}>Dismiss</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, background: "#e2e8f0", color: "#94a3b8", border: "none", borderRadius: "6px", cursor: "default" }}>Post Receiving (coming soon)</div>
+              <button
+                onClick={handleCancelReceivingSession}
+                style={{ padding: "8px 16px", fontSize: "13px", cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px" }}
+              >Cancel Session</button>
             </div>
-            <button
-              onClick={handleCancelReceivingSession}
-              style={{ padding: "8px 16px", fontSize: "13px", cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px" }}
-            >Cancel Session</button>
           </div>
         )}
       </div>
