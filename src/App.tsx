@@ -4128,7 +4128,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 {totalValue != null && <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>${totalValue.toFixed(2)}</span>}
                 {session.status === "completed" && (
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (isInvoiceOpen) { setInvoicePanelSessionId(null); return; }
                       setInvoicePanelSessionId(session.id);
                       setEditInvoiceNumber(session.invoice_number ?? "");
@@ -4136,6 +4136,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       setEditInvoiceTotal(session.invoice_total > 0 ? String(session.invoice_total) : "");
                       setEditFreightCost(session.freight_cost > 0 ? String(session.freight_cost) : "");
                       setEditAdditionalCost(session.additional_cost > 0 ? String(session.additional_cost) : "");
+                      await loadSessionHistoryItems(session.id);
                     }}
                     style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isInvoiceOpen ? "#1d4ed8" : "none", color: isInvoiceOpen ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px" }}
                   >{isInvoiceOpen ? "Close Invoice" : "Invoice"}</button>
@@ -4167,6 +4168,36 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       <input type="number" step="0.01" min="0" value={editAdditionalCost} onChange={(e) => setEditAdditionalCost(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
                     </div>
                   </div>
+                  {(() => {
+                    const previewItems = sessionHistoryItems[session.id] ?? [];
+                    const previewFreight = parseFloat(editFreightCost) || 0;
+                    const previewAdditional = parseFloat(editAdditionalCost) || 0;
+                    const previewInvoiceTotal = parseFloat(editInvoiceTotal) || 0;
+                    const previewItemsTotal = previewItems.reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0);
+                    const previewCalcTotal = previewItemsTotal + previewFreight + previewAdditional;
+                    const previewVariance = Math.round((previewInvoiceTotal - previewCalcTotal) * 100) / 100;
+                    const previewMatched = Math.abs(previewVariance) <= 0.01;
+                    const summaryColor = previewMatched ? "#15803d" : "#dc2626";
+                    const summaryBg = previewMatched ? "#f0fdf4" : "#fef2f2";
+                    const summaryBorder = previewMatched ? "#86efac" : "#fecaca";
+                    return (
+                    <div style={{ margin: "12px 0", padding: "12px 14px", background: summaryBg, border: `1px solid ${summaryBorder}`, borderRadius: "8px" }}>
+                      <div style={{ fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "8px" }}>Reconciliation Preview</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: "12px" }}>
+                        <span style={{ color: "#64748b" }}>Received items</span><span style={{ textAlign: "right" }}>${previewItemsTotal.toFixed(2)}</span>
+                        <span style={{ color: "#64748b" }}>Freight</span><span style={{ textAlign: "right" }}>+${previewFreight.toFixed(2)}</span>
+                        <span style={{ color: "#64748b" }}>Additional costs</span><span style={{ textAlign: "right" }}>+${previewAdditional.toFixed(2)}</span>
+                        <span style={{ color: "#334155", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>Calculated total</span><span style={{ textAlign: "right", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>${previewCalcTotal.toFixed(2)}</span>
+                        <span style={{ color: "#334155", fontWeight: 600 }}>Invoice total</span><span style={{ textAlign: "right", fontWeight: 600 }}>${previewInvoiceTotal.toFixed(2)}</span>
+                        <span style={{ color: summaryColor, fontWeight: 700 }}>Variance</span><span style={{ textAlign: "right", fontWeight: 700, color: summaryColor }}>{previewVariance >= 0 ? "+" : ""}{previewVariance.toFixed(2)}</span>
+                      </div>
+                      <div style={{ marginTop: "8px", display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", background: previewMatched ? "#dcfce7" : "#fef2f2", border: `1px solid ${summaryBorder}`, borderRadius: "12px" }}>
+                        <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: summaryColor }} />
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: summaryColor }}>{previewMatched ? "Matched" : "Variance"}</span>
+                      </div>
+                    </div>
+                    );
+                  })()}
                   <button
                     onClick={() => handleSaveInvoice(session.id)}
                     disabled={isSavingInvoice}
