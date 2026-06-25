@@ -311,6 +311,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
+  const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
+  const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number }[]>([]);
+  const [isLoadingStatement, setIsLoadingStatement] = useState(false);
   const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
   const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
   const [editPaymentDate, setEditPaymentDate] = useState("");
@@ -2712,6 +2715,40 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setInvoicePanelSessionId(null);
     setMessage({ text: "Invoice saved", type: "success" });
     setIsSavingInvoice(false);
+  }
+
+  async function loadSupplierStatement(supplierId: string) {
+    if (isLoadingStatement) return;
+    setIsLoadingStatement(true);
+    setSupplierStatement([]);
+    const { data: sessions, error: sessErr } = await supabase
+      .from("receiving_sessions")
+      .select("id, invoice_number, invoice_date, invoice_total")
+      .eq("business_id", businessId)
+      .eq("supplier_id", supplierId)
+      .eq("status", "completed")
+      .not("invoice_number", "is", null)
+      .order("created_at", { ascending: false });
+    if (sessErr) { console.error("[Statement] sessions error:", sessErr); setIsLoadingStatement(false); return; }
+    if (!sessions || sessions.length === 0) { setIsLoadingStatement(false); return; }
+    const sessionIds = sessions.map(s => s.id);
+    const { data: payments, error: payErr } = await supabase
+      .from("supplier_payments")
+      .select("receiving_session_id, amount")
+      .in("receiving_session_id", sessionIds);
+    if (payErr) { console.error("[Statement] payments error:", payErr); setIsLoadingStatement(false); return; }
+    const paidMap: Record<string, number> = {};
+    for (const p of (payments ?? [])) {
+      paidMap[p.receiving_session_id] = (paidMap[p.receiving_session_id] ?? 0) + Number(p.amount);
+    }
+    setSupplierStatement(sessions.map(s => ({
+      session_id: s.id,
+      invoice_number: s.invoice_number,
+      invoice_date: s.invoice_date,
+      invoice_total: Number(s.invoice_total),
+      paid: Math.round((paidMap[s.id] ?? 0) * 100) / 100,
+    })));
+    setIsLoadingStatement(false);
   }
 
   async function loadSessionPayments(sessionId: string) {
@@ -5376,7 +5413,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>
                         <button onClick={() => isEditing ? handleCancelEditSupplier() : handleStartEditSupplier(s)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", background: isEditing ? "#f3f4f6" : undefined }}>{isEditing ? "Cancel" : "Edit"}</button>
                         <button onClick={() => handleToggleSupplierStatus(s)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", color: inactive ? "#15803d" : "#b45309" }}>{inactive ? "Activate" : "Deactivate"}</button>
-                        <button onClick={() => handleDeleteSupplier(s.id, s.name)} style={{ padding: "3px 10px", cursor: "pointer", color: "#b91c1c" }}>Delete</button>
+                        <button onClick={() => handleDeleteSupplier(s.id, s.name)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", color: "#b91c1c" }}>Delete</button>
+                        <button
+                          onClick={async () => {
+                            if (statementSupplierId === s.id) { setStatementSupplierId(null); return; }
+                            setStatementSupplierId(s.id);
+                            await loadSupplierStatement(s.id);
+                          }}
+                          style={{ padding: "3px 10px", cursor: "pointer", background: statementSupplierId === s.id ? "#1d4ed8" : "none", color: statementSupplierId === s.id ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "4px" }}
+                        >Statement</button>
                       </td>
                     </tr>
                     {isExpanded && !isEditing && (() => {
@@ -5573,6 +5618,84 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             <input type="text" placeholder="Notes" value={editSupNotes} onChange={(e) => setEditSupNotes(e.target.value)} style={{ flex: "2 1 180px", padding: "7px 10px" }} />
                             <button onClick={handleSaveSupplier} disabled={!editSupName.trim()} style={{ padding: "7px 18px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>Save</button>
                             <button onClick={handleCancelEditSupplier} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {statementSupplierId === s.id && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: "0", borderTop: "2px solid #e2e8f0" }}>
+                          <div style={{ padding: "16px 20px", background: "#f8fafc" }}>
+                            <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "12px", color: "#0f172a" }}>Supplier Statement — {s.name}</div>
+                            {isLoadingStatement ? (
+                              <p style={{ fontSize: "13px", color: "#64748b" }}>Loading...</p>
+                            ) : supplierStatement.length === 0 ? (
+                              <p style={{ fontSize: "13px", color: "#64748b" }}>No invoiced receiving sessions found for this supplier.</p>
+                            ) : (() => {
+                              const totalInvoiced = supplierStatement.reduce((sum, r) => sum + r.invoice_total, 0);
+                              const totalPaid = supplierStatement.reduce((sum, r) => sum + r.paid, 0);
+                              const totalOutstanding = Math.round((totalInvoiced - totalPaid) * 100) / 100;
+                              return (
+                              <>
+                                <div style={{ display: "flex", gap: "16px", marginBottom: "14px", flexWrap: "wrap" }}>
+                                  <div style={{ padding: "10px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", minWidth: "140px" }}>
+                                    <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Total Invoiced</div>
+                                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>${totalInvoiced.toFixed(2)}</div>
+                                  </div>
+                                  <div style={{ padding: "10px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", minWidth: "140px" }}>
+                                    <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Total Paid</div>
+                                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#15803d" }}>${totalPaid.toFixed(2)}</div>
+                                  </div>
+                                  <div style={{ padding: "10px 16px", background: totalOutstanding > 0 ? "#fef2f2" : "#f0fdf4", border: `1px solid ${totalOutstanding > 0 ? "#fecaca" : "#86efac"}`, borderRadius: "8px", minWidth: "140px" }}>
+                                    <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Outstanding</div>
+                                    <div style={{ fontSize: "18px", fontWeight: 700, color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</div>
+                                  </div>
+                                </div>
+                                <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+                                  <thead>
+                                    <tr style={{ background: "#f1f5f9" }}>
+                                      <th style={{ textAlign: "left" }}>Invoice #</th>
+                                      <th style={{ textAlign: "left" }}>Invoice Date</th>
+                                      <th style={{ textAlign: "right" }}>Invoice Total</th>
+                                      <th style={{ textAlign: "right" }}>Paid</th>
+                                      <th style={{ textAlign: "right" }}>Remaining</th>
+                                      <th style={{ textAlign: "center" }}>Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {supplierStatement.map(row => {
+                                      const remaining = Math.round((row.invoice_total - row.paid) * 100) / 100;
+                                      const paidStatus = remaining <= 0 ? "paid" : row.paid > 0 ? "partial" : "outstanding";
+                                      const statusBg = paidStatus === "paid" ? "#dcfce7" : paidStatus === "partial" ? "#fef9c3" : "#fef2f2";
+                                      const statusColor = paidStatus === "paid" ? "#15803d" : paidStatus === "partial" ? "#a16207" : "#dc2626";
+                                      const statusLabel = paidStatus === "paid" ? "Paid" : paidStatus === "partial" ? "Partially Paid" : "Outstanding";
+                                      return (
+                                      <tr key={row.session_id}>
+                                        <td style={{ fontWeight: 600 }}>{row.invoice_number}</td>
+                                        <td style={{ color: "#64748b" }}>{row.invoice_date ?? "—"}</td>
+                                        <td style={{ textAlign: "right" }}>${row.invoice_total.toFixed(2)}</td>
+                                        <td style={{ textAlign: "right", color: "#15803d" }}>${row.paid.toFixed(2)}</td>
+                                        <td style={{ textAlign: "right", fontWeight: 600, color: remaining > 0 ? "#dc2626" : "#15803d" }}>${remaining.toFixed(2)}</td>
+                                        <td style={{ textAlign: "center" }}>
+                                          <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: statusBg, color: statusColor }}>{statusLabel}</span>
+                                        </td>
+                                      </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr style={{ background: "#f1f5f9", fontWeight: 700 }}>
+                                      <td colSpan={2}>Total</td>
+                                      <td style={{ textAlign: "right" }}>${totalInvoiced.toFixed(2)}</td>
+                                      <td style={{ textAlign: "right", color: "#15803d" }}>${totalPaid.toFixed(2)}</td>
+                                      <td style={{ textAlign: "right", color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</td>
+                                      <td />
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
