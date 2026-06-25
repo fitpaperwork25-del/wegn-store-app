@@ -2718,7 +2718,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function loadSupplierStatement(supplierId: string) {
-    if (isLoadingStatement) return;
     setIsLoadingStatement(true);
     setSupplierStatement([]);
     const { data: sessions, error: sessErr } = await supabase
@@ -2761,11 +2760,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setSessionPayments(prev => ({ ...prev, [sessionId]: (data ?? []) as { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[] }));
   }
 
-  async function handleSavePayment(sessionId: string, supplierId: string) {
+  async function handleSavePayment(sessionId: string, supplierId: string, remaining: number) {
     if (isSavingPayment) return;
     const amount = parseFloat(editPaymentAmount) || 0;
     if (amount <= 0 || !editPaymentDate || !editPaymentMethod) {
       setMessage({ text: "Payment date, amount, and method are required", type: "error" });
+      return;
+    }
+    if (amount > remaining + 0.01) {
+      setMessage({ text: `Payment amount ($${amount.toFixed(2)}) exceeds remaining balance ($${remaining.toFixed(2)})`, type: "error" });
       return;
     }
     setIsSavingPayment(true);
@@ -4238,7 +4241,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isInvoiceOpen ? "#1d4ed8" : "none", color: isInvoiceOpen ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px" }}
                   >{isInvoiceOpen ? "Close Invoice" : "Invoice"}</button>
                 )}
-                {session.status === "completed" && session.approved_by && session.invoice_total > 0 && (() => {
+                {session.status === "completed" && session.approved_by && session.invoice_total > 0 && session.supplier_id && (() => {
                   const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
                   const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
                   const isPaymentOpen = paymentPanelSessionId === session.id;
@@ -4312,7 +4315,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     </div>
                   </div>
                   <button
-                    onClick={() => handleSavePayment(session.id, session.supplier_id ?? "")}
+                    onClick={() => handleSavePayment(session.id, session.supplier_id ?? "", remaining)}
                     disabled={isSavingPayment || !session.supplier_id}
                     style={{ padding: "8px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isSavingPayment ? 0.6 : 1 }}
                   >{isSavingPayment ? "Saving..." : "Save Payment"}</button>
