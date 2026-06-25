@@ -2658,12 +2658,24 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       const notes: string[] = [];
       for (const item of rapidReceiveItems) {
         const product = products.find(p => p.product_id === item.product_id);
-        if (!product) continue;
+        if (!product) {
+          console.error("[RapidReceive] Product not found in local state:", item.product_id, item.product_name);
+          continue;
+        }
         const qtyBefore = product.quantity_on_hand;
         const qtyAfter = qtyBefore + item.quantity;
 
-        await supabase.from("inventory").update({ quantity_on_hand: qtyAfter }).eq("id", product.inventory_id);
-        await supabase.from("inventory_transactions").insert({
+        console.log("[RapidReceive] Posting:", { product_id: item.product_id, business_id: product.business_id, inventory_id: product.inventory_id, quantity: item.quantity, qtyBefore, qtyAfter });
+
+        const { error: invError } = await supabase.from("inventory").update({ quantity_on_hand: qtyAfter }).eq("id", product.inventory_id);
+        if (invError) {
+          console.error("[RapidReceive] Inventory update failed:", { product_id: item.product_id, business_id: product.business_id, inventory_id: product.inventory_id, qtyBefore, qtyAfter, error: invError });
+          setMessage({ text: `Failed to update stock for ${item.product_name}: ${invError.message}`, type: "error" });
+          setIsPostingRapidReceive(false);
+          return;
+        }
+
+        const { error: txError } = await supabase.from("inventory_transactions").insert({
           business_id: product.business_id,
           product_id: item.product_id,
           transaction_type: "receiving",
@@ -2673,6 +2685,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           reason: "Rapid Receive",
           created_by: activeCashierId || null,
         });
+        if (txError) {
+          console.error("[RapidReceive] Transaction insert failed:", { product_id: item.product_id, business_id: product.business_id, quantity: item.quantity, qtyBefore, qtyAfter, error: txError });
+          setMessage({ text: `Failed to record transaction for ${item.product_name}: ${txError.message}`, type: "error" });
+          setIsPostingRapidReceive(false);
+          return;
+        }
+
+        console.log("[RapidReceive] Success:", item.product_name, "+", item.quantity);
         notes.push(`${item.product_name}: +${item.quantity}`);
       }
       setRapidReceiveItems([]);
@@ -2681,7 +2701,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       await loadProducts();
       await loadTransactions();
     } catch (err) {
-      console.error(err);
+      console.error("[RapidReceive] Unexpected error:", err);
       setMessage({ text: "Rapid receive failed unexpectedly", type: "error" });
     } finally {
       setIsPostingRapidReceive(false);
