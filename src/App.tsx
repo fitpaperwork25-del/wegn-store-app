@@ -301,7 +301,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newSessionNotes, setNewSessionNotes] = useState("");
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isPostingSession, setIsPostingSession] = useState(false);
-  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null }[]>([]);
+  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string }[]>([]);
+  const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
+  const [editInvoiceDate, setEditInvoiceDate] = useState("");
+  const [editInvoiceTotal, setEditInvoiceTotal] = useState("");
+  const [editFreightCost, setEditFreightCost] = useState("");
+  const [editAdditionalCost, setEditAdditionalCost] = useState("");
+  const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
   const [adjustProductId, setAdjustProductId] = useState("");
@@ -2639,11 +2646,40 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     await loadProducts();
   }
 
+  async function handleSaveInvoice(sessionId: string) {
+    if (isSavingInvoice) return;
+    setIsSavingInvoice(true);
+    const { error } = await supabase.from("receiving_sessions").update({
+      invoice_number: editInvoiceNumber.trim() || null,
+      invoice_date: editInvoiceDate || null,
+      invoice_total: parseFloat(editInvoiceTotal) || 0,
+      freight_cost: parseFloat(editFreightCost) || 0,
+      additional_cost: parseFloat(editAdditionalCost) || 0,
+    }).eq("id", sessionId);
+    if (error) {
+      console.error("[Invoice] Save error:", error);
+      setMessage({ text: "Failed to save invoice: " + error.message, type: "error" });
+      setIsSavingInvoice(false);
+      return;
+    }
+    setSessionHistory(prev => prev.map(s => s.id === sessionId ? {
+      ...s,
+      invoice_number: editInvoiceNumber.trim() || null,
+      invoice_date: editInvoiceDate || null,
+      invoice_total: parseFloat(editInvoiceTotal) || 0,
+      freight_cost: parseFloat(editFreightCost) || 0,
+      additional_cost: parseFloat(editAdditionalCost) || 0,
+    } : s));
+    setInvoicePanelSessionId(null);
+    setMessage({ text: "Invoice saved", type: "success" });
+    setIsSavingInvoice(false);
+  }
+
   async function loadSessionHistory() {
     if (!businessId) return;
     const { data, error } = await supabase
       .from("receiving_sessions")
-      .select("id, status, supplier_id, created_at, received_date, notes")
+      .select("id, status, supplier_id, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status")
       .eq("business_id", businessId)
       .in("status", ["completed", "cancelled"])
       .order("created_at", { ascending: false })
@@ -4029,15 +4065,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             const supplier = session.supplier_id ? suppliers.find(s => s.id === session.supplier_id) : null;
             const items = sessionHistoryItems[session.id];
             const isExpanded = expandedHistorySessionId === session.id;
+            const isInvoiceOpen = invoicePanelSessionId === session.id;
             const totalProducts = items?.length ?? null;
             const totalUnits = items ? items.reduce((s, i) => s + Number(i.quantity_received), 0) : null;
             const totalValue = items ? items.reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0) : null;
             const statusColor = session.status === "completed" ? "#15803d" : "#6b7280";
             const statusBg = session.status === "completed" ? "#dcfce7" : "#f1f5f9";
+            const hasInvoice = !!session.invoice_number;
+            const invoiceBadgeColor = hasInvoice ? "#15803d" : "#b45309";
+            const invoiceBadgeBg = hasInvoice ? "#dcfce7" : "#fffbeb";
+            const invoiceBadgeLabel = hasInvoice ? session.invoice_number! : "Invoice: pending";
             return (
             <div key={session.id} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px", background: "#f8fafc", cursor: "pointer" }}
-                onClick={async () => {
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 14px", background: "#f8fafc", cursor: "pointer", flexWrap: "wrap" }}
+                onClick={async (e) => {
+                  if ((e.target as HTMLElement).closest("button")) return;
                   if (isExpanded) { setExpandedHistorySessionId(null); return; }
                   setExpandedHistorySessionId(session.id);
                   await loadSessionHistoryItems(session.id);
@@ -4045,15 +4087,69 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               >
                 <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#64748b" }}>{session.id.slice(0, 8)}</span>
                 <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: statusBg, color: statusColor }}>{session.status}</span>
+                <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: invoiceBadgeBg, color: invoiceBadgeColor }}>{invoiceBadgeLabel}</span>
                 <span style={{ fontSize: "12px", color: "#334155" }}>{supplier?.name ?? "No supplier"}</span>
                 {session.notes && <span style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic" }}>{session.notes}</span>}
                 <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>{new Date(session.created_at).toLocaleDateString()}</span>
                 {totalProducts != null && <span style={{ fontSize: "12px", color: "#334155" }}>{totalProducts} products · {totalUnits} units</span>}
                 {totalValue != null && <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>${totalValue.toFixed(2)}</span>}
+                {session.status === "completed" && (
+                  <button
+                    onClick={() => {
+                      if (isInvoiceOpen) { setInvoicePanelSessionId(null); return; }
+                      setInvoicePanelSessionId(session.id);
+                      setEditInvoiceNumber(session.invoice_number ?? "");
+                      setEditInvoiceDate(session.invoice_date ?? "");
+                      setEditInvoiceTotal(session.invoice_total > 0 ? String(session.invoice_total) : "");
+                      setEditFreightCost(session.freight_cost > 0 ? String(session.freight_cost) : "");
+                      setEditAdditionalCost(session.additional_cost > 0 ? String(session.additional_cost) : "");
+                    }}
+                    style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isInvoiceOpen ? "#1d4ed8" : "none", color: isInvoiceOpen ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px" }}
+                  >{isInvoiceOpen ? "Close Invoice" : "Invoice"}</button>
+                )}
                 <span style={{ fontSize: "12px", color: "#1d4ed8" }}>{isExpanded ? "▲ Hide" : "▼ Details"}</span>
               </div>
+              {isInvoiceOpen && (
+                <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#fafbff" }}>
+                  <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "10px", color: "#0f172a" }}>Supplier Invoice</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Invoice Number</label>
+                      <input type="text" value={editInvoiceNumber} onChange={(e) => setEditInvoiceNumber(e.target.value)} placeholder="e.g. INV-20260625" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Invoice Date</label>
+                      <input type="date" value={editInvoiceDate} onChange={(e) => setEditInvoiceDate(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Invoice Total ($)</label>
+                      <input type="number" step="0.01" min="0" value={editInvoiceTotal} onChange={(e) => setEditInvoiceTotal(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Freight ($)</label>
+                      <input type="number" step="0.01" min="0" value={editFreightCost} onChange={(e) => setEditFreightCost(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Additional Costs ($)</label>
+                      <input type="number" step="0.01" min="0" value={editAdditionalCost} onChange={(e) => setEditAdditionalCost(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleSaveInvoice(session.id)}
+                    disabled={isSavingInvoice}
+                    style={{ padding: "8px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", opacity: isSavingInvoice ? 0.6 : 1 }}
+                  >{isSavingInvoice ? "Saving..." : "Save Invoice"}</button>
+                </div>
+              )}
               {isExpanded && (
                 <div style={{ padding: "12px 14px", borderTop: "1px solid #e2e8f0" }}>
+                  {session.invoice_number && (
+                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>
+                      Invoice: <strong>{session.invoice_number}</strong>
+                      {session.invoice_date && <> · {session.invoice_date}</>}
+                      {session.invoice_total > 0 && <> · Total: <strong>${Number(session.invoice_total).toFixed(2)}</strong></>}
+                    </div>
+                  )}
                   {!items ? (
                     <p style={{ fontSize: "13px", color: "#64748b" }}>Loading...</p>
                   ) : items.length === 0 ? (
