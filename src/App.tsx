@@ -287,6 +287,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [rapidReceiveItems, setRapidReceiveItems] = useState<{ product_id: string; product_name: string; barcode: string; quantity: number }[]>([]);
   const [rapidReceiveExceptions, setRapidReceiveExceptions] = useState<{ barcode: string; reason: string }[]>([]);
   const [isPostingRapidReceive, setIsPostingRapidReceive] = useState(false);
+  const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string } | null>(null);
+  const [newSessionSupplierId, setNewSessionSupplierId] = useState("");
+  const [newSessionNotes, setNewSessionNotes] = useState("");
+  const [isStartingSession, setIsStartingSession] = useState(false);
   const [adjustProductId, setAdjustProductId] = useState("");
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
@@ -589,6 +593,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadDrawerSession();
     loadEmployees();
     loadStockCounts();
+    loadActiveReceivingSession();
   }, []);
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
@@ -2618,6 +2623,61 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     await loadProducts();
   }
 
+  async function loadActiveReceivingSession() {
+    if (!businessId) return;
+    const { data, error } = await supabase
+      .from("receiving_sessions")
+      .select("id, business_id, supplier_id, received_by, status, notes, created_at")
+      .eq("business_id", businessId)
+      .eq("status", "draft")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) { console.error("[ReceivingSession] Load error:", error); return; }
+    setActiveReceivingSession(data ?? null);
+  }
+
+  async function handleStartReceivingSession() {
+    if (!businessId || isStartingSession) return;
+    setIsStartingSession(true);
+    const { data, error } = await supabase
+      .from("receiving_sessions")
+      .insert({
+        business_id: businessId,
+        supplier_id: newSessionSupplierId || null,
+        status: "draft",
+        notes: newSessionNotes.trim() || null,
+      })
+      .select("id, business_id, supplier_id, received_by, status, notes, created_at")
+      .single();
+    if (error) {
+      console.error("[ReceivingSession] Start error:", error);
+      setMessage({ text: "Failed to start session: " + error.message, type: "error" });
+      setIsStartingSession(false);
+      return;
+    }
+    setActiveReceivingSession(data);
+    setNewSessionSupplierId("");
+    setNewSessionNotes("");
+    setIsStartingSession(false);
+    setMessage({ text: "Receiving session started", type: "success" });
+  }
+
+  async function handleCancelReceivingSession() {
+    if (!activeReceivingSession) return;
+    const { error } = await supabase
+      .from("receiving_sessions")
+      .update({ status: "cancelled" })
+      .eq("id", activeReceivingSession.id);
+    if (error) {
+      console.error("[ReceivingSession] Cancel error:", error);
+      setMessage({ text: "Failed to cancel session: " + error.message, type: "error" });
+      return;
+    }
+    setActiveReceivingSession(null);
+    setMessage({ text: "Receiving session cancelled", type: "success" });
+  }
+
   function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -3555,6 +3615,67 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <div className="page-header">
         <h2 className="page-title">Inventory</h2>
         <p className="page-subtitle">Manage products, stock levels, reorder points, and product status</p>
+      </div>
+
+      <div className="section-card">
+        <h3 className="section-card-title">Receiving Sessions</h3>
+        {!activeReceivingSession ? (
+          <div>
+            <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 12px" }}>Start a session to scan and receive inventory. Sessions persist across page reloads.</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "flex-end", marginBottom: "12px" }}>
+              <div style={{ flex: "1 1 200px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Supplier (optional)</label>
+                <select
+                  value={newSessionSupplierId}
+                  onChange={(e) => setNewSessionSupplierId(e.target.value)}
+                  style={{ width: "100%", padding: "8px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
+                >
+                  <option value="">No supplier</option>
+                  {suppliers.filter(s => s.status === "active").map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ flex: "1 1 200px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Notes (optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Weekly restock, Truck #42"
+                  value={newSessionNotes}
+                  onChange={(e) => setNewSessionNotes(e.target.value)}
+                  style={{ width: "100%", padding: "8px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleStartReceivingSession}
+              disabled={isStartingSession}
+              style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isStartingSession ? 0.6 : 1 }}
+            >{isStartingSession ? "Starting..." : "Start Receiving Session"}</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ padding: "12px 16px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px", marginBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ fontSize: "14px", fontWeight: 600, color: "#15803d" }}>Active Draft Session</span>
+                <span style={{ fontSize: "11px", color: "#64748b", fontFamily: "monospace" }}>{activeReceivingSession.id.slice(0, 8)}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px", fontSize: "13px", color: "#334155" }}>
+                <span style={{ color: "#64748b" }}>Status:</span><span style={{ fontWeight: 500 }}>{activeReceivingSession.status}</span>
+                <span style={{ color: "#64748b" }}>Supplier:</span><span>{activeReceivingSession.supplier_id ? (suppliers.find(s => s.id === activeReceivingSession.supplier_id)?.name ?? "Unknown") : "None"}</span>
+                {activeReceivingSession.notes && <><span style={{ color: "#64748b" }}>Notes:</span><span>{activeReceivingSession.notes}</span></>}
+                <span style={{ color: "#64748b" }}>Started:</span><span>{new Date(activeReceivingSession.created_at).toLocaleString()}</span>
+              </div>
+            </div>
+            <div style={{ padding: "16px", background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "8px", marginBottom: "12px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
+              Barcode scanning will be enabled in the next step.
+            </div>
+            <button
+              onClick={handleCancelReceivingSession}
+              style={{ padding: "8px 16px", fontSize: "13px", cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px" }}
+            >Cancel Session</button>
+          </div>
+        )}
       </div>
 
       <div className="section-card">
