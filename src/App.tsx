@@ -91,6 +91,9 @@ type CartItem = {
   quantity: number;
   unit_price: number;
   line_total: number;
+  original_unit_price: number;
+  negotiation_reason: string | null;
+  negotiated_by: string | null;
 };
 
 type Sale = {
@@ -280,6 +283,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [businessError, setBusinessError] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [receiveQuantity, setReceiveQuantity] = useState("");
+  const [rapidReceiveInput, setRapidReceiveInput] = useState("");
+  const [rapidReceiveItems, setRapidReceiveItems] = useState<{ product_id: string; product_name: string; barcode: string; quantity: number }[]>([]);
+  const [rapidReceiveExceptions, setRapidReceiveExceptions] = useState<{ barcode: string; reason: string }[]>([]);
+  const [isPostingRapidReceive, setIsPostingRapidReceive] = useState(false);
   const [adjustProductId, setAdjustProductId] = useState("");
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
@@ -306,6 +313,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [productsTableOpen, setProductsTableOpen] = useState(false);
   const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [negotiatingProductId, setNegotiatingProductId] = useState<string | null>(null);
+  const [negotiatePrice, setNegotiatePrice] = useState("");
+  const [negotiateReason, setNegotiateReason] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
   const [cartProductId, setCartProductId] = useState("");
   const [cartQty, setCartQty] = useState("1");
@@ -1613,6 +1623,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         quantity: 1,
         unit_price: product.selling_price,
         line_total: product.selling_price,
+        original_unit_price: product.selling_price,
+        negotiation_reason: null,
+        negotiated_by: null,
       }]);
     }
     setMessage({ text: `${product.product_name} added to cart`, type: "success" });
@@ -1662,6 +1675,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         quantity: qty,
         unit_price: product.selling_price,
         line_total: qty * product.selling_price,
+        original_unit_price: product.selling_price,
+        negotiation_reason: null,
+        negotiated_by: null,
       }]);
     }
     setCartProductId("");
@@ -1872,6 +1888,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         quantity: c.quantity,
         unit_price: c.unit_price,
         line_total: c.line_total,
+        original_unit_price: c.original_unit_price,
+        negotiation_reason: c.negotiation_reason,
+        negotiated_by: c.negotiated_by,
       })));
 
     if (itemsErr) { console.error(itemsErr); await supabase.from("sales").delete().eq("id", sale.id); setIsCompletingSale(false); setMessage({ text: "Sale items failed. Sale was not saved.", type: "error" }); return; }
@@ -2599,6 +2618,76 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     await loadProducts();
   }
 
+  function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const code = rapidReceiveInput.trim();
+    setRapidReceiveInput("");
+    if (!code) return;
+
+    const product = products.find((p) => String(p.barcode || "").trim() === code);
+    if (!product) {
+      setRapidReceiveExceptions(prev => {
+        if (prev.some(ex => ex.barcode === code)) return prev;
+        return [...prev, { barcode: code, reason: "Unknown barcode" }];
+      });
+      setMessage({ text: `Barcode not found: ${code}`, type: "error" });
+      return;
+    }
+    if ((product.average_cost ?? 0) <= 0) {
+      setRapidReceiveExceptions(prev => {
+        if (prev.some(ex => ex.barcode === code)) return prev;
+        return [...prev, { barcode: code, reason: `${product.product_name} — no cost price configured` }];
+      });
+      setMessage({ text: `${product.product_name} has no cost price — add to exception list`, type: "error" });
+      return;
+    }
+
+    setRapidReceiveItems(prev => {
+      const existing = prev.find(i => i.product_id === product.product_id);
+      if (existing) return prev.map(i => i.product_id === product.product_id ? { ...i, quantity: i.quantity + 1 } : i);
+      return [...prev, { product_id: product.product_id, product_name: product.product_name, barcode: code, quantity: 1 }];
+    });
+    setMessage({ text: `${product.product_name} scanned (+1)`, type: "success" });
+  }
+
+  async function handlePostRapidReceive() {
+    if (rapidReceiveItems.length === 0 || isPostingRapidReceive) return;
+    setIsPostingRapidReceive(true);
+    try {
+      const notes: string[] = [];
+      for (const item of rapidReceiveItems) {
+        const product = products.find(p => p.product_id === item.product_id);
+        if (!product) continue;
+        const qtyBefore = product.quantity_on_hand;
+        const qtyAfter = qtyBefore + item.quantity;
+
+        await supabase.from("inventory").update({ quantity_on_hand: qtyAfter }).eq("id", product.inventory_id);
+        await supabase.from("inventory_transactions").insert({
+          business_id: product.business_id,
+          product_id: item.product_id,
+          transaction_type: "receiving",
+          quantity_change: item.quantity,
+          quantity_before: qtyBefore,
+          quantity_after: qtyAfter,
+          reason: "Rapid Receive",
+          created_by: activeCashierId || null,
+        });
+        notes.push(`${item.product_name}: +${item.quantity}`);
+      }
+      setRapidReceiveItems([]);
+      setRapidReceiveExceptions([]);
+      setMessage({ text: `Received: ${notes.join(", ")}`, type: "success" });
+      await loadProducts();
+      await loadTransactions();
+    } catch (err) {
+      console.error(err);
+      setMessage({ text: "Rapid receive failed unexpectedly", type: "error" });
+    } finally {
+      setIsPostingRapidReceive(false);
+    }
+  }
+
   async function handleReceive(e: React.FormEvent) {
     e.preventDefault();
     setMessage(null);
@@ -3009,23 +3098,209 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <th>Qty</th>
                   <th>Unit Price</th>
                   <th>Line Total</th>
-                  <th></th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {cart.map((item) => (
-                  <tr key={item.product_id}>
+                {cart.map((item) => {
+                  const product = products.find(p => p.product_id === item.product_id);
+                  const isNegotiating = negotiatingProductId === item.product_id;
+                  const wasNegotiated = item.unit_price !== item.original_unit_price;
+                  const avgCost = product?.average_cost ?? 0;
+                  const hasCost = avgCost > 0;
+                  const overheadPct = product?.estimated_overhead_pct ?? 0;
+                  const breakEven = avgCost * (1 + overheadPct / 100);
+                  const minMarginPct = product?.minimum_margin_percent;
+                  const targetMarginPct = product?.target_margin_percent;
+                  const minSafe = minMarginPct != null ? breakEven * (1 + minMarginPct / 100) : breakEven;
+                  const targetPrice = targetMarginPct != null ? breakEven * (1 + targetMarginPct / 100) : item.original_unit_price;
+                  return (
+                  <React.Fragment key={item.product_id}>
+                  <tr>
                     <td>{item.product_name}</td>
                     <td>{item.quantity}</td>
-                    <td>${item.unit_price.toFixed(2)}</td>
-                    <td>${item.line_total.toFixed(2)}</td>
                     <td>
-                      <button onClick={() => handleRemoveFromCart(item.product_id)} style={{ padding: "2px 8px" }}>
-                        ✕
+                      ${item.unit_price.toFixed(2)}
+                      {wasNegotiated && (() => {
+                        const diff = item.unit_price - item.original_unit_price;
+                        const diffColor = diff < 0 ? "#dc2626" : diff > 0 ? "#15803d" : "#64748b";
+                        const diffLabel = diff < 0 ? `-$${Math.abs(diff).toFixed(2)}` : diff > 0 ? `+$${diff.toFixed(2)}` : "$0.00";
+                        return (
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>
+                          <span style={{ textDecoration: "line-through" }}>${item.original_unit_price.toFixed(2)}</span>
+                          {" "}
+                          <span style={{ color: diffColor }}>{diffLabel}</span>
+                        </div>
+                        );
+                      })()}
+                    </td>
+                    <td>${item.line_total.toFixed(2)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      {sellingPolicy !== "fixed_pricing" && (
+                        <button
+                          onClick={() => {
+                            if (isNegotiating) { setNegotiatingProductId(null); setNegotiatePrice(""); setNegotiateReason(""); }
+                            else { setNegotiatingProductId(item.product_id); setNegotiatePrice(String(item.unit_price)); setNegotiateReason(item.negotiation_reason ?? ""); }
+                          }}
+                          title="Negotiate price"
+                          style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: 500, cursor: "pointer", background: isNegotiating ? "#1d4ed8" : wasNegotiated ? "#dbeafe" : "none", color: isNegotiating ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "6px", transition: "background 0.15s" }}
+                          onMouseEnter={(e) => { if (!isNegotiating) e.currentTarget.style.background = "#eff6ff"; }}
+                          onMouseLeave={(e) => { if (!isNegotiating) e.currentTarget.style.background = wasNegotiated ? "#dbeafe" : "none"; }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                          {wasNegotiated ? "Edit Negotiation" : "Negotiate"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveFromCart(item.product_id)}
+                        title="Remove from cart"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px", transition: "background 0.15s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        Remove
                       </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  {isNegotiating && (() => {
+                    const np = Number(negotiatePrice) || 0;
+                    const expectedProfit = hasCost ? np - breakEven : null;
+                    const marginPct = hasCost && np > 0 ? ((np - breakEven) / np) * 100 : null;
+                    const statusColor = !hasCost ? "#64748b" : np >= targetPrice ? "#15803d" : np >= minSafe ? "#b45309" : np >= breakEven ? "#ea580c" : "#dc2626";
+                    const statusBg = !hasCost ? "#f8fafc" : np >= targetPrice ? "#f0fdf4" : np >= minSafe ? "#fffbeb" : np >= breakEven ? "#fff7ed" : "#fef2f2";
+                    const statusBorder = !hasCost ? "#e2e8f0" : np >= targetPrice ? "#86efac" : np >= minSafe ? "#fde68a" : np >= breakEven ? "#fdba74" : "#fecaca";
+                    const statusLabel = !hasCost ? "No cost data" : np >= targetPrice ? "Target Achieved" : np >= minSafe ? "Safe Margin" : np >= breakEven ? "Low Margin" : "Below Cost";
+                    return (
+                    <tr>
+                      <td colSpan={5} style={{ padding: 0, border: "none" }}>
+                        <div style={{ padding: "16px 20px", background: "#fff", borderTop: "2px solid #e2e8f0", borderBottom: "2px solid #e2e8f0" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                            <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>Pricing Coach — {item.product_name}</div>
+                            <button
+                              onClick={() => { setNegotiatingProductId(null); setNegotiatePrice(""); setNegotiateReason(""); }}
+                              style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#64748b" }}
+                            >Close</button>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                            <div>
+                              <label style={{ fontSize: "13px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "6px" }}>Negotiated Unit Price</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={negotiatePrice}
+                                onChange={(e) => setNegotiatePrice(e.target.value)}
+                                autoFocus
+                                style={{ width: "100%", padding: "12px 14px", fontSize: "20px", fontWeight: 700, border: `2px solid ${statusBorder}`, borderRadius: "8px", background: statusBg, color: statusColor, outline: "none", boxSizing: "border-box" }}
+                              />
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", padding: "8px 12px", background: statusBg, border: `1px solid ${statusBorder}`, borderRadius: "6px" }}>
+                                <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
+                                <span style={{ fontSize: "13px", fontWeight: 600, color: statusColor }}>{statusLabel}</span>
+                                {hasCost && expectedProfit != null && marginPct != null && (
+                                  <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>
+                                    Profit ${expectedProfit.toFixed(2)} &middot; Margin {marginPct.toFixed(1)}%
+                                  </span>
+                                )}
+                              </div>
+
+                              <div style={{ marginTop: "12px" }}>
+                                <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>Reason</label>
+                                <select
+                                  value={["Bulk discount", "Loyal customer", "Price match", "Damaged packaging", "Clearance"].includes(negotiateReason) ? negotiateReason : negotiateReason ? "__custom__" : ""}
+                                  onChange={(e) => { if (e.target.value === "__custom__") { setNegotiateReason(""); } else { setNegotiateReason(e.target.value); } }}
+                                  style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", marginBottom: "4px", background: "#fff" }}
+                                >
+                                  <option value="">Select a reason...</option>
+                                  <option value="Bulk discount">Bulk discount</option>
+                                  <option value="Loyal customer">Loyal customer</option>
+                                  <option value="Price match">Price match</option>
+                                  <option value="Damaged packaging">Damaged packaging</option>
+                                  <option value="Clearance">Clearance</option>
+                                  <option value="__custom__">Other (type below)</option>
+                                </select>
+                                {!["Bulk discount", "Loyal customer", "Price match", "Damaged packaging", "Clearance", ""].includes(negotiateReason) && (
+                                  <input
+                                    type="text"
+                                    placeholder="Enter custom reason"
+                                    value={negotiateReason}
+                                    onChange={(e) => setNegotiateReason(e.target.value)}
+                                    style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                              <div style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>Price Reference</div>
+                              {!hasCost && (
+                                <div style={{ padding: "8px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", marginBottom: "8px", fontSize: "12px", color: "#92400e" }}>
+                                  Cost price not configured. Pricing guidance is unavailable.
+                                </div>
+                              )}
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "6px 16px", fontSize: "13px", color: "#475569" }}>
+                                <div>Listed price</div><div style={{ textAlign: "right", fontWeight: 600, color: "#0f172a" }}>${item.original_unit_price.toFixed(2)}</div>
+                                <div>Average cost</div><div style={{ textAlign: "right", fontWeight: 600 }}>{hasCost ? `$${avgCost.toFixed(2)}` : "Not set"}</div>
+                                <div>Overhead</div><div style={{ textAlign: "right", fontWeight: 600 }}>{overheadPct}%</div>
+                                {hasCost && <>
+                                  <div>Break-even</div><div style={{ textAlign: "right", fontWeight: 600 }}>${breakEven.toFixed(2)}</div>
+                                  <div>Minimum safe</div><div style={{ textAlign: "right", fontWeight: 600 }}>${minSafe.toFixed(2)}</div>
+                                  <div>Target price</div><div style={{ textAlign: "right", fontWeight: 600 }}>${targetPrice.toFixed(2)}</div>
+                                </>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <button
+                              onClick={() => {
+                                const price = Math.max(0, Number(negotiatePrice) || 0);
+                                const reason = negotiateReason.trim() || null;
+                                const isNeg = price !== item.original_unit_price;
+                                setCart(cart.map(c => c.product_id === item.product_id ? {
+                                  ...c,
+                                  unit_price: price,
+                                  line_total: c.quantity * price,
+                                  negotiation_reason: isNeg ? reason : null,
+                                  negotiated_by: isNeg ? (activeCashierId || null) : null,
+                                } : c));
+                                setNegotiatingProductId(null);
+                                setNegotiatePrice("");
+                                setNegotiateReason("");
+                              }}
+                              style={{ flex: 1, padding: "10px 16px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px" }}
+                            >Apply Price</button>
+                            <button
+                              onClick={() => {
+                                setCart(cart.map(c => c.product_id === item.product_id ? {
+                                  ...c,
+                                  unit_price: c.original_unit_price,
+                                  line_total: c.quantity * c.original_unit_price,
+                                  negotiation_reason: null,
+                                  negotiated_by: null,
+                                } : c));
+                                setNegotiatingProductId(null);
+                                setNegotiatePrice("");
+                                setNegotiateReason("");
+                              }}
+                              style={{ padding: "10px 16px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px" }}
+                            >Reset to Listed</button>
+                            <button
+                              onClick={() => { setNegotiatingProductId(null); setNegotiatePrice(""); setNegotiateReason(""); }}
+                              style={{ padding: "10px 16px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px" }}
+                            >Cancel</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })()}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
               <tfoot>
                 {(() => {
@@ -3260,6 +3535,98 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <div className="page-header">
         <h2 className="page-title">Inventory</h2>
         <p className="page-subtitle">Manage products, stock levels, reorder points, and product status</p>
+      </div>
+
+      <div className="section-card">
+        <h3 className="section-card-title">Rapid Receive</h3>
+        <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 10px" }}>Scan barcodes to build a receiving list, then post all at once.</p>
+        <input
+          type="text"
+          autoFocus={activeTab === "inventory"}
+          placeholder="Scan barcode and press Enter"
+          value={rapidReceiveInput}
+          onChange={(e) => setRapidReceiveInput(e.target.value)}
+          onKeyDown={handleRapidReceiveScan}
+          style={{ width: "100%", padding: "10px 14px", fontSize: "15px", border: "2px solid #93c5fd", borderRadius: "8px", marginBottom: "12px", boxSizing: "border-box", outline: "none" }}
+        />
+
+        {rapidReceiveItems.length > 0 && (
+          <div style={{ marginBottom: "12px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "#334155", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>
+              Scanned Items ({rapidReceiveItems.reduce((s, i) => s + i.quantity, 0)} total)
+            </div>
+            <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+              <thead>
+                <tr style={{ background: "#f8fafc" }}>
+                  <th style={{ textAlign: "left" }}>Product</th>
+                  <th style={{ textAlign: "left" }}>Barcode</th>
+                  <th style={{ textAlign: "right" }}>Qty</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rapidReceiveItems.map(item => (
+                  <tr key={item.product_id}>
+                    <td>{item.product_name}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{item.barcode}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                        <button
+                          onClick={() => setRapidReceiveItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i))}
+                          style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        >-</button>
+                        <span style={{ minWidth: "24px", textAlign: "center", fontWeight: 600 }}>{item.quantity}</span>
+                        <button
+                          onClick={() => setRapidReceiveItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity + 1 } : i))}
+                          style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        >+</button>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        onClick={() => setRapidReceiveItems(prev => prev.filter(i => i.product_id !== item.product_id))}
+                        title="Remove"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", fontSize: "11px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {rapidReceiveExceptions.length > 0 && (
+          <div style={{ marginBottom: "12px", padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "#92400e", marginBottom: "4px" }}>Exceptions ({rapidReceiveExceptions.length})</div>
+            {rapidReceiveExceptions.map((ex, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "#92400e", padding: "2px 0" }}>
+                <span><code style={{ background: "#fef3c7", padding: "1px 4px", borderRadius: "3px" }}>{ex.barcode}</code> — {ex.reason}</span>
+                <button
+                  onClick={() => setRapidReceiveExceptions(prev => prev.filter((_, j) => j !== i))}
+                  style={{ padding: "2px 6px", fontSize: "10px", cursor: "pointer", background: "none", border: "1px solid #fde68a", borderRadius: "3px", color: "#92400e" }}
+                >Dismiss</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rapidReceiveItems.length > 0 && (
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={handlePostRapidReceive}
+              disabled={isPostingRapidReceive}
+              style={{ flex: 1, padding: "10px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isPostingRapidReceive ? 0.6 : 1 }}
+            >{isPostingRapidReceive ? "Posting..." : `Post Receiving (${rapidReceiveItems.reduce((s, i) => s + i.quantity, 0)} items)`}</button>
+            <button
+              onClick={() => { setRapidReceiveItems([]); setRapidReceiveExceptions([]); }}
+              style={{ padding: "10px 16px", fontSize: "14px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px" }}
+            >Clear All</button>
+          </div>
+        )}
       </div>
 
       <div className="section-card">
