@@ -301,6 +301,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newSessionNotes, setNewSessionNotes] = useState("");
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isPostingSession, setIsPostingSession] = useState(false);
+  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null }[]>([]);
+  const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
+  const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
   const [adjustProductId, setAdjustProductId] = useState("");
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
@@ -604,6 +607,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadEmployees();
     loadStockCounts();
     loadActiveReceivingSession();
+    loadSessionHistory();
   }, []);
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
@@ -2635,6 +2639,30 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     await loadProducts();
   }
 
+  async function loadSessionHistory() {
+    if (!businessId) return;
+    const { data, error } = await supabase
+      .from("receiving_sessions")
+      .select("id, status, supplier_id, created_at, received_date, notes")
+      .eq("business_id", businessId)
+      .in("status", ["completed", "cancelled"])
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) { console.error("[SessionHistory] Load error:", error); return; }
+    setSessionHistory((data ?? []) as typeof sessionHistory);
+  }
+
+  async function loadSessionHistoryItems(sessionId: string) {
+    if (sessionHistoryItems[sessionId]) { return; }
+    const { data, error } = await supabase
+      .from("receiving_items")
+      .select("id, product_id, quantity_received, unit_cost, total_cost")
+      .eq("receiving_session_id", sessionId)
+      .order("created_at", { ascending: true });
+    if (error) { console.error("[SessionHistory] Load items error:", error); return; }
+    setSessionHistoryItems(prev => ({ ...prev, [sessionId]: (data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[] }));
+  }
+
   async function loadActiveReceivingSession() {
     if (!businessId) return;
     const { data, error } = await supabase
@@ -2708,6 +2736,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setSessionItems([]);
     setSessionExceptions([]);
     setMessage({ text: "Receiving session cancelled", type: "success" });
+    await loadSessionHistory();
   }
 
   function playScanBeep(success: boolean) {
@@ -2879,6 +2908,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setMessage({ text: `Session posted: ${notes.join(", ")}`, type: "success" });
       await loadProducts();
       await loadTransactions();
+      await loadSessionHistory();
     } catch (err) {
       console.error("[ReceivingSession] Post: unexpected error", err);
       setMessage({ text: "Post receiving failed unexpectedly", type: "error" });
@@ -3990,6 +4020,87 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </div>
         )}
       </div>
+
+      {sessionHistory.length > 0 && (
+      <div className="section-card">
+        <h3 className="section-card-title">Receiving Session History</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {sessionHistory.map(session => {
+            const supplier = session.supplier_id ? suppliers.find(s => s.id === session.supplier_id) : null;
+            const items = sessionHistoryItems[session.id];
+            const isExpanded = expandedHistorySessionId === session.id;
+            const totalProducts = items?.length ?? null;
+            const totalUnits = items ? items.reduce((s, i) => s + Number(i.quantity_received), 0) : null;
+            const totalValue = items ? items.reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0) : null;
+            const statusColor = session.status === "completed" ? "#15803d" : "#6b7280";
+            const statusBg = session.status === "completed" ? "#dcfce7" : "#f1f5f9";
+            return (
+            <div key={session.id} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px", background: "#f8fafc", cursor: "pointer" }}
+                onClick={async () => {
+                  if (isExpanded) { setExpandedHistorySessionId(null); return; }
+                  setExpandedHistorySessionId(session.id);
+                  await loadSessionHistoryItems(session.id);
+                }}
+              >
+                <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#64748b" }}>{session.id.slice(0, 8)}</span>
+                <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: statusBg, color: statusColor }}>{session.status}</span>
+                <span style={{ fontSize: "12px", color: "#334155" }}>{supplier?.name ?? "No supplier"}</span>
+                {session.notes && <span style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic" }}>{session.notes}</span>}
+                <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>{new Date(session.created_at).toLocaleDateString()}</span>
+                {totalProducts != null && <span style={{ fontSize: "12px", color: "#334155" }}>{totalProducts} products · {totalUnits} units</span>}
+                {totalValue != null && <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>${totalValue.toFixed(2)}</span>}
+                <span style={{ fontSize: "12px", color: "#1d4ed8" }}>{isExpanded ? "▲ Hide" : "▼ Details"}</span>
+              </div>
+              {isExpanded && (
+                <div style={{ padding: "12px 14px", borderTop: "1px solid #e2e8f0" }}>
+                  {!items ? (
+                    <p style={{ fontSize: "13px", color: "#64748b" }}>Loading...</p>
+                  ) : items.length === 0 ? (
+                    <p style={{ fontSize: "13px", color: "#64748b" }}>No items in this session.</p>
+                  ) : (
+                    <table border={1} cellPadding={7} style={{ width: "100%", fontSize: "12px" }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc" }}>
+                          <th style={{ textAlign: "left" }}>Product</th>
+                          <th style={{ textAlign: "left" }}>Barcode</th>
+                          <th style={{ textAlign: "right" }}>Unit Cost</th>
+                          <th style={{ textAlign: "right" }}>Qty</th>
+                          <th style={{ textAlign: "right" }}>Total Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map(item => {
+                          const prod = products.find(p => p.product_id === item.product_id);
+                          const lineTotal = item.total_cost != null ? Number(item.total_cost) : Number(item.unit_cost) * Number(item.quantity_received);
+                          return (
+                          <tr key={item.id}>
+                            <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
+                            <td style={{ fontFamily: "monospace" }}>{prod?.barcode ?? "—"}</td>
+                            <td style={{ textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
+                            <td style={{ textAlign: "right" }}>{item.quantity_received}</td>
+                            <td style={{ textAlign: "right", fontWeight: 500 }}>${lineTotal.toFixed(2)}</td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: "#f8fafc", fontWeight: 600 }}>
+                          <td colSpan={3} style={{ textAlign: "right" }}>Total</td>
+                          <td style={{ textAlign: "right" }}>{items.reduce((s, i) => s + Number(i.quantity_received), 0)}</td>
+                          <td style={{ textAlign: "right" }}>${totalValue!.toFixed(2)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+            );
+          })}
+        </div>
+      </div>
+      )}
 
       <div className="section-card">
         <h3 className="section-card-title">Rapid Receive</h3>
