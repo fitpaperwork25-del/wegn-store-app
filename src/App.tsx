@@ -129,6 +129,7 @@ type ProductStock = {
   reorder_level: number | null;
   status: string;
   average_cost: number;
+  cost_price: number | null;
   estimated_overhead_pct: number;
   target_margin_percent: number | null;
   minimum_margin_percent: number | null;
@@ -2414,6 +2415,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           reorder_level,
           status,
           average_cost,
+          cost_price,
           estimated_overhead_pct,
           target_margin_percent,
           minimum_margin_percent,
@@ -2440,6 +2442,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         reorder_level: item.products?.reorder_level ?? null,
         status: item.products?.status,
         average_cost: item.products?.average_cost ?? 0,
+        cost_price: item.products?.cost_price ?? null,
         estimated_overhead_pct: item.products?.estimated_overhead_pct ?? 0,
         target_margin_percent: item.products?.target_margin_percent ?? null,
         minimum_margin_percent: item.products?.minimum_margin_percent ?? null,
@@ -2760,7 +2763,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       }
     } else {
       const tempId = `temp-${Date.now()}`;
-      setSessionItems(prev => [...prev, { id: tempId, product_id: product.product_id, quantity_received: 1, unit_cost: product.average_cost ?? 0 }]);
+      const itemCost = product.cost_price ?? 0;
+      setSessionItems(prev => [...prev, { id: tempId, product_id: product.product_id, quantity_received: 1, unit_cost: itemCost }]);
       setLastScannedProduct({ name: product.product_name, qty: 1 });
       lastScannedTimerRef.current = setTimeout(() => setLastScannedProduct(null), 2000);
       setMessage({ text: `${product.product_name} scanned (+1)`, type: "success" });
@@ -2769,7 +2773,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         receiving_session_id: activeReceivingSession.id,
         product_id: product.product_id,
         quantity_received: 1,
-        unit_cost: product.average_cost ?? 0,
+        unit_cost: itemCost,
       }).select("id, product_id, quantity_received, unit_cost").single();
       if (error) {
         console.error("[ReceivingSession] Insert item error:", error);
@@ -3871,16 +3875,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
             {sessionItems.length > 0 && (
               <div style={{ marginBottom: "12px" }}>
-                <div style={{ display: "flex", gap: "16px", alignItems: "center", fontSize: "13px", marginBottom: "8px" }}>
-                  <span style={{ fontWeight: 600, color: "#334155" }}>Products: <span style={{ color: "#1d4ed8" }}>{sessionItems.length}</span></span>
-                  <span style={{ fontWeight: 600, color: "#334155" }}>Units: <span style={{ color: "#1d4ed8" }}>{sessionItems.reduce((s, i) => s + i.quantity_received, 0)}</span></span>
-                </div>
+                <div style={{ overflowX: "auto" }}>
                 <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
                   <thead>
                     <tr style={{ background: "#f8fafc" }}>
                       <th style={{ textAlign: "left" }}>Product</th>
                       <th style={{ textAlign: "left" }}>Barcode</th>
+                      <th style={{ textAlign: "right" }}>Unit Cost</th>
                       <th style={{ textAlign: "right" }}>Qty</th>
+                      <th style={{ textAlign: "right" }}>Total Cost</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -3888,10 +3891,25 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     {sessionItems.map(item => {
                       const prod = products.find(p => p.product_id === item.product_id);
                       const isHighlighted = highlightedProductId === item.product_id;
+                      const lineTotal = item.unit_cost * item.quantity_received;
                       return (
                       <tr key={item.id} style={{ background: isHighlighted ? "#dcfce7" : undefined, transition: "background 0.3s ease-out" }}>
                         <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
                         <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{prod?.barcode ?? "—"}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.unit_cost}
+                            onChange={(e) => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              setSessionItems(prev => prev.map(i => i.id === item.id ? { ...i, unit_cost: val } : i));
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: "80px", padding: "4px 6px", fontSize: "13px", textAlign: "right", border: "1px solid #cbd5e1", borderRadius: "4px" }}
+                          />
+                        </td>
                         <td style={{ textAlign: "right" }}>
                           <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                             <button onClick={() => handleSessionItemQty(item.id, -1)} style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>-</button>
@@ -3899,6 +3917,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             <button onClick={() => handleSessionItemQty(item.id, 1)} style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
                           </div>
                         </td>
+                        <td style={{ textAlign: "right", fontWeight: 500 }}>${lineTotal.toFixed(2)}</td>
                         <td style={{ textAlign: "center" }}>
                           <button onClick={() => handleSessionItemRemove(item.id)} title="Remove" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", fontSize: "11px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
@@ -3910,6 +3929,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     })}
                   </tbody>
                 </table>
+                </div>
+                <div style={{ display: "flex", gap: "20px", alignItems: "center", fontSize: "13px", marginTop: "10px", padding: "10px 14px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                  <span style={{ fontWeight: 600, color: "#334155" }}>Products: <span style={{ color: "#1d4ed8" }}>{sessionItems.length}</span></span>
+                  <span style={{ fontWeight: 600, color: "#334155" }}>Units: <span style={{ color: "#1d4ed8" }}>{sessionItems.reduce((s, i) => s + i.quantity_received, 0)}</span></span>
+                  <span style={{ fontWeight: 600, color: "#334155", marginLeft: "auto" }}>Estimated Value: <span style={{ color: "#15803d" }}>${sessionItems.reduce((s, i) => s + i.unit_cost * i.quantity_received, 0).toFixed(2)}</span></span>
+                </div>
               </div>
             )}
 
