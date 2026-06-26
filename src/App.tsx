@@ -3218,7 +3218,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           quantity_after: qtyAfter,
           reason: "Receiving Session",
           reference_id: activeReceivingSession.id,
-          created_by: activeCashierId || null,
+          created_by: null, // profiles table is empty; employee context tracked via reference_id
         });
         if (txError) {
           console.error("[ReceivingSession] Post: transaction insert failed", { product_id: item.product_id, error: txError });
@@ -3469,7 +3469,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           quantity_before: qtyBefore,
           quantity_after: qtyAfter,
           reason: "Rapid Receive",
-          created_by: activeCashierId || null,
+          created_by: null, // profiles table is empty; employee context not applicable here
         });
         if (txError) {
           console.error("[RapidReceive] Transaction insert failed:", { product_id: item.product_id, business_id: product.business_id, quantity: item.quantity, qtyBefore, qtyAfter, error: txError });
