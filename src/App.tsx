@@ -304,10 +304,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [smartReceiveContinued, setSmartReceiveContinued] = useState(false);
   const [smartReceiveSimpleOpen, setSmartReceiveSimpleOpen] = useState(false);
   const [smartReceiveFile, setSmartReceiveFile] = useState<File | null>(null);
-  const [smartReceiveDragging, setSmartReceiveDragging] = useState(false);
   const [smartReceiveProcessing, setSmartReceiveProcessing] = useState(false);
-  const smartReceiveFileInputRef = useRef<HTMLInputElement>(null);
-  const smartReceiveImageInputRef = useRef<HTMLInputElement>(null);
+  const [smartReceiveLoading, setSmartReceiveLoading] = useState(false);
+  const [smartReceiveResult, setSmartReceiveResult] = useState<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[] } | null>(null);
   const [isPostingSession, setIsPostingSession] = useState(false);
   const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
@@ -3092,6 +3091,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     } finally {
       setIsPostingSession(false);
     }
+  }
+
+  async function processSmartReceiveInvoice(_file: File): Promise<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[] }> {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return {
+      supplier: "Sysco",
+      invoiceNumber: "INV-100245",
+      invoiceDate: "2026-06-25",
+      items: [
+        { description: "Pepsi 20 oz", quantity: 24, unitCost: 1.12 },
+        { description: "Coca-Cola 20 oz", quantity: 24, unitCost: 1.10 },
+      ],
+    };
   }
 
   function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -8480,36 +8492,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end settings */}
 
       {/* Smart Receive — Receive Inventory Modal */}
+      {/* Backdrop: z-index 1099, sibling of panel */}
       {smartReceiveSimpleOpen && (
         <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); } }}
-        >
-          <div style={{ background: "#fff", borderRadius: "12px", padding: "28px 28px 24px", width: "460px", maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
-            {/* Hidden file inputs — inside modal so programmatic .click() is always trusted */}
-            <input
-              ref={smartReceiveFileInputRef}
-              type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) { setSmartReceiveFile(f); setSmartReceiveProcessing(false); }
-                e.target.value = "";
-              }}
-            />
-            <input
-              ref={smartReceiveImageInputRef}
-              type="file"
-              accept=".jpg,.jpeg,.png,.heic,.heif"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) { setSmartReceiveFile(f); setSmartReceiveProcessing(false); }
-                e.target.value = "";
-              }}
-            />
-
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1099 }}
+          onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); }}
+        />
+      )}
+      {/* Panel: directly positioned via transform — no full-screen wrapper, no pointerEvents:none ancestor */}
+      {smartReceiveSimpleOpen && (
+        <div
+          style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 1100, background: "#fff", borderRadius: "12px", padding: "28px 28px 24px", width: "460px", maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)", pointerEvents: "auto" }}>
             <h2 style={{ margin: "0 0 4px", fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>⭐ Smart Receive</h2>
             <p style={{ fontSize: "14px", color: "#475569", margin: "0 0 18px", lineHeight: 1.5 }}>
               Receive inventory from a supplier invoice.
@@ -8517,54 +8510,63 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
             {!smartReceiveProcessing ? (
               <>
-                {/* Drag-and-drop zone */}
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setSmartReceiveDragging(true); }}
-                  onDragLeave={() => setSmartReceiveDragging(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setSmartReceiveDragging(false);
-                    const f = e.dataTransfer.files[0];
-                    if (f) { setSmartReceiveFile(f); setSmartReceiveProcessing(false); }
-                  }}
-                  onClick={() => smartReceiveFileInputRef.current?.click()}
-                  style={{ border: `2px dashed ${smartReceiveDragging ? "#7c3aed" : smartReceiveFile ? "#15803d" : "#cbd5e1"}`, borderRadius: "10px", padding: "24px 16px", textAlign: "center", cursor: "pointer", background: smartReceiveDragging ? "#f5f3ff" : smartReceiveFile ? "#f0fdf4" : "#f8fafc", marginBottom: "12px" }}
-                >
-                  {smartReceiveFile ? (
-                    <>
-                      <div style={{ fontSize: "24px", marginBottom: "6px" }}>✅</div>
-                      <div style={{ fontWeight: 600, fontSize: "14px", color: "#15803d" }}>{smartReceiveFile.name}</div>
-                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                        {smartReceiveFile.size < 1024 * 1024
-                          ? `${(smartReceiveFile.size / 1024).toFixed(1)} KB`
-                          : `${(smartReceiveFile.size / (1024 * 1024)).toFixed(1)} MB`}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: "28px", marginBottom: "6px" }}>📄</div>
-                      <div style={{ fontSize: "14px", fontWeight: 600, color: "#334155" }}>Drop invoice here</div>
-                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>PDF, JPG, PNG, HEIC</div>
-                    </>
-                  )}
+                {/* File selection status */}
+                {smartReceiveFile ? (
+                  <div style={{ marginBottom: "14px", padding: "10px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px", fontSize: "13px", color: "#15803d" }}>
+                    ✅ <strong>{smartReceiveFile.name}</strong> —{" "}
+                    {smartReceiveFile.size < 1024 * 1024
+                      ? `${(smartReceiveFile.size / 1024).toFixed(1)} KB`
+                      : `${(smartReceiveFile.size / (1024 * 1024)).toFixed(1)} MB`}
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: "14px", padding: "20px", background: "#f8fafc", border: "2px dashed #cbd5e1", borderRadius: "8px", textAlign: "center", fontSize: "13px", color: "#64748b" }}>
+                    No file selected
+                  </div>
+                )}
+
+                {/* Upload Invoice — transparent input overlays the button, direct click activates picker */}
+                <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                  <div style={{ flex: 1, position: "relative" }}>
+                    <div style={{ padding: "10px", fontSize: "13px", fontWeight: 600, background: "#7c3aed", color: "#fff", border: "none", borderRadius: "8px", textAlign: "center", userSelect: "none" }}>
+                      📄 Upload Invoice
+                    </div>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.heic,image/*,application/pdf"
+                      title=""
+                      onChange={(e) => {
+                        console.log("[SmartReceive] Upload Invoice onChange:", e.target.files?.[0]?.name);
+                        const f = e.target.files?.[0];
+                        if (f) setSmartReceiveFile(f);
+                        e.target.value = "";
+                      }}
+                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%" }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, position: "relative" }}>
+                    <div style={{ padding: "10px", fontSize: "13px", fontWeight: 600, background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: "8px", textAlign: "center", userSelect: "none" }}>
+                      📋 Upload Packing Slip
+                    </div>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.heic,image/*,application/pdf"
+                      title=""
+                      onChange={(e) => {
+                        console.log("[SmartReceive] Upload Packing Slip onChange:", e.target.files?.[0]?.name);
+                        const f = e.target.files?.[0];
+                        if (f) setSmartReceiveFile(f);
+                        e.target.value = "";
+                      }}
+                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%" }}
+                    />
+                  </div>
                 </div>
 
-                {/* Upload buttons */}
-                <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+                <div style={{ marginBottom: "16px" }}>
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); smartReceiveFileInputRef.current?.click(); }}
-                    style={{ flex: 1, padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: "8px" }}
-                  >📄 Upload PDF</button>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); smartReceiveImageInputRef.current?.click(); }}
-                    style={{ flex: 1, padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: "8px" }}
-                  >🖼 Upload Image</button>
-                  <button
-                    type="button"
-                    onClick={() => setMessage({ text: "Camera capture coming soon.", type: "success" })}
-                    style={{ flex: 1, padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f8fafc", color: "#64748b", border: "1px dashed #cbd5e1", borderRadius: "8px" }}
+                    onClick={() => { console.log("[SmartReceive] Take Photo clicked"); alert("Camera capture coming soon."); }}
+                    style={{ width: "100%", padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f8fafc", color: "#64748b", border: "1px dashed #cbd5e1", borderRadius: "8px" }}
                   >📷 Take Photo</button>
                 </div>
 
@@ -8576,33 +8578,70 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   >Cancel</button>
                   <button
                     type="button"
-                    onClick={() => setSmartReceiveProcessing(true)}
+                    onClick={async () => {
+                      if (!smartReceiveFile) return;
+                      setSmartReceiveProcessing(true);
+                      setSmartReceiveLoading(true);
+                      setSmartReceiveResult(null);
+                      const result = await processSmartReceiveInvoice(smartReceiveFile);
+                      setSmartReceiveResult(result);
+                      setSmartReceiveLoading(false);
+                    }}
                     disabled={!smartReceiveFile}
                     style={{ padding: "9px 18px", fontSize: "13px", fontWeight: 600, cursor: smartReceiveFile ? "pointer" : "not-allowed", background: smartReceiveFile ? "#7c3aed" : "#e2e8f0", color: smartReceiveFile ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px" }}
                   >Continue</button>
                 </div>
               </>
-            ) : (
+            ) : smartReceiveLoading ? (
+              <div style={{ textAlign: "center", padding: "32px 16px" }}>
+                <div style={{ fontSize: "32px", marginBottom: "12px" }}>⏳</div>
+                <div style={{ fontSize: "15px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>Reading invoice...</div>
+                <div style={{ fontSize: "13px", color: "#64748b" }}>{smartReceiveFile?.name}</div>
+              </div>
+            ) : smartReceiveResult ? (
               <>
-                <div style={{ padding: "16px", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", color: "#5b21b6", lineHeight: 1.6 }}>
-                  <div style={{ fontWeight: 700, marginBottom: "4px" }}>File ready: {smartReceiveFile?.name}</div>
-                  OCR processing will be implemented in Phase 1 Step 3.
+                <div style={{ marginBottom: "14px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: "13px", padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", marginBottom: "10px" }}>
+                    <span style={{ color: "#64748b" }}>Supplier</span><span style={{ fontWeight: 600 }}>{smartReceiveResult.supplier}</span>
+                    <span style={{ color: "#64748b" }}>Invoice #</span><span style={{ fontWeight: 600 }}>{smartReceiveResult.invoiceNumber}</span>
+                    <span style={{ color: "#64748b" }}>Date</span><span>{smartReceiveResult.invoiceDate}</span>
+                  </div>
+                  <table border={1} cellPadding={7} style={{ width: "100%", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: "#f1f5f9" }}>
+                        <th style={{ textAlign: "left" }}>Description</th>
+                        <th style={{ textAlign: "right" }}>Qty</th>
+                        <th style={{ textAlign: "right" }}>Unit Cost</th>
+                        <th style={{ textAlign: "right" }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {smartReceiveResult.items.map((item, i) => (
+                        <tr key={i}>
+                          <td>{item.description}</td>
+                          <td style={{ textAlign: "right" }}>{item.quantity}</td>
+                          <td style={{ textAlign: "right" }}>${item.unitCost.toFixed(2)}</td>
+                          <td style={{ textAlign: "right", fontWeight: 500 }}>${(item.quantity * item.unitCost).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: "#f8fafc", fontWeight: 700 }}>
+                        <td colSpan={3} style={{ textAlign: "right" }}>Total</td>
+                        <td style={{ textAlign: "right" }}>${smartReceiveResult.items.reduce((s, i) => s + i.quantity * i.unitCost, 0).toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px", fontStyle: "italic" }}>
+                    Review before posting. Product matching and session creation coming in Phase 2.
+                  </p>
                 </div>
                 <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                  <button
-                    type="button"
-                    onClick={() => setSmartReceiveProcessing(false)}
-                    style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
-                  >Back</button>
-                  <button
-                    type="button"
-                    onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); }}
-                    style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
-                  >Close</button>
+                  <button type="button" onClick={() => { setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); }} style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}>Back</button>
+                  <button type="button" onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); }} style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}>Close</button>
                 </div>
               </>
-            )}
-          </div>
+            ) : null}
         </div>
       )}
 
