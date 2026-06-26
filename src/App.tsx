@@ -306,7 +306,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [smartReceiveFile, setSmartReceiveFile] = useState<File | null>(null);
   const [smartReceiveProcessing, setSmartReceiveProcessing] = useState(false);
   const [smartReceiveLoading, setSmartReceiveLoading] = useState(false);
-  const [smartReceiveResult, setSmartReceiveResult] = useState<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[] } | null>(null);
+  const [smartReceiveResult, setSmartReceiveResult] = useState<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[]; freight: number; additionalCost: number; invoiceTotal: number } | null>(null);
   const [isPostingSession, setIsPostingSession] = useState(false);
   const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
@@ -3093,17 +3093,27 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     }
   }
 
-  async function processSmartReceiveInvoice(_file: File): Promise<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[] }> {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    return {
-      supplier: "Sysco",
-      invoiceNumber: "INV-100245",
-      invoiceDate: "2026-06-25",
-      items: [
-        { description: "Pepsi 20 oz", quantity: 24, unitCost: 1.12 },
-        { description: "Coca-Cola 20 oz", quantity: 24, unitCost: 1.10 },
-      ],
-    };
+  async function processSmartReceiveInvoice(file: File): Promise<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[]; freight: number; additionalCost: number; invoiceTotal: number }> {
+    // Read file as base64 in the browser
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(",")[1]);
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    const mediaType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
+
+    // Call the Supabase Edge Function — API key stays server-side
+    const { data, error } = await supabase.functions.invoke("process-invoice", {
+      body: { base64Data, mediaType, isPdf },
+    });
+
+    if (error) throw new Error(`Edge Function error: ${error.message}`);
+    if (data?.error) throw new Error(`Invoice processing failed: ${data.error}`);
+
+    return data as { supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[]; freight: number; additionalCost: number; invoiceTotal: number };
   }
 
   function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -8627,11 +8637,24 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: "#f8fafc", fontWeight: 700 }}>
-                        <td colSpan={3} style={{ textAlign: "right" }}>Total</td>
+                        <td colSpan={3} style={{ textAlign: "right" }}>Items Subtotal</td>
                         <td style={{ textAlign: "right" }}>${smartReceiveResult.items.reduce((s, i) => s + i.quantity * i.unitCost, 0).toFixed(2)}</td>
                       </tr>
                     </tfoot>
                   </table>
+                  <div style={{ marginTop: "10px", padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", fontSize: "13px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", color: "#475569" }}>
+                      {smartReceiveResult.freight > 0 && (
+                        <><span>Freight</span><span style={{ textAlign: "right" }}>+${smartReceiveResult.freight.toFixed(2)}</span></>
+                      )}
+                      {smartReceiveResult.additionalCost > 0 && (
+                        <><span>Additional Costs</span><span style={{ textAlign: "right" }}>+${smartReceiveResult.additionalCost.toFixed(2)}</span></>
+                      )}
+                      {smartReceiveResult.invoiceTotal > 0 && (
+                        <><span style={{ fontWeight: 700, color: "#0f172a", borderTop: "1px solid #e2e8f0", paddingTop: "6px", marginTop: "2px" }}>Invoice Total</span><span style={{ textAlign: "right", fontWeight: 700, color: "#0f172a", borderTop: "1px solid #e2e8f0", paddingTop: "6px", marginTop: "2px" }}>${smartReceiveResult.invoiceTotal.toFixed(2)}</span></>
+                      )}
+                    </div>
+                  </div>
                   <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px", fontStyle: "italic" }}>
                     Review before posting. Product matching and session creation coming in Phase 2.
                   </p>
