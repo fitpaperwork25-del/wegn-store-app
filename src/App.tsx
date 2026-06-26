@@ -303,6 +303,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [smartReceiveOpen, setSmartReceiveOpen] = useState(false);
   const [smartReceiveContinued, setSmartReceiveContinued] = useState(false);
   const [smartReceiveSimpleOpen, setSmartReceiveSimpleOpen] = useState(false);
+  const [smartReceiveFile, setSmartReceiveFile] = useState<File | null>(null);
+  const [smartReceiveDragging, setSmartReceiveDragging] = useState(false);
+  const [smartReceiveProcessing, setSmartReceiveProcessing] = useState(false);
+  const smartReceiveFileInputRef = useRef<HTMLInputElement>(null);
+  const smartReceiveImageInputRef = useRef<HTMLInputElement>(null);
   const [isPostingSession, setIsPostingSession] = useState(false);
   const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
@@ -8478,33 +8483,125 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {smartReceiveSimpleOpen && (
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setSmartReceiveSimpleOpen(false); }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); } }}
         >
-          <div style={{ background: "#fff", borderRadius: "12px", padding: "28px 28px 24px", width: "420px", maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
-            <h2 style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>Smart Receive</h2>
-            <p style={{ fontSize: "14px", color: "#475569", margin: "0 0 18px", lineHeight: 1.6 }}>
+          <div style={{ background: "#fff", borderRadius: "12px", padding: "28px 28px 24px", width: "460px", maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            {/* Hidden file inputs — inside modal so programmatic .click() is always trusted */}
+            <input
+              ref={smartReceiveFileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) { setSmartReceiveFile(f); setSmartReceiveProcessing(false); }
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={smartReceiveImageInputRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.heic,.heif"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) { setSmartReceiveFile(f); setSmartReceiveProcessing(false); }
+                e.target.value = "";
+              }}
+            />
+
+            <h2 style={{ margin: "0 0 4px", fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>⭐ Smart Receive</h2>
+            <p style={{ fontSize: "14px", color: "#475569", margin: "0 0 18px", lineHeight: 1.5 }}>
               Receive inventory from a supplier invoice.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
-              <button
-                disabled
-                style={{ padding: "12px", fontSize: "13px", fontWeight: 600, cursor: "not-allowed", background: "#f1f5f9", color: "#94a3b8", border: "1px dashed #cbd5e1", borderRadius: "8px", textAlign: "center" }}
-              >Upload Invoice</button>
-              <button
-                disabled
-                style={{ padding: "12px", fontSize: "13px", fontWeight: 600, cursor: "not-allowed", background: "#f1f5f9", color: "#94a3b8", border: "1px dashed #cbd5e1", borderRadius: "8px", textAlign: "center" }}
-              >Take Photo</button>
-            </div>
-            <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 20px", padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px", lineHeight: 1.7 }}>
-              This feature will automatically extract products, quantities, and costs from supplier invoices.<br /><br />
-              Coming in the next step.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setSmartReceiveSimpleOpen(false)}
-                style={{ padding: "9px 20px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
-              >Cancel</button>
-            </div>
+
+            {!smartReceiveProcessing ? (
+              <>
+                {/* Drag-and-drop zone */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setSmartReceiveDragging(true); }}
+                  onDragLeave={() => setSmartReceiveDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setSmartReceiveDragging(false);
+                    const f = e.dataTransfer.files[0];
+                    if (f) { setSmartReceiveFile(f); setSmartReceiveProcessing(false); }
+                  }}
+                  onClick={() => smartReceiveFileInputRef.current?.click()}
+                  style={{ border: `2px dashed ${smartReceiveDragging ? "#7c3aed" : smartReceiveFile ? "#15803d" : "#cbd5e1"}`, borderRadius: "10px", padding: "24px 16px", textAlign: "center", cursor: "pointer", background: smartReceiveDragging ? "#f5f3ff" : smartReceiveFile ? "#f0fdf4" : "#f8fafc", marginBottom: "12px" }}
+                >
+                  {smartReceiveFile ? (
+                    <>
+                      <div style={{ fontSize: "24px", marginBottom: "6px" }}>✅</div>
+                      <div style={{ fontWeight: 600, fontSize: "14px", color: "#15803d" }}>{smartReceiveFile.name}</div>
+                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+                        {smartReceiveFile.size < 1024 * 1024
+                          ? `${(smartReceiveFile.size / 1024).toFixed(1)} KB`
+                          : `${(smartReceiveFile.size / (1024 * 1024)).toFixed(1)} MB`}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: "28px", marginBottom: "6px" }}>📄</div>
+                      <div style={{ fontSize: "14px", fontWeight: 600, color: "#334155" }}>Drop invoice here</div>
+                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>PDF, JPG, PNG, HEIC</div>
+                    </>
+                  )}
+                </div>
+
+                {/* Upload buttons */}
+                <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); smartReceiveFileInputRef.current?.click(); }}
+                    style={{ flex: 1, padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: "8px" }}
+                  >📄 Upload PDF</button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); smartReceiveImageInputRef.current?.click(); }}
+                    style={{ flex: 1, padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: "8px" }}
+                  >🖼 Upload Image</button>
+                  <button
+                    type="button"
+                    onClick={() => setMessage({ text: "Camera capture coming soon.", type: "success" })}
+                    style={{ flex: 1, padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f8fafc", color: "#64748b", border: "1px dashed #cbd5e1", borderRadius: "8px" }}
+                  >📷 Take Photo</button>
+                </div>
+
+                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); }}
+                    style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
+                  >Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => setSmartReceiveProcessing(true)}
+                    disabled={!smartReceiveFile}
+                    style={{ padding: "9px 18px", fontSize: "13px", fontWeight: 600, cursor: smartReceiveFile ? "pointer" : "not-allowed", background: smartReceiveFile ? "#7c3aed" : "#e2e8f0", color: smartReceiveFile ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px" }}
+                  >Continue</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ padding: "16px", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", color: "#5b21b6", lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: "4px" }}>File ready: {smartReceiveFile?.name}</div>
+                  OCR processing will be implemented in Phase 1 Step 3.
+                </div>
+                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => setSmartReceiveProcessing(false)}
+                    style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
+                  >Back</button>
+                  <button
+                    type="button"
+                    onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); }}
+                    style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
+                  >Close</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
