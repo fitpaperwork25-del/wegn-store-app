@@ -8812,9 +8812,22 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           <>
             <style>{`
               @media print {
+                @page { size: 80mm auto; margin: 0; }
+                html, body { margin: 0; padding: 0; }
                 .app-root > * { display: none !important; }
-                #receipt-modal { display: block !important; position: static !important; background: none !important; }
-                #receipt-print { box-shadow: none !important; margin: 0 !important; }
+                #receipt-modal { display: block !important; position: static !important; background: none !important; padding: 0 !important; }
+                #receipt-print {
+                  box-shadow: none !important;
+                  margin: 0 !important;
+                  padding: 4mm 3mm !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  font-size: 12pt !important;
+                  color: #000 !important;
+                  -webkit-print-color-adjust: exact;
+                  print-color-adjust: exact;
+                }
+                #receipt-print * { color: #000 !important; }
                 #receipt-actions { display: none !important; }
               }
             `}</style>
