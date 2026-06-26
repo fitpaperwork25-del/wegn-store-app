@@ -302,6 +302,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [smartReceiveOpen, setSmartReceiveOpen] = useState(false);
   const [smartReceiveContinued, setSmartReceiveContinued] = useState(false);
+  const [smartReceiveSimpleOpen, setSmartReceiveSimpleOpen] = useState(false);
   const [isPostingSession, setIsPostingSession] = useState(false);
   const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
@@ -4586,6 +4587,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           <button type="submit" className="pos-add-btn">
             Receive
           </button>
+          <button
+            type="button"
+            onClick={() => setSmartReceiveSimpleOpen(true)}
+            style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#7c3aed", color: "#fff", border: "none", borderRadius: "6px" }}
+          >⭐ Smart Receive</button>
         </form>
       </div>
 
@@ -8467,6 +8473,41 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>
 
       </div>{/* end settings */}
+
+      {/* Smart Receive — Receive Inventory Modal */}
+      {smartReceiveSimpleOpen && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setSmartReceiveSimpleOpen(false); }}
+        >
+          <div style={{ background: "#fff", borderRadius: "12px", padding: "28px 28px 24px", width: "420px", maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <h2 style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>Smart Receive</h2>
+            <p style={{ fontSize: "14px", color: "#475569", margin: "0 0 18px", lineHeight: 1.6 }}>
+              Receive inventory from a supplier invoice.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
+              <button
+                disabled
+                style={{ padding: "12px", fontSize: "13px", fontWeight: 600, cursor: "not-allowed", background: "#f1f5f9", color: "#94a3b8", border: "1px dashed #cbd5e1", borderRadius: "8px", textAlign: "center" }}
+              >Upload Invoice</button>
+              <button
+                disabled
+                style={{ padding: "12px", fontSize: "13px", fontWeight: 600, cursor: "not-allowed", background: "#f1f5f9", color: "#94a3b8", border: "1px dashed #cbd5e1", borderRadius: "8px", textAlign: "center" }}
+              >Take Photo</button>
+            </div>
+            <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 20px", padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px", lineHeight: 1.7 }}>
+              This feature will automatically extract products, quantities, and costs from supplier invoices.<br /><br />
+              Coming in the next step.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setSmartReceiveSimpleOpen(false)}
+                style={{ padding: "9px 20px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
+              >Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Smart Receive Modal */}
       {smartReceiveOpen && (
