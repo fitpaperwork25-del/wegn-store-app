@@ -8815,13 +8815,20 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 @page { size: 80mm auto; margin: 0; }
                 html, body { margin: 0; padding: 0; }
                 .app-root > * { display: none !important; }
-                #receipt-modal { display: block !important; position: static !important; background: none !important; padding: 0 !important; }
+                #receipt-modal {
+                  display: block !important;
+                  position: static !important;
+                  background: none !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                }
                 #receipt-print {
                   box-shadow: none !important;
                   margin: 0 !important;
-                  padding: 4mm 3mm !important;
+                  padding: 3mm 2.5mm 4mm 2.5mm !important;
                   width: 100% !important;
-                  max-width: 100% !important;
+                  max-width: 80mm !important;
+                  box-sizing: border-box !important;
                   font-size: 12pt !important;
                   color: #000 !important;
                   -webkit-print-color-adjust: exact;
@@ -8906,10 +8913,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     )}
                   </div>
                 )}
-                <div style={{ textAlign: "center", borderTop: "1px dashed #333", marginTop: "12px", paddingTop: "8px" }}>
+                <div style={{ textAlign: "center", borderTop: "1px dashed #333", marginTop: "6px", paddingTop: "6px", paddingBottom: "2mm" }}>
                   Thank you!
                 </div>
-
                 <div id="receipt-actions" style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "center" }}>
                   <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold" }}>
                     Print
