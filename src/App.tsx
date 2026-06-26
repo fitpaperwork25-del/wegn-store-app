@@ -588,6 +588,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [editEmpRole, setEditEmpRole] = useState("");
   const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
+  const [salesSearchQuery, setSalesSearchQuery] = useState("");
   const [salesDateRange, setSalesDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProdName, setEditProdName] = useState("");
@@ -7108,6 +7109,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </span>
       </button>
       {salesHistoryOpen && <>
+      <input
+        type="text"
+        placeholder="Search receipt, product, barcode, or customer..."
+        value={salesSearchQuery}
+        onChange={e => setSalesSearchQuery(e.target.value)}
+        style={{ width: "100%", padding: "9px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", marginBottom: "10px", boxSizing: "border-box" }}
+      />
       <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
           <button
@@ -7146,6 +7154,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           <thead>
             <tr>
               <th>Sale ID</th>
+              <th>Products</th>
               <th>Total</th>
               <th>Tax</th>
               <th>Status</th>
@@ -7156,20 +7165,46 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </thead>
           <tbody>
             {sales.length === 0 ? (
-              <tr><td colSpan={7}>No sales yet</td></tr>
+              <tr><td colSpan={8}>No sales yet</td></tr>
             ) : (
               sales.filter(s => {
                 if (s.status === 'open') return false;
-                if (salesCashierFilter === "all") return true;
-                if (salesCashierFilter === "none") return !s.cashier_id;
-                return s.cashier_id === salesCashierFilter;
+                if (salesCashierFilter !== "all") {
+                  if (salesCashierFilter === "none" && s.cashier_id) return false;
+                  if (salesCashierFilter !== "none" && s.cashier_id !== salesCashierFilter) return false;
+                }
+                if (!salesSearchQuery.trim()) return true;
+                const q = salesSearchQuery.toLowerCase();
+                if (s.id.toLowerCase().includes(q)) return true;
+                // match customer name/phone
+                const customer = customers.find(c => c.id === s.customer_id);
+                if (customer) {
+                  if ((customer.name ?? "").toLowerCase().includes(q)) return true;
+                  if ((customer.phone ?? "").toLowerCase().includes(q)) return true;
+                }
+                // match product name/barcode via saleItems
+                const lineItems = saleItems.filter(si => si.sale_id === s.id);
+                return lineItems.some(si => {
+                  const p = products.find(pr => pr.product_id === si.product_id);
+                  if (!p) return false;
+                  if (p.product_name.toLowerCase().includes(q)) return true;
+                  if (p.barcode && p.barcode.toLowerCase().includes(q)) return true;
+                  return false;
+                });
               }).map((s) => {
                 const cashierName = s.cashier_id ? (employees.find(e => e.id === s.cashier_id)?.name ?? s.cashier_id.slice(0, 8)) : "—";
                 const rowClass = s.status === "voided" ? "sh-row-voided" : s.status === "returned" ? "sh-row-returned" : "";
+                // Build products summary for the Products column
+                const lineItems = saleItems.filter(si => si.sale_id === s.id);
+                const productNames = lineItems.map(si => products.find(p => p.product_id === si.product_id)?.product_name ?? "—");
+                const productsLabel = productNames.length === 0 ? "—"
+                  : productNames.length === 1 ? productNames[0]
+                  : `${productNames[0]} (+${productNames.length - 1} more)`;
                 return (
                   <React.Fragment key={s.id}>
                     <tr className={rowClass}>
                       <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
+                      <td style={{ fontSize: "12px", color: "#475569", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={productNames.join(", ")}>{productsLabel}</td>
                       <td>${Number(s.total).toFixed(2)}</td>
                       <td>${Number(s.tax).toFixed(2)}</td>
                       <td><span className={`status-pill sp-${s.status}`}>{s.status}</span></td>
@@ -7194,7 +7229,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     </tr>
                     {returningSaleId === s.id && (
                       <tr key={`${s.id}-return`}>
-                        <td colSpan={7} style={{ background: "#faf5ff", padding: "16px", border: "1px solid #c4b5fd" }}>
+                        <td colSpan={8} style={{ background: "#faf5ff", padding: "16px", border: "1px solid #c4b5fd" }}>
                           <strong style={{ color: "#7c3aed" }}>Process Return — Sale {s.id.slice(0, 8)}</strong>
                           {returnLines.length === 0 ? (
                             <p style={{ margin: "8px 0 0", color: "#888" }}>All items from this sale have already been returned.</p>
