@@ -288,7 +288,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [rapidReceiveItems, setRapidReceiveItems] = useState<{ product_id: string; product_name: string; barcode: string; quantity: number }[]>([]);
   const [rapidReceiveExceptions, setRapidReceiveExceptions] = useState<{ barcode: string; reason: string }[]>([]);
   const [isPostingRapidReceive, setIsPostingRapidReceive] = useState(false);
-  const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string } | null>(null);
+  const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string; invoice_number?: string | null } | null>(null);
   const [sessionItems, setSessionItems] = useState<{ id: string; product_id: string; quantity_received: number; unit_cost: number }[]>([]);
   const [sessionScanInput, setSessionScanInput] = useState("");
   // ── Unified Product Resolution dialog ──
@@ -296,6 +296,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     barcode?: string;
     description?: string;
     suggestedCost?: number;
+    suggestedQuantity?: number;   // invoice line qty — shown as context, not initial stock
+    suggestedSupplierId?: string; // pre-select supplier
     onResolved: (productId: string) => Promise<void>;
     onSkipped: () => void;
   };
@@ -305,6 +307,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [productResolutionNewName, setProductResolutionNewName] = useState("");
   const [productResolutionNewCost, setProductResolutionNewCost] = useState("");
   const [productResolutionNewSelling, setProductResolutionNewSelling] = useState("");
+  const [productResolutionCategoryId, setProductResolutionCategoryId] = useState("");
+  const [productResolutionSupplierId, setProductResolutionSupplierId] = useState("");
   const [isSavingProductResolution, setIsSavingProductResolution] = useState(false);
   const sessionScanRef = useRef<HTMLInputElement>(null);
   const [lastScannedProduct, setLastScannedProduct] = useState<{ name: string; qty: number } | null>(null);
@@ -330,6 +334,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [smartReceiveNewCost, setSmartReceiveNewCost] = useState("");
   const [isSavingSmartProduct, setIsSavingSmartProduct] = useState(false);
   const [isCreatingSmartSession, setIsCreatingSmartSession] = useState(false);
+  const [smartReceiveDuplicateWarning, setSmartReceiveDuplicateWarning] = useState<{
+    existingSessionId: string;
+    existingStatus: string;
+    invoiceNumber: string;
+  } | null>(null);
   const [isPostingSession, setIsPostingSession] = useState(false);
   const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
@@ -357,6 +366,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [adjustQuantity, setAdjustQuantity] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
   const [adjustNotes, setAdjustNotes] = useState("");
+  // Add Product modal — reused by Smart Receive for pre-filled creation
+  const [addProductModalOpen, setAddProductModalOpen] = useState(false);
+  const [addProductModalCallback, setAddProductModalCallback] = useState<((productId: string) => Promise<void>) | null>(null);
   const [newName, setNewName] = useState("");
   const [newSku, setNewSku] = useState("");
   const [newBarcode, setNewBarcode] = useState("");
@@ -2628,6 +2640,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       return;
     }
 
+    // If opened from Smart Receive modal, call callback then close modal
+    if (addProductModalCallback) {
+      await loadProducts();
+      await addProductModalCallback(productId);
+      setAddProductModalOpen(false);
+      setAddProductModalCallback(null);
+    } else {
+      await loadProducts();
+      await loadTransactions();
+    }
     setNewName("");
     setNewSku("");
     setNewBarcode("");
@@ -2641,8 +2663,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setNewProductCategory("");
     setBarcodeAutoFill("");
     setMessage({ text: "Product added successfully", type: "success" });
-    await loadProducts();
-    await loadTransactions();
   }
 
   async function handleEditProduct(e: React.FormEvent, productId: string) {
@@ -2954,13 +2974,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     } catch (_) { /* audio not available */ }
   }
 
-  function openProductResolution(req: { barcode?: string; description?: string; suggestedCost?: number; onResolved: (id: string) => Promise<void>; onSkipped: () => void }) {
+  function openProductResolution(req: ProductResolutionRequest) {
     setProductResolution(req);
     setProductResolutionMode(null);
     setProductResolutionLinkId("");
     setProductResolutionNewName(req.description ?? "");
     setProductResolutionNewCost(req.suggestedCost != null ? String(req.suggestedCost) : "");
     setProductResolutionNewSelling("");
+    setProductResolutionCategoryId("");
+    setProductResolutionSupplierId(req.suggestedSupplierId ?? "");
   }
 
   function closeProductResolution() {
@@ -2970,6 +2992,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setProductResolutionNewName("");
     setProductResolutionNewCost("");
     setProductResolutionNewSelling("");
+    setProductResolutionCategoryId("");
+    setProductResolutionSupplierId("");
     setIsSavingProductResolution(false);
   }
 
@@ -2995,7 +3019,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const costPrice = parseFloat(productResolutionNewCost) || 0;
     const sellingPrice = parseFloat(productResolutionNewSelling) || 0;
     const { data: prod, error: prodErr } = await supabase.from("products")
-      .insert({ business_id: businessId, name: productResolutionNewName.trim(), barcode: productResolution.barcode ?? null, selling_price: sellingPrice, cost_price: costPrice, average_cost: costPrice, status: "active" })
+      .insert({
+        business_id: businessId,
+        name: productResolutionNewName.trim(),
+        barcode: productResolution.barcode ?? null,
+        selling_price: sellingPrice,
+        cost_price: costPrice,
+        average_cost: costPrice,
+        status: "active",
+        category_id: productResolutionCategoryId || null,
+        supplier_id: productResolutionSupplierId || null,
+      })
       .select("id").single();
     if (prodErr) { setMessage({ text: "Failed to create product: " + prodErr.message, type: "error" }); setIsSavingProductResolution(false); return; }
     await supabase.from("inventory").insert({ business_id: businessId, product_id: prod.id, quantity_on_hand: 0 });
@@ -3118,6 +3152,34 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   async function handlePostReceivingSession() {
     if (!activeReceivingSession || sessionItems.length === 0 || isPostingSession) return;
+    // Guard 2: check for a completed session with the same invoice_number + supplier (req 5)
+    if (activeReceivingSession.invoice_number) {
+      let dupQ = supabase
+        .from("receiving_sessions")
+        .select("id, invoice_number")
+        .eq("business_id", businessId)
+        .eq("invoice_number", activeReceivingSession.invoice_number)
+        .eq("status", "completed")
+        .neq("id", activeReceivingSession.id);
+      if (activeReceivingSession.supplier_id) dupQ = dupQ.eq("supplier_id", activeReceivingSession.supplier_id);
+      const { data: dupCompleted } = await dupQ.limit(1).maybeSingle();
+      if (dupCompleted) {
+        const confirmed = window.confirm(`Invoice ${activeReceivingSession.invoice_number} has already been received in a completed session. Post this duplicate receiving anyway?`);
+        if (!confirmed) return;
+      }
+    }
+    // Guard 1: verify receiving_items on screen belong to the active session
+    const { data: dbItems, error: verifyErr } = await supabase
+      .from("receiving_items")
+      .select("id, receiving_session_id")
+      .in("id", sessionItems.map(i => i.id));
+    if (verifyErr) { setMessage({ text: "Could not verify session items before posting", type: "error" }); return; }
+    const wrongSession = (dbItems ?? []).find(r => r.receiving_session_id !== activeReceivingSession.id);
+    if (wrongSession) {
+      console.error("[PostReceiving] Session mismatch — items belong to", wrongSession.receiving_session_id, "not", activeReceivingSession.id);
+      setMessage({ text: "Session mismatch detected — please refresh and try again", type: "error" });
+      return;
+    }
     setIsPostingSession(true);
     try {
       const notes: string[] = [];
@@ -3236,11 +3298,27 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setMessage({ text: `Product "${smartReceiveNewName.trim()}" created and matched`, type: "success" });
   }
 
-  async function handleCreateSmartReceivingSession() {
+  async function handleCreateSmartReceivingSession(forceCreate = false) {
     if (!smartReceiveResult || isCreatingSmartSession) return;
     setIsCreatingSmartSession(true);
     // Try to match supplier by name
     const supplierMatch = suppliers.find(s => s.name.toLowerCase().trim() === smartReceiveResult.supplier.toLowerCase().trim());
+    // ── Duplicate invoice guard (req 1 & 2) ──
+    if (!forceCreate && smartReceiveResult.invoiceNumber) {
+      let dupQuery = supabase
+        .from("receiving_sessions")
+        .select("id, status")
+        .eq("business_id", businessId)
+        .eq("invoice_number", smartReceiveResult.invoiceNumber)
+        .in("status", ["draft", "completed"]);
+      if (supplierMatch?.id) dupQuery = dupQuery.eq("supplier_id", supplierMatch.id);
+      const { data: dupRows } = await dupQuery.limit(1).maybeSingle();
+      if (dupRows) {
+        setSmartReceiveDuplicateWarning({ existingSessionId: dupRows.id, existingStatus: dupRows.status, invoiceNumber: smartReceiveResult.invoiceNumber });
+        setIsCreatingSmartSession(false);
+        return;
+      }
+    }
     // Compute totals for the session invoice fields
     const itemsTotal = smartReceiveResult.items.reduce((s, item) => s + item.quantity * item.unitCost, 0);
     const calculatedTotal = Math.round((itemsTotal + smartReceiveResult.freight + smartReceiveResult.additionalCost) * 100) / 100;
@@ -3264,7 +3342,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         approved_at: invoiceStatus === "matched" ? new Date().toISOString() : null,
         approval_note: invoiceStatus === "matched" ? "Automatically approved — invoice matched" : null,
       })
-      .select("id, business_id, supplier_id, received_by, status, notes, created_at")
+      .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number")
       .single();
     if (sessErr) { console.error("[SmartReceive] session create error:", sessErr); setMessage({ text: "Failed to create session: " + sessErr.message, type: "error" }); setIsCreatingSmartSession(false); return; }
     // Insert receiving items for every matched product
@@ -3280,12 +3358,23 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       }));
     const { error: itemsErr } = await supabase.from("receiving_items").insert(itemsToInsert);
     if (itemsErr) { console.error("[SmartReceive] items insert error:", itemsErr); setMessage({ text: "Failed to create session items: " + itemsErr.message, type: "error" }); setIsCreatingSmartSession(false); return; }
-    // Reset ALL previous session state before loading new session
-    setActiveReceivingSession(null);
-    setSessionItems([]);
+    // Directly set the session we just created — never query by "newest draft"
+    // which could silently return a different/older draft if timing is off
+    setActiveReceivingSession({
+      id: session.id,
+      business_id: session.business_id,
+      supplier_id: session.supplier_id ?? null,
+      received_by: session.received_by ?? null,
+      status: session.status,
+      notes: session.notes ?? null,
+      created_at: session.created_at,
+      invoice_number: (session as { invoice_number?: string | null }).invoice_number ?? null,
+    });
+    // Reset all other session state
     closeProductResolution();
     setLastScannedProduct(null);
     setHighlightedProductId(null);
+    if (productResolution) closeProductResolution();
     // Close Smart Receive modal and navigate to Inventory
     setSmartReceiveSimpleOpen(false);
     setSmartReceiveFile(null);
@@ -3297,8 +3386,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setActiveTab("inventory");
     setIsCreatingSmartSession(false);
     setMessage({ text: `Draft receiving session created — review and click Post Receiving`, type: "success" });
-    // Use the canonical session load path: finds the newest draft and loads its items
-    await loadActiveReceivingSession();
+    // Load items for exactly the session we just created (not the newest draft)
+    await loadSessionItems(session.id);
     await loadSessionHistory();
   }
 
@@ -8906,7 +8995,32 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                       <option key={p.product_id} value={p.product_id}>{p.product_name}</option>
                                     ))}
                                   </select>
-                                  <button type="button" onClick={() => { setSmartReceivePendingIdx(i); setSmartReceiveNewName(item.description); setSmartReceiveNewCost(item.unitCost.toFixed(2)); setSmartReceiveNewSelling(""); }} style={{ padding: "4px 10px", fontSize: "12px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", whiteSpace: "nowrap" }}>+ Create New</button>
+                                  <button type="button" onClick={() => {
+                                    const supplierMatch = suppliers.find(s => s.name.toLowerCase().trim() === smartReceiveResult!.supplier.toLowerCase().trim());
+                                    // Pre-fill existing Add Product state from invoice data
+                                    setNewName(item.description);
+                                    setNewBarcode("");
+                                    setNewSku("");
+                                    setNewCostPrice(item.unitCost.toFixed(2));
+                                    setNewSellingPrice("");
+                                    setNewInitialStock("0"); // receiving session handles qty via Post Receiving
+                                    setNewReorderLevel("");
+                                    setNewOverhead("");
+                                    setNewTargetMargin("");
+                                    setNewMinMargin("");
+                                    setNewProductCategory("");
+                                    setBarcodeAutoFill("");
+                                    // If supplier matched, find their supplier_id — set via callback after product is created
+                                    const idx = i;
+                                    setAddProductModalCallback(() => async (productId: string) => {
+                                      // Link supplier if matched
+                                      if (supplierMatch?.id) {
+                                        await supabase.from("products").update({ supplier_id: supplierMatch.id }).eq("id", productId);
+                                      }
+                                      setSmartReceiveMatches(prev => prev.map((m, j) => j === idx ? productId : m));
+                                    });
+                                    setAddProductModalOpen(true);
+                                  }} style={{ padding: "4px 10px", fontSize: "12px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", whiteSpace: "nowrap" }}>+ Create New</button>
                                 </div>
                               )}
                               {/* Product details when matched */}
@@ -8947,7 +9061,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       <button type="button" onClick={closeAll} style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}>Close</button>
                       <button
                         type="button"
-                        onClick={handleCreateSmartReceivingSession}
+                        onClick={() => handleCreateSmartReceivingSession()}
                         disabled={!allMatched || isCreatingSmartSession}
                         style={{ padding: "9px 18px", fontSize: "13px", fontWeight: 600, cursor: allMatched && !isCreatingSmartSession ? "pointer" : "not-allowed", background: allMatched ? "#15803d" : "#e2e8f0", color: allMatched ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px", opacity: isCreatingSmartSession ? 0.6 : 1 }}
                       >{isCreatingSmartSession ? "Creating..." : "Create Receiving Session"}</button>
@@ -9017,6 +9131,97 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </div>
       )}
 
+      {/* ── Duplicate Invoice Warning Dialog ── */}
+      {smartReceiveDuplicateWarning && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: "12px", padding: "28px", width: "440px", maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize: "20px", marginBottom: "8px" }}>⚠️</div>
+            <div style={{ fontWeight: 700, fontSize: "16px", color: "#0f172a", marginBottom: "8px" }}>Invoice Already Received</div>
+            <div style={{ fontSize: "14px", color: "#475569", marginBottom: "20px", lineHeight: 1.6 }}>
+              Invoice <strong>{smartReceiveDuplicateWarning.invoiceNumber}</strong> was already received (status: <strong>{smartReceiveDuplicateWarning.existingStatus}</strong>).
+              <br /><br />
+              Opening the existing session is safer than creating a duplicate.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  // Load the existing session
+                  const { data: existingItems } = await supabase
+                    .from("receiving_items")
+                    .select("id, product_id, quantity_received, unit_cost")
+                    .eq("receiving_session_id", smartReceiveDuplicateWarning.existingSessionId)
+                    .order("created_at", { ascending: true });
+                  const { data: existingSession } = await supabase
+                    .from("receiving_sessions")
+                    .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number")
+                    .eq("id", smartReceiveDuplicateWarning.existingSessionId)
+                    .single();
+                  if (existingSession) {
+                    setActiveReceivingSession({ ...existingSession, invoice_number: (existingSession as { invoice_number?: string | null }).invoice_number ?? null });
+                    setSessionItems((existingItems ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
+                    setSmartReceiveSimpleOpen(false);
+                    setSmartReceiveFile(null);
+                    setSmartReceiveProcessing(false);
+                    setSmartReceiveResult(null);
+                    setSmartReceiveLoading(false);
+                    setSmartReceiveMatches([]);
+                    setActiveTab("inventory");
+                  }
+                  setSmartReceiveDuplicateWarning(null);
+                }}
+                style={{ padding: "11px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "8px" }}
+              >Open Existing Session</button>
+              <button
+                type="button"
+                onClick={() => setSmartReceiveDuplicateWarning(null)}
+                style={{ padding: "11px 16px", fontSize: "14px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "8px", color: "#475569" }}
+              >Cancel</button>
+              <button
+                type="button"
+                onClick={() => { setSmartReceiveDuplicateWarning(null); void handleCreateSmartReceivingSession(true); }}
+                style={{ padding: "11px 16px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "8px", color: "#dc2626" }}
+              >Create Duplicate Anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Product Modal — reused by Smart Receive (same form, same handler) ── */}
+      {addProductModalOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1200 }} onClick={(e) => { if (e.target === e.currentTarget) { setAddProductModalOpen(false); setAddProductModalCallback(null); } }} />
+      )}
+      {addProductModalOpen && (
+        <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 1201, background: "#fff", borderRadius: "12px", width: "560px", maxWidth: "95vw", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", overflow: "hidden" }}>
+          <div style={{ padding: "20px 24px 14px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: "16px", color: "#0f172a", marginBottom: "2px" }}>Add Product</div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}>Pre-filled from invoice. Review and save.</div>
+          </div>
+          <div style={{ overflowY: "auto", flex: 1, padding: "16px 24px 20px" }}>
+            <form onSubmit={handleAddProduct} style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+              <input type="text" placeholder="Product Name *" required value={newName} onChange={e => setNewName(e.target.value)} style={{ flex: "2 1 200px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="text" placeholder="SKU" value={newSku} onChange={e => setNewSku(e.target.value)} style={{ flex: "1 1 110px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="text" placeholder="Barcode" value={newBarcode} onChange={e => setNewBarcode(e.target.value)} style={{ flex: "1 1 120px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="number" placeholder="Cost Price" value={newCostPrice} onChange={e => setNewCostPrice(e.target.value)} style={{ flex: "1 1 110px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="number" placeholder="Selling Price *" required value={newSellingPrice} onChange={e => setNewSellingPrice(e.target.value)} style={{ flex: "1 1 110px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="number" min="0" placeholder="Initial Stock *" required value={newInitialStock} onChange={e => setNewInitialStock(e.target.value)} style={{ flex: "1 1 110px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="number" placeholder="Reorder Level" value={newReorderLevel} onChange={e => setNewReorderLevel(e.target.value)} style={{ flex: "1 1 110px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <select value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} style={{ flex: "1 1 140px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
+                <option value="">No Category</option>
+                {categories.filter(c => c.status === "active").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <input type="number" min="0" step="0.1" placeholder="Overhead %" value={newOverhead} onChange={e => setNewOverhead(e.target.value)} style={{ flex: "1 1 100px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="number" min="0" step="0.1" placeholder="Target Margin %" value={newTargetMargin} onChange={e => setNewTargetMargin(e.target.value)} style={{ flex: "1 1 110px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <input type="number" min="0" step="0.1" placeholder="Min Margin %" value={newMinMargin} onChange={e => setNewMinMargin(e.target.value)} style={{ flex: "1 1 110px", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              <div style={{ width: "100%", display: "flex", gap: "8px", paddingTop: "4px" }}>
+                <button type="submit" style={{ flex: 1, padding: "10px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px" }}>Add Product</button>
+                <button type="button" onClick={() => { setAddProductModalOpen(false); setAddProductModalCallback(null); }} style={{ padding: "10px 18px", fontSize: "14px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── Product Resolution Dialog (global, reusable) ── */}
       {productResolution && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1200 }} onClick={(e) => { if (e.target === e.currentTarget) { productResolution.onSkipped(); closeProductResolution(); } }} />
@@ -9056,13 +9261,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             )}
             {productResolutionMode === "create" && (
               <div>
+                {/* Invoice context — pre-filled info shown as reference */}
+                {productResolution.suggestedQuantity != null && (
+                  <div style={{ padding: "8px 10px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "6px", fontSize: "12px", color: "#15803d", marginBottom: "10px" }}>
+                    📦 From invoice: <strong>{productResolution.suggestedQuantity} units</strong> @ <strong>${productResolution.suggestedCost?.toFixed(2)}</strong> each — will be added to receiving session
+                  </div>
+                )}
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
                   <div>
                     <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Product Name *</label>
                     <input type="text" value={productResolutionNewName} onChange={e => setProductResolutionNewName(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
                   </div>
                   {productResolution.barcode && (
-                    <div style={{ fontSize: "12px", color: "#64748b" }}>Barcode <code style={{ background: "#fef3c7", padding: "1px 4px", borderRadius: "3px" }}>{productResolution.barcode}</code> will be saved to this product.</div>
+                    <div style={{ fontSize: "12px", color: "#64748b", background: "#fef9c3", padding: "5px 8px", borderRadius: "5px" }}>🏷 Barcode <code style={{ padding: "1px 4px" }}>{productResolution.barcode}</code> will be linked to this product.</div>
                   )}
                   <div style={{ display: "flex", gap: "8px" }}>
                     <div style={{ flex: 1 }}>
@@ -9073,6 +9284,20 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Selling Price ($) *</label>
                       <input type="number" step="0.01" min="0" value={productResolutionNewSelling} onChange={e => setProductResolutionNewSelling(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
                     </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Category</label>
+                    <select value={productResolutionCategoryId} onChange={e => setProductResolutionCategoryId(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
+                      <option value="">Uncategorized</option>
+                      {categories.filter(c => c.status === "active").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Supplier</label>
+                    <select value={productResolutionSupplierId} onChange={e => setProductResolutionSupplierId(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
+                      <option value="">No supplier</option>
+                      {suppliers.filter(s => s.status === "active").map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: "8px" }}>
