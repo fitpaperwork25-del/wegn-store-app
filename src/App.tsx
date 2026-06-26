@@ -288,7 +288,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [rapidReceiveItems, setRapidReceiveItems] = useState<{ product_id: string; product_name: string; barcode: string; quantity: number }[]>([]);
   const [rapidReceiveExceptions, setRapidReceiveExceptions] = useState<{ barcode: string; reason: string }[]>([]);
   const [isPostingRapidReceive, setIsPostingRapidReceive] = useState(false);
-  const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string; invoice_number?: string | null } | null>(null);
+  const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string; invoice_number?: string | null; supplier_name?: string | null } | null>(null);
   const [sessionItems, setSessionItems] = useState<{ id: string; product_id: string; quantity_received: number; unit_cost: number }[]>([]);
   const [sessionScanInput, setSessionScanInput] = useState("");
   // ── Unified Product Resolution dialog ──
@@ -327,6 +327,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [smartReceiveResult, setSmartReceiveResult] = useState<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[]; freight: number; additionalCost: number; invoiceTotal: number } | null>(null);
   // per-item match: product_id | "" (unresolved)
   const [smartReceiveMatches, setSmartReceiveMatches] = useState<string[]>([]);
+  // supplier resolution: "" = not linked, a UUID = linked supplier_id
+  const [smartReceiveLinkedSupplierId, setSmartReceiveLinkedSupplierId] = useState<string>("");
   // index of item currently getting a new product created for it
   const [smartReceivePendingIdx, setSmartReceivePendingIdx] = useState<number | null>(null);
   const [smartReceiveNewName, setSmartReceiveNewName] = useState("");
@@ -351,7 +353,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
-  const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number }[]>([]);
+  const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number; unlinked?: boolean }[]>([]);
   const [isLoadingStatement, setIsLoadingStatement] = useState(false);
   const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
   const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
@@ -2771,7 +2773,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadSupplierStatement(supplierId: string) {
     setIsLoadingStatement(true);
     setSupplierStatement([]);
-    const { data: sessions, error: sessErr } = await supabase
+    const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? "";
+    // Query 1: sessions linked by supplier_id (FK)
+    const { data: linked, error: sessErr } = await supabase
       .from("receiving_sessions")
       .select("id, invoice_number, invoice_date, invoice_total")
       .eq("business_id", businessId)
@@ -2780,23 +2784,39 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .not("invoice_number", "is", null)
       .order("created_at", { ascending: false });
     if (sessErr) { console.error("[Statement] sessions error:", sessErr); setIsLoadingStatement(false); return; }
-    if (!sessions || sessions.length === 0) { setIsLoadingStatement(false); return; }
-    const sessionIds = sessions.map(s => s.id);
-    const { data: payments, error: payErr } = await supabase
+    // Query 2: sessions unlinked (no supplier_id) but with matching supplier_name
+    const { data: unlinked } = supplierName
+      ? await supabase
+          .from("receiving_sessions")
+          .select("id, invoice_number, invoice_date, invoice_total")
+          .eq("business_id", businessId)
+          .is("supplier_id", null)
+          .ilike("supplier_name", supplierName)
+          .eq("status", "completed")
+          .not("invoice_number", "is", null)
+          .order("created_at", { ascending: false })
+      : { data: [] };
+    const allSessions = [
+      ...(linked ?? []).map(s => ({ ...s, unlinked: false })),
+      ...(unlinked ?? []).map(s => ({ ...s, unlinked: true })),
+    ];
+    if (allSessions.length === 0) { setIsLoadingStatement(false); return; }
+    const allIds = allSessions.map(s => s.id);
+    const { data: payments } = await supabase
       .from("supplier_payments")
       .select("receiving_session_id, amount")
-      .in("receiving_session_id", sessionIds);
-    if (payErr) { console.error("[Statement] payments error:", payErr); setIsLoadingStatement(false); return; }
+      .in("receiving_session_id", allIds);
     const paidMap: Record<string, number> = {};
     for (const p of (payments ?? [])) {
       paidMap[p.receiving_session_id] = (paidMap[p.receiving_session_id] ?? 0) + Number(p.amount);
     }
-    setSupplierStatement(sessions.map(s => ({
+    setSupplierStatement(allSessions.map(s => ({
       session_id: s.id,
       invoice_number: s.invoice_number,
       invoice_date: s.invoice_date,
       invoice_total: Number(s.invoice_total),
       paid: Math.round((paidMap[s.id] ?? 0) * 100) / 100,
+      unlinked: s.unlinked,
     })));
     setIsLoadingStatement(false);
   }
@@ -2887,7 +2907,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     if (!businessId) return;
     const { data, error } = await supabase
       .from("receiving_sessions")
-      .select("id, business_id, supplier_id, received_by, status, notes, created_at")
+      .select("id, business_id, supplier_id, received_by, status, notes, created_at, supplier_name")
       .eq("business_id", businessId)
       .eq("status", "draft")
       .order("created_at", { ascending: false })
@@ -2919,7 +2939,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         status: "draft",
         notes: newSessionNotes.trim() || null,
       })
-      .select("id, business_id, supplier_id, received_by, status, notes, created_at")
+      .select("id, business_id, supplier_id, received_by, status, notes, created_at, supplier_name")
       .single();
     if (error) {
       console.error("[ReceivingSession] Start error:", error);
@@ -3302,8 +3322,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function handleCreateSmartReceivingSession(forceCreate = false) {
     if (!smartReceiveResult || isCreatingSmartSession) return;
     setIsCreatingSmartSession(true);
-    // Try to match supplier by name
-    const supplierMatch = suppliers.find(s => s.name.toLowerCase().trim() === smartReceiveResult.supplier.toLowerCase().trim());
+    // Use the user-resolved supplier (auto-matched or manually selected), fallback to name match
+    const resolvedSupplierId = smartReceiveLinkedSupplierId
+      || suppliers.find(s => s.name.toLowerCase().trim() === smartReceiveResult.supplier.toLowerCase().trim())?.id
+      || null;
     // ── Duplicate invoice guard (req 1 & 2) ──
     if (!forceCreate && smartReceiveResult.invoiceNumber) {
       let dupQuery = supabase
@@ -3312,7 +3334,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         .eq("business_id", businessId)
         .eq("invoice_number", smartReceiveResult.invoiceNumber)
         .in("status", ["draft", "completed"]);
-      if (supplierMatch?.id) dupQuery = dupQuery.eq("supplier_id", supplierMatch.id);
+      if (resolvedSupplierId) dupQuery = dupQuery.eq("supplier_id", resolvedSupplierId);
       const { data: dupRows } = await dupQuery.limit(1).maybeSingle();
       if (dupRows) {
         setSmartReceiveDuplicateWarning({ existingSessionId: dupRows.id, existingStatus: dupRows.status, invoiceNumber: smartReceiveResult.invoiceNumber });
@@ -3329,7 +3351,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .from("receiving_sessions")
       .insert({
         business_id: businessId,
-        supplier_id: supplierMatch?.id || null,
+        supplier_id: resolvedSupplierId,
+        supplier_name: smartReceiveResult.supplier || null, // always preserve extracted name
         status: "draft",
         invoice_number: smartReceiveResult.invoiceNumber || null,
         invoice_date: smartReceiveResult.invoiceDate || null,
@@ -3343,7 +3366,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         approved_at: invoiceStatus === "matched" ? new Date().toISOString() : null,
         approval_note: invoiceStatus === "matched" ? "Automatically approved — invoice matched" : null,
       })
-      .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number")
+      .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number, supplier_name")
       .single();
     if (sessErr) { console.error("[SmartReceive] session create error:", sessErr); setMessage({ text: "Failed to create session: " + sessErr.message, type: "error" }); setIsCreatingSmartSession(false); return; }
     // Insert receiving items for every matched product
@@ -3370,6 +3393,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       notes: session.notes ?? null,
       created_at: session.created_at,
       invoice_number: (session as { invoice_number?: string | null }).invoice_number ?? null,
+      supplier_name: (session as { supplier_name?: string | null }).supplier_name ?? null,
     });
     // Reset all other session state
     closeProductResolution();
@@ -3384,6 +3408,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setSmartReceiveLoading(false);
     setSmartReceiveMatches([]);
     setSmartReceivePendingIdx(null);
+    setSmartReceiveLinkedSupplierId("");
     setActiveTab("inventory");
     setIsCreatingSmartSession(false);
     setMessage({ text: `Draft receiving session created — review and click Post Receiving`, type: "success" });
@@ -4395,7 +4420,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px", fontSize: "13px", color: "#334155" }}>
                 <span style={{ color: "#64748b" }}>Status:</span><span style={{ fontWeight: 500 }}>{activeReceivingSession.status}</span>
-                <span style={{ color: "#64748b" }}>Supplier:</span><span>{activeReceivingSession.supplier_id ? (suppliers.find(s => s.id === activeReceivingSession.supplier_id)?.name ?? "Unknown") : "None"}</span>
+                <span style={{ color: "#64748b" }}>Supplier:</span>
+                <span>
+                  {activeReceivingSession.supplier_id
+                    ? (suppliers.find(s => s.id === activeReceivingSession.supplier_id)?.name ?? "Unknown")
+                    : activeReceivingSession.supplier_name
+                      ? <>{activeReceivingSession.supplier_name} <span style={{ fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>unlinked</span></>
+                      : "None"}
+                </span>
                 {activeReceivingSession.notes && <><span style={{ color: "#64748b" }}>Notes:</span><span>{activeReceivingSession.notes}</span></>}
                 <span style={{ color: "#64748b" }}>Started:</span><span>{new Date(activeReceivingSession.created_at).toLocaleString()}</span>
               </div>
@@ -5999,7 +6031,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                       const statusLabel = paidStatus === "paid" ? "Paid" : paidStatus === "partial" ? "Partially Paid" : "Outstanding";
                                       return (
                                       <tr key={row.session_id}>
-                                        <td style={{ fontWeight: 600 }}>{row.invoice_number}</td>
+                                        <td style={{ fontWeight: 600 }}>
+                                          {row.invoice_number}
+                                          {row.unlinked && <span style={{ marginLeft: "6px", fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>unlinked</span>}
+                                        </td>
                                         <td style={{ color: "#64748b" }}>{row.invoice_date ?? "—"}</td>
                                         <td style={{ textAlign: "right" }}>${row.invoice_total.toFixed(2)}</td>
                                         <td style={{ textAlign: "right", color: "#15803d" }}>${row.paid.toFixed(2)}</td>
@@ -8928,6 +8963,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                         return found ? found.product_id : "";
                       });
                       setSmartReceiveMatches(matches);
+                      // Auto-match supplier (exact case-insensitive)
+                      const autoSupplier = suppliers.find(s => s.name.toLowerCase().trim() === result.supplier.toLowerCase().trim());
+                      setSmartReceiveLinkedSupplierId(autoSupplier?.id ?? "");
                       setSmartReceiveLoading(false);
                     }}
                     disabled={!smartReceiveFile}
@@ -8944,8 +8982,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             ) : smartReceiveResult ? (() => {
                 const allMatched = smartReceiveMatches.length === smartReceiveResult.items.length && smartReceiveMatches.every(m => !!m);
                 const unmatchedCount = smartReceiveMatches.filter(m => !m).length;
-                const resetAll = () => { setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); };
-                const closeAll = () => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); };
+                const resetAll = () => { setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); };
+                const closeAll = () => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); };
                 // ── Create New Product mini-form ──
                 if (smartReceivePendingIdx !== null) {
                   const pendingItem = smartReceiveResult.items[smartReceivePendingIdx];
@@ -8985,10 +9023,46 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <>
                     <div style={{ marginBottom: "14px" }}>
                       {/* Invoice header */}
-                      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: "13px", padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", marginBottom: "10px" }}>
-                        <span style={{ color: "#64748b" }}>Supplier</span><span style={{ fontWeight: 600 }}>{smartReceiveResult.supplier}</span>
-                        <span style={{ color: "#64748b" }}>Invoice #</span><span style={{ fontWeight: 600 }}>{smartReceiveResult.invoiceNumber}</span>
-                        <span style={{ color: "#64748b" }}>Date</span><span>{smartReceiveResult.invoiceDate}</span>
+                      <div style={{ fontSize: "13px", padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", marginBottom: "10px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", marginBottom: "8px" }}>
+                          <span style={{ color: "#64748b" }}>Invoice #</span><span style={{ fontWeight: 600 }}>{smartReceiveResult.invoiceNumber}</span>
+                          <span style={{ color: "#64748b" }}>Date</span><span>{smartReceiveResult.invoiceDate}</span>
+                        </div>
+                        {/* Supplier resolution */}
+                        {(() => {
+                          const linked = smartReceiveLinkedSupplierId
+                            ? suppliers.find(s => s.id === smartReceiveLinkedSupplierId)
+                            : null;
+                          return (
+                            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px" }}>
+                              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>
+                                Supplier on invoice: <strong>{smartReceiveResult.supplier}</strong>
+                              </div>
+                              {linked ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>✓ Linked:</span>
+                                  <span style={{ fontSize: "12px", color: "#334155" }}>{linked.name}</span>
+                                  <button type="button" onClick={() => setSmartReceiveLinkedSupplierId("")} style={{ fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "4px", padding: "1px 6px", color: "#64748b", marginLeft: "auto" }}>Change</button>
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: "11px", color: "#b45309", background: "#fef3c7", padding: "2px 7px", borderRadius: "10px", fontWeight: 600 }}>⚠ No match in catalog</span>
+                                  <select
+                                    value=""
+                                    onChange={e => setSmartReceiveLinkedSupplierId(e.target.value)}
+                                    style={{ flex: 1, minWidth: "140px", padding: "4px 6px", fontSize: "12px", border: "1px solid #fde68a", borderRadius: "6px", background: "#fff" }}
+                                  >
+                                    <option value="">Link to existing supplier</option>
+                                    {suppliers.filter(s => s.status === "active").map(s => (
+                                      <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                  </select>
+                                  <span style={{ fontSize: "11px", color: "#64748b" }}>or receive unlinked</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                       {/* Per-item matching cards */}
                       <div style={{ fontWeight: 600, fontSize: "13px", color: "#334155", marginBottom: "6px" }}>
@@ -9189,11 +9263,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     .order("created_at", { ascending: true });
                   const { data: existingSession } = await supabase
                     .from("receiving_sessions")
-                    .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number")
+                    .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number, supplier_name")
                     .eq("id", smartReceiveDuplicateWarning.existingSessionId)
                     .single();
                   if (existingSession) {
-                    setActiveReceivingSession({ ...existingSession, invoice_number: (existingSession as { invoice_number?: string | null }).invoice_number ?? null });
+                    setActiveReceivingSession({ ...existingSession, invoice_number: (existingSession as { invoice_number?: string | null }).invoice_number ?? null, supplier_name: (existingSession as { supplier_name?: string | null }).supplier_name ?? null });
                     setSessionItems((existingItems ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
                     setSmartReceiveSimpleOpen(false);
                     setSmartReceiveFile(null);
