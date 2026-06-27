@@ -3410,7 +3410,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     closeProductResolution();
     setLastScannedProduct(null);
     setHighlightedProductId(null);
-    if (productResolution) closeProductResolution();
     // Close Smart Receive modal and navigate to Inventory
     setSmartReceiveSimpleOpen(false);
     setSmartReceiveFile(null);
@@ -3490,8 +3489,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const qtyBefore = product.quantity_on_hand;
         const qtyAfter = qtyBefore + item.quantity;
 
-        console.log("[RapidReceive] Posting:", { product_id: item.product_id, business_id: product.business_id, inventory_id: product.inventory_id, quantity: item.quantity, qtyBefore, qtyAfter });
-
         const { error: invError } = await supabase.from("inventory").update({ quantity_on_hand: qtyAfter }).eq("id", product.inventory_id);
         if (invError) {
           console.error("[RapidReceive] Inventory update failed:", { product_id: item.product_id, business_id: product.business_id, inventory_id: product.inventory_id, qtyBefore, qtyAfter, error: invError });
@@ -3517,7 +3514,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           return;
         }
 
-        console.log("[RapidReceive] Success:", item.product_name, "+", item.quantity);
         notes.push(`${item.product_name}: +${item.quantity}`);
       }
       setRapidReceiveItems([]);
@@ -8920,7 +8916,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       accept=".pdf,.jpg,.jpeg,.png,.heic,image/*,application/pdf"
                       title=""
                       onChange={(e) => {
-                        console.log("[SmartReceive] Upload Invoice onChange:", e.target.files?.[0]?.name);
                         const f = e.target.files?.[0];
                         if (f) setSmartReceiveFile(f);
                         e.target.value = "";
@@ -8937,7 +8932,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       accept=".pdf,.jpg,.jpeg,.png,.heic,image/*,application/pdf"
                       title=""
                       onChange={(e) => {
-                        console.log("[SmartReceive] Upload Packing Slip onChange:", e.target.files?.[0]?.name);
                         const f = e.target.files?.[0];
                         if (f) setSmartReceiveFile(f);
                         e.target.value = "";
@@ -8950,7 +8944,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <div style={{ marginBottom: "16px" }}>
                   <button
                     type="button"
-                    onClick={() => { console.log("[SmartReceive] Take Photo clicked"); alert("Camera capture coming soon."); }}
+                    onClick={() => { alert("Camera capture coming soon."); }}
                     style={{ width: "100%", padding: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#f8fafc", color: "#64748b", border: "1px dashed #cbd5e1", borderRadius: "8px" }}
                   >📷 Take Photo</button>
                 </div>
