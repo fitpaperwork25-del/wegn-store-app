@@ -329,6 +329,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [smartReceiveMatches, setSmartReceiveMatches] = useState<string[]>([]);
   // supplier resolution: "" = not linked, a UUID = linked supplier_id
   const [smartReceiveLinkedSupplierId, setSmartReceiveLinkedSupplierId] = useState<string>("");
+  const [isCreatingSmartSupplier, setIsCreatingSmartSupplier] = useState(false);
+  const [showSmartSupplierOverridePicker, setShowSmartSupplierOverridePicker] = useState(false);
+  const [showSmartSupplierAdvanced, setShowSmartSupplierAdvanced] = useState(false);
   // index of item currently getting a new product created for it
   const [smartReceivePendingIdx, setSmartReceivePendingIdx] = useState<number | null>(null);
   const [smartReceiveNewName, setSmartReceiveNewName] = useState("");
@@ -2907,7 +2910,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     if (!businessId) return;
     const { data, error } = await supabase
       .from("receiving_sessions")
-      .select("id, business_id, supplier_id, received_by, status, notes, created_at, supplier_name")
+      .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number, supplier_name")
       .eq("business_id", businessId)
       .eq("status", "draft")
       .order("created_at", { ascending: false })
@@ -3322,10 +3325,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function handleCreateSmartReceivingSession(forceCreate = false) {
     if (!smartReceiveResult || isCreatingSmartSession) return;
     setIsCreatingSmartSession(true);
-    // Use the user-resolved supplier (auto-matched or manually selected), fallback to name match
-    const resolvedSupplierId = smartReceiveLinkedSupplierId
-      || suppliers.find(s => s.name.toLowerCase().trim() === smartReceiveResult.supplier.toLowerCase().trim())?.id
-      || null;
+    // Use only the explicitly resolved supplier (auto-matched or manually selected by the user).
+    // No name-match fallback — that would silently override "Continue Unlinked" intent.
+    const resolvedSupplierId = smartReceiveLinkedSupplierId || null;
     // ── Duplicate invoice guard (req 1 & 2) ──
     if (!forceCreate && smartReceiveResult.invoiceNumber) {
       let dupQuery = supabase
@@ -3409,6 +3411,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setSmartReceiveMatches([]);
     setSmartReceivePendingIdx(null);
     setSmartReceiveLinkedSupplierId("");
+    setShowSmartSupplierOverridePicker(false);
+    setShowSmartSupplierAdvanced(false);
     setActiveTab("inventory");
     setIsCreatingSmartSession(false);
     setMessage({ text: `Draft receiving session created — review and click Post Receiving`, type: "success" });
@@ -8859,7 +8863,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {smartReceiveSimpleOpen && (
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1099 }}
-          onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); }}
+          onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); setShowSmartSupplierAdvanced(false); }}
         />
       )}
       {/* Panel: directly positioned via transform — no full-screen wrapper, no pointerEvents:none ancestor */}
@@ -8941,7 +8945,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", paddingBottom: "8px" }}>
                   <button
                     type="button"
-                    onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); }}
+                    onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); setShowSmartSupplierAdvanced(false); }}
                     style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
                   >Cancel</button>
                   <button
@@ -8982,8 +8986,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             ) : smartReceiveResult ? (() => {
                 const allMatched = smartReceiveMatches.length === smartReceiveResult.items.length && smartReceiveMatches.every(m => !!m);
                 const unmatchedCount = smartReceiveMatches.filter(m => !m).length;
-                const resetAll = () => { setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); };
-                const closeAll = () => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); };
+                const clearSupplierState = () => { setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); setShowSmartSupplierAdvanced(false); };
+                const resetAll = () => { setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); clearSupplierState(); };
+                const closeAll = () => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); clearSupplierState(); };
                 // ── Create New Product mini-form ──
                 if (smartReceivePendingIdx !== null) {
                   const pendingItem = smartReceiveResult.items[smartReceivePendingIdx];
@@ -9028,36 +9033,81 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                           <span style={{ color: "#64748b" }}>Invoice #</span><span style={{ fontWeight: 600 }}>{smartReceiveResult.invoiceNumber}</span>
                           <span style={{ color: "#64748b" }}>Date</span><span>{smartReceiveResult.invoiceDate}</span>
                         </div>
-                        {/* Supplier resolution */}
+                        {/* Supplier resolution — redesigned 3-case UX */}
                         {(() => {
                           const linked = smartReceiveLinkedSupplierId
                             ? suppliers.find(s => s.id === smartReceiveLinkedSupplierId)
                             : null;
+                          const extractedName = smartReceiveResult.supplier;
                           return (
                             <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px" }}>
-                              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>
-                                Supplier on invoice: <strong>{smartReceiveResult.supplier}</strong>
+                              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "6px" }}>
+                                Supplier: <strong style={{ color: "#0f172a" }}>{extractedName}</strong>
                               </div>
+
+                              {/* CASE 1 — Matched */}
                               {linked ? (
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>✓ Linked:</span>
-                                  <span style={{ fontSize: "12px", color: "#334155" }}>{linked.name}</span>
-                                  <button type="button" onClick={() => setSmartReceiveLinkedSupplierId("")} style={{ fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "4px", padding: "1px 6px", color: "#64748b", marginLeft: "auto" }}>Change</button>
+                                <div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>✓ Supplier matched: {linked.name}</span>
+                                    <button type="button" onClick={() => { setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); }} style={{ fontSize: "10px", cursor: "pointer", background: "none", border: "none", color: "#94a3b8", marginLeft: "auto", textDecoration: "underline", padding: 0 }}>The supplier name is incorrect?</button>
+                                  </div>
                                 </div>
                               ) : (
-                                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                                  <span style={{ fontSize: "11px", color: "#b45309", background: "#fef3c7", padding: "2px 7px", borderRadius: "10px", fontWeight: 600 }}>⚠ No match in catalog</span>
-                                  <select
-                                    value=""
-                                    onChange={e => setSmartReceiveLinkedSupplierId(e.target.value)}
-                                    style={{ flex: 1, minWidth: "140px", padding: "4px 6px", fontSize: "12px", border: "1px solid #fde68a", borderRadius: "6px", background: "#fff" }}
-                                  >
-                                    <option value="">Link to existing supplier</option>
-                                    {suppliers.filter(s => s.status === "active").map(s => (
-                                      <option key={s.id} value={s.id}>{s.name}</option>
-                                    ))}
-                                  </select>
-                                  <span style={{ fontSize: "11px", color: "#64748b" }}>or receive unlinked</span>
+                                /* CASE 2 — Not in catalog */
+                                <div>
+                                  <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>This supplier is not yet in your catalog.</div>
+                                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      disabled={isCreatingSmartSupplier}
+                                      onClick={async () => {
+                                        setIsCreatingSmartSupplier(true);
+                                        const { data: newSup, error: supErr } = await supabase
+                                          .from("suppliers")
+                                          .insert({ business_id: businessId, name: extractedName, status: "active" })
+                                          .select("id, name")
+                                          .single();
+                                        if (supErr) { setMessage({ text: "Failed to create supplier: " + supErr.message, type: "error" }); }
+                                        else if (newSup) { setSmartReceiveLinkedSupplierId(newSup.id); await loadSuppliers(); }
+                                        setIsCreatingSmartSupplier(false);
+                                      }}
+                                      style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 600, cursor: isCreatingSmartSupplier ? "not-allowed" : "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", opacity: isCreatingSmartSupplier ? 0.6 : 1 }}
+                                    >{isCreatingSmartSupplier ? "Creating..." : "Create Supplier"}</button>
+                                    <button type="button" onClick={resetAll} style={{ padding: "8px 14px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>Cancel</button>
+                                  </div>
+
+                                  {/* CASE 3 — AI extracted wrong name */}
+                                  <div style={{ marginTop: "8px" }}>
+                                    <button type="button" onClick={() => setShowSmartSupplierOverridePicker(p => !p)} style={{ fontSize: "11px", cursor: "pointer", background: "none", border: "none", color: "#64748b", textDecoration: "underline", padding: 0 }}>The supplier name is incorrect?</button>
+                                    {showSmartSupplierOverridePicker && (
+                                      <div style={{ marginTop: "6px", padding: "8px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+                                        <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>Select the correct supplier to fix an AI extraction error:</div>
+                                        <select
+                                          value=""
+                                          onChange={e => { setSmartReceiveLinkedSupplierId(e.target.value); setShowSmartSupplierOverridePicker(false); }}
+                                          style={{ width: "100%", padding: "6px 8px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
+                                        >
+                                          <option value="">Select existing supplier…</option>
+                                          {suppliers.filter(s => s.status === "active").map(s => (
+                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Advanced — receive unlinked */}
+                                  <div style={{ marginTop: "6px" }}>
+                                    <button type="button" onClick={() => setShowSmartSupplierAdvanced(p => !p)} style={{ fontSize: "10px", cursor: "pointer", background: "none", border: "none", color: "#94a3b8", textDecoration: "underline", padding: 0 }}>Advanced options</button>
+                                    {showSmartSupplierAdvanced && (
+                                      <div style={{ marginTop: "6px", padding: "8px 10px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: "6px" }}>
+                                        <div style={{ fontSize: "11px", color: "#92400e", fontWeight: 600, marginBottom: "4px" }}>⚠ Receive without creating a supplier</div>
+                                        <div style={{ fontSize: "11px", color: "#92400e", marginBottom: "6px" }}>The invoice will be stored using the extracted supplier name but will not be linked to a supplier record. Use only for exceptional situations.</div>
+                                        <button type="button" onClick={() => { setShowSmartSupplierAdvanced(false); setShowSmartSupplierOverridePicker(false); }} style={{ fontSize: "11px", cursor: "pointer", padding: "4px 10px", background: "none", border: "1px solid #fed7aa", borderRadius: "4px", color: "#92400e" }}>Continue Unlinked</button>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
