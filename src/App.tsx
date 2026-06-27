@@ -1993,7 +1993,25 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     if (saleErr || !sale) { console.error(saleErr); setIsCompletingSale(false); setMessage({ text: "Sale failed", type: "error" }); return; }
 
-    const { error: itemsErr } = await supabase
+    // FEFO: fetch all active batches for cart products in one query before touching any data
+    const cartProductIds = cart.map(c => c.product_id);
+    const { data: cartBatchData } = await supabase
+      .from("inventory_batches")
+      .select("id, product_id, quantity_remaining, unit_cost, expiration_date, status")
+      .eq("business_id", businessId)
+      .eq("status", "active")
+      .gt("quantity_remaining", 0)
+      .in("product_id", cartProductIds)
+      .order("expiration_date", { ascending: true, nullsFirst: false });
+
+    type FefoBatch = { id: string; product_id: string; quantity_remaining: number; unit_cost: number | null; expiration_date: string | null; status: string };
+    const batchesByProduct: Record<string, FefoBatch[]> = {};
+    for (const b of (cartBatchData ?? []) as FefoBatch[]) {
+      if (!batchesByProduct[b.product_id]) batchesByProduct[b.product_id] = [];
+      batchesByProduct[b.product_id].push({ ...b });
+    }
+
+    const { data: rawSaleItems, error: itemsErr } = await supabase
       .from("sale_items")
       .insert(cart.map((c) => ({
         business_id: businessId,
@@ -2005,15 +2023,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         original_unit_price: c.original_unit_price,
         negotiation_reason: c.negotiation_reason,
         negotiated_by: c.negotiated_by,
-      })));
+      })))
+      .select("id, product_id");
 
     if (itemsErr) { console.error(itemsErr); await supabase.from("sales").delete().eq("id", sale.id); setIsCompletingSale(false); setMessage({ text: "Sale items failed. Sale was not saved.", type: "error" }); return; }
+
+    const insertedSaleItems = (rawSaleItems ?? []) as { id: string; product_id: string }[];
 
     const { error: payErr } = await supabase
       .from("payments")
       .insert({ business_id: businessId, sale_id: sale.id, payment_method: paymentMethod, amount: finalTotal, reference: paymentRef.trim() || null });
 
     if (payErr) { console.error(payErr); setMessage({ text: "Payment recording failed: " + payErr.message, type: "error" }); }
+
+    const fefoUpdates: { id: string; quantity_remaining: number; status: string }[] = [];
+    const saleItemBatchInserts: { business_id: string; sale_id: string; sale_item_id: string; product_id: string; inventory_batch_id: string; quantity: number; unit_cost: number | null; expiration_date: string | null }[] = [];
 
     for (const item of cart) {
       const product = products.find((p) => p.product_id === item.product_id);
@@ -2038,6 +2062,46 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           quantity_after: quantityAfter,
           reason: `Sale ${sale.id.slice(0, 8)}`,
         });
+
+      // FEFO: deduct from earliest-expiring batches first; null expiry batches last
+      const saleItem = insertedSaleItems.find(si => si.product_id === item.product_id);
+      const productBatches = batchesByProduct[item.product_id] ?? [];
+      let toDeduct = item.quantity;
+      for (const batch of productBatches) {
+        if (toDeduct <= 0) break;
+        const deduct = Math.min(toDeduct, batch.quantity_remaining);
+        toDeduct -= deduct;
+        const newRemaining = batch.quantity_remaining - deduct;
+        batch.quantity_remaining = newRemaining; // keep in-memory state accurate across multi-batch deductions
+        fefoUpdates.push({ id: batch.id, quantity_remaining: newRemaining, status: newRemaining <= 0 ? "depleted" : batch.status });
+        if (saleItem) {
+          saleItemBatchInserts.push({
+            business_id: businessId,
+            sale_id: sale.id,
+            sale_item_id: saleItem.id,
+            product_id: item.product_id,
+            inventory_batch_id: batch.id,
+            quantity: deduct,
+            unit_cost: batch.unit_cost,
+            expiration_date: batch.expiration_date,
+          });
+        }
+        // toDeduct > 0 after loop = partial batch coverage; inventory.quantity_on_hand covers remainder
+      }
+    }
+
+    // Apply all FEFO batch deductions in parallel
+    if (fefoUpdates.length > 0) {
+      await Promise.all(fefoUpdates.map(u =>
+        supabase.from("inventory_batches")
+          .update({ quantity_remaining: u.quantity_remaining, status: u.status })
+          .eq("id", u.id)
+      ));
+    }
+
+    // Record batch consumption audit trail
+    if (saleItemBatchInserts.length > 0) {
+      await supabase.from("sale_item_batches").insert(saleItemBatchInserts);
     }
 
     if (posCustomerId) {
@@ -3213,23 +3277,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function loadBatches() {
-    if (!businessId) return;
     setIsLoadingBatches(true);
-    // Only surface batches from completed sessions or manually-entered batches (no session).
-    // Batches from draft/cancelled sessions are excluded to prevent phantom dashboard entries.
-    const { data: completedSessions } = await supabase
+    // Show batches from any non-cancelled session, plus manually-entered batches (no session).
+    // Cancelled sessions are excluded to prevent phantom dashboard entries from aborted receives.
+    // RLS scopes both queries to the authenticated user's business — no explicit businessId filter needed.
+    const { data: liveSessions } = await supabase
       .from("receiving_sessions")
       .select("id")
-      .eq("business_id", businessId)
-      .eq("status", "completed");
-    const completedIds = (completedSessions ?? []).map(s => s.id);
-    const orFilter = completedIds.length > 0
-      ? `receiving_session_id.is.null,receiving_session_id.in.(${completedIds.join(",")})`
+      .neq("status", "cancelled");
+    const liveIds = (liveSessions ?? []).map(s => s.id);
+    const orFilter = liveIds.length > 0
+      ? `receiving_session_id.is.null,receiving_session_id.in.(${liveIds.join(",")})`
       : "receiving_session_id.is.null";
     const { data, error } = await supabase
       .from("inventory_batches")
       .select("*, products(name)")
-      .eq("business_id", businessId)
       .or(orFilter)
       .order("expiration_date", { ascending: true, nullsFirst: false });
     if (error) { console.error("[Batches] Load error:", error); setIsLoadingBatches(false); return; }
