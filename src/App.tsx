@@ -356,7 +356,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
-  const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number; unlinked?: boolean }[]>([]);
+  const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number }[]>([]);
   const [isLoadingStatement, setIsLoadingStatement] = useState(false);
   const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
   const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
@@ -2776,9 +2776,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadSupplierStatement(supplierId: string) {
     setIsLoadingStatement(true);
     setSupplierStatement([]);
-    const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? "";
-    // Query 1: sessions linked by supplier_id (FK)
-    const { data: linked, error: sessErr } = await supabase
+    // Only FK-linked sessions — linkage is determined solely by supplier_id.
+    const { data: sessions, error: sessErr } = await supabase
       .from("receiving_sessions")
       .select("id, invoice_number, invoice_date, invoice_total")
       .eq("business_id", businessId)
@@ -2787,39 +2786,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .not("invoice_number", "is", null)
       .order("created_at", { ascending: false });
     if (sessErr) { console.error("[Statement] sessions error:", sessErr); setIsLoadingStatement(false); return; }
-    // Query 2: sessions unlinked (no supplier_id) but with matching supplier_name
-    const { data: unlinked } = supplierName
-      ? await supabase
-          .from("receiving_sessions")
-          .select("id, invoice_number, invoice_date, invoice_total")
-          .eq("business_id", businessId)
-          .is("supplier_id", null)
-          .ilike("supplier_name", supplierName)
-          .eq("status", "completed")
-          .not("invoice_number", "is", null)
-          .order("created_at", { ascending: false })
-      : { data: [] };
-    const allSessions = [
-      ...(linked ?? []).map(s => ({ ...s, unlinked: false })),
-      ...(unlinked ?? []).map(s => ({ ...s, unlinked: true })),
-    ];
-    if (allSessions.length === 0) { setIsLoadingStatement(false); return; }
-    const allIds = allSessions.map(s => s.id);
+    if (!sessions || sessions.length === 0) { setIsLoadingStatement(false); return; }
     const { data: payments } = await supabase
       .from("supplier_payments")
       .select("receiving_session_id, amount")
-      .in("receiving_session_id", allIds);
+      .in("receiving_session_id", sessions.map(s => s.id));
     const paidMap: Record<string, number> = {};
     for (const p of (payments ?? [])) {
       paidMap[p.receiving_session_id] = (paidMap[p.receiving_session_id] ?? 0) + Number(p.amount);
     }
-    setSupplierStatement(allSessions.map(s => ({
+    setSupplierStatement(sessions.map(s => ({
       session_id: s.id,
       invoice_number: s.invoice_number,
       invoice_date: s.invoice_date,
       invoice_total: Number(s.invoice_total),
       paid: Math.round((paidMap[s.id] ?? 0) * 100) / 100,
-      unlinked: s.unlinked,
     })));
     setIsLoadingStatement(false);
   }
@@ -4552,8 +4533,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {sessionHistory.map(session => {
             const supplier = session.supplier_id ? suppliers.find(s => s.id === session.supplier_id) : null;
-            const supplierLabel = supplier
-              ? supplier.name
+            const supplierLabel = session.supplier_id
+              ? (supplier?.name ?? "Unknown supplier")
               : session.supplier_name
                 ? <>{session.supplier_name} <span style={{ fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>Unlinked</span></>
                 : "No supplier";
@@ -6042,7 +6023,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                       <tr key={row.session_id}>
                                         <td style={{ fontWeight: 600 }}>
                                           {row.invoice_number}
-                                          {row.unlinked && <span style={{ marginLeft: "6px", fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>unlinked</span>}
                                         </td>
                                         <td style={{ color: "#64748b" }}>{row.invoice_date ?? "—"}</td>
                                         <td style={{ textAlign: "right" }}>${row.invoice_total.toFixed(2)}</td>
