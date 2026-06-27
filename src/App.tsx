@@ -250,6 +250,26 @@ type BulkRow = {
   status: 'valid' | 'missing_name' | 'missing_price' | 'invalid_price' | 'duplicate_barcode';
 };
 
+type InventoryBatch = {
+  id: string;
+  business_id: string;
+  product_id: string;
+  receiving_session_id: string | null;
+  receiving_session_item_id: string | null;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  batch_number: string | null;
+  lot_number: string | null;
+  manufactured_date: string | null;
+  expiration_date: string | null;
+  quantity_received: number;
+  quantity_remaining: number;
+  unit_cost: number | null;
+  status: string;
+  created_at: string;
+  product_name?: string;
+};
+
 type AppProps = {
   userId: string;
   userEmail: string;
@@ -324,7 +344,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [smartReceiveFile, setSmartReceiveFile] = useState<File | null>(null);
   const [smartReceiveProcessing, setSmartReceiveProcessing] = useState(false);
   const [smartReceiveLoading, setSmartReceiveLoading] = useState(false);
-  const [smartReceiveResult, setSmartReceiveResult] = useState<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[]; freight: number; additionalCost: number; invoiceTotal: number } | null>(null);
+  const [smartReceiveResult, setSmartReceiveResult] = useState<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number; batchNumber?: string | null; expirationDate?: string | null }[]; freight: number; additionalCost: number; invoiceTotal: number } | null>(null);
   // per-item match: product_id | "" (unresolved)
   const [smartReceiveMatches, setSmartReceiveMatches] = useState<string[]>([]);
   // supplier resolution: "" = not linked, a UUID = linked supplier_id
@@ -366,6 +386,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editPaymentReference, setEditPaymentReference] = useState("");
   const [editPaymentNotes, setEditPaymentNotes] = useState("");
   const [isSavingPayment, setIsSavingPayment] = useState(false);
+  // Expiration / batch tracking
+  const [batches, setBatches] = useState<InventoryBatch[]>([]);
+  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
+  const [sessionItemBatch, setSessionItemBatch] = useState<Record<string, { batch_number: string; lot_number: string; manufactured_date: string; expiration_date: string }>>({});
+  const [smartReceiveItemBatch, setSmartReceiveItemBatch] = useState<{ batch_number: string; lot_number: string; manufactured_date: string; expiration_date: string }[]>([]);
+  const [writeOffBatchId, setWriteOffBatchId] = useState<string | null>(null);
+  const [writeOffQty, setWriteOffQty] = useState("");
+  const [isWritingOffBatch, setIsWritingOffBatch] = useState(false);
   const [adjustProductId, setAdjustProductId] = useState("");
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
@@ -674,6 +702,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadStockCounts();
     loadActiveReceivingSession();
     loadSessionHistory();
+    loadBatches();
   }, []);
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
@@ -3183,6 +3212,75 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setSessionItems(prev => prev.filter(i => i.id !== itemId));
   }
 
+  async function loadBatches() {
+    if (!businessId) return;
+    setIsLoadingBatches(true);
+    // Only surface batches from completed sessions or manually-entered batches (no session).
+    // Batches from draft/cancelled sessions are excluded to prevent phantom dashboard entries.
+    const { data: completedSessions } = await supabase
+      .from("receiving_sessions")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("status", "completed");
+    const completedIds = (completedSessions ?? []).map(s => s.id);
+    const orFilter = completedIds.length > 0
+      ? `receiving_session_id.is.null,receiving_session_id.in.(${completedIds.join(",")})`
+      : "receiving_session_id.is.null";
+    const { data, error } = await supabase
+      .from("inventory_batches")
+      .select("*, products(name)")
+      .eq("business_id", businessId)
+      .or(orFilter)
+      .order("expiration_date", { ascending: true, nullsFirst: false });
+    if (error) { console.error("[Batches] Load error:", error); setIsLoadingBatches(false); return; }
+    const rows = ((data as (InventoryBatch & { products: { name: string } | null })[]) || []).map(r => ({
+      ...r,
+      product_name: r.products?.name ?? "",
+    }));
+    setBatches(rows);
+    setIsLoadingBatches(false);
+  }
+
+  async function handleWriteOffBatch(batch: InventoryBatch, qtyToWriteOff: number) {
+    if (!businessId || qtyToWriteOff <= 0 || qtyToWriteOff > batch.quantity_remaining) return;
+    setIsWritingOffBatch(true);
+    const newRemaining = batch.quantity_remaining - qtyToWriteOff;
+    const newStatus = newRemaining <= 0 ? "expired" : batch.status;
+    const { error: batchErr } = await supabase
+      .from("inventory_batches")
+      .update({ quantity_remaining: newRemaining, status: newStatus })
+      .eq("id", batch.id);
+    if (batchErr) { console.error("[WriteOff] Batch update error:", batchErr); setMessage({ text: "Failed to update batch: " + batchErr.message, type: "error" }); setIsWritingOffBatch(false); return; }
+    const product = products.find(p => p.product_id === batch.product_id);
+    if (product) {
+      const qtyBefore = product.quantity_on_hand;
+      const qtyAfter = Math.max(0, qtyBefore - qtyToWriteOff);
+      const { error: invErr } = await supabase.from("inventory").update({ quantity_on_hand: qtyAfter }).eq("id", product.inventory_id);
+      if (invErr) { console.error("[WriteOff] Inventory update error:", invErr); }
+      const reasonParts: string[] = ["Batch expiry write-off"];
+      if (batch.lot_number) reasonParts.push(`Lot: ${batch.lot_number}`);
+      if (batch.batch_number) reasonParts.push(`Batch: ${batch.batch_number}`);
+      if (batch.expiration_date) reasonParts.push(`Exp: ${batch.expiration_date}`);
+      await supabase.from("inventory_transactions").insert({
+        business_id: businessId,
+        product_id: batch.product_id,
+        transaction_type: "expired",
+        quantity_change: -qtyToWriteOff,
+        quantity_before: qtyBefore,
+        quantity_after: qtyAfter,
+        reason: reasonParts.join(" — "),
+        reference_id: batch.id,
+      });
+    }
+    setWriteOffBatchId(null);
+    setWriteOffQty("");
+    setIsWritingOffBatch(false);
+    setMessage({ text: `Write-off recorded: ${qtyToWriteOff} units expired`, type: "success" });
+    await loadBatches();
+    await loadProducts();
+    await loadTransactions();
+  }
+
   async function handlePostReceivingSession() {
     if (!activeReceivingSession || sessionItems.length === 0 || isPostingSession) return;
     // Guard 2: check for a completed session with the same invoice_number + supplier (req 5)
@@ -3215,6 +3313,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     }
     setIsPostingSession(true);
     try {
+      const { data: existingBatches } = await supabase
+        .from("inventory_batches")
+        .select("receiving_session_item_id")
+        .eq("receiving_session_id", activeReceivingSession.id);
+      const alreadyBatched = new Set((existingBatches ?? []).map(r => r.receiving_session_item_id).filter(Boolean) as string[]);
       const notes: string[] = [];
       for (const item of sessionItems) {
         const product = products.find(p => p.product_id === item.product_id);
@@ -3260,6 +3363,27 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           return;
         }
         notes.push(`${product.product_name}: +${item.quantity_received}`);
+        // Create batch record if any batch/expiry fields were provided and not already created
+        const batchFields = sessionItemBatch[item.id] ?? {};
+        if ((batchFields.expiration_date || batchFields.lot_number || batchFields.batch_number) && !alreadyBatched.has(item.id)) {
+          const { error: batchErr } = await supabase.from("inventory_batches").insert({
+            business_id: businessId,
+            product_id: item.product_id,
+            receiving_session_id: activeReceivingSession.id,
+            receiving_session_item_id: item.id,
+            supplier_id: activeReceivingSession.supplier_id ?? null,
+            supplier_name: activeReceivingSession.supplier_name ?? null,
+            batch_number: batchFields.batch_number || null,
+            lot_number: batchFields.lot_number || null,
+            manufactured_date: batchFields.manufactured_date || null,
+            expiration_date: batchFields.expiration_date || null,
+            quantity_received: item.quantity_received,
+            quantity_remaining: item.quantity_received,
+            unit_cost: item.unit_cost,
+            status: "active",
+          });
+          if (batchErr) { console.error("[ReceivingSession] Post: batch insert failed", batchErr); setMessage({ text: "Warning: batch record not saved — " + batchErr.message, type: "error" }); }
+        }
       }
 
       const { error: statusError } = await supabase.from("receiving_sessions").update({ status: "completed" }).eq("id", activeReceivingSession.id);
@@ -3272,11 +3396,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       setActiveReceivingSession(null);
       setSessionItems([]);
+      setSessionItemBatch({});
       closeProductResolution();
       setMessage({ text: `Session posted: ${notes.join(", ")}`, type: "success" });
       await loadProducts();
       await loadTransactions();
       await loadSessionHistory();
+      await loadBatches();
     } catch (err) {
       console.error("[ReceivingSession] Post: unexpected error", err);
       setMessage({ text: "Post receiving failed unexpectedly", type: "error" });
@@ -3285,7 +3411,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     }
   }
 
-  async function processSmartReceiveInvoice(file: File): Promise<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[]; freight: number; additionalCost: number; invoiceTotal: number }> {
+  async function processSmartReceiveInvoice(file: File): Promise<{ supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number; batchNumber?: string | null; expirationDate?: string | null }[]; freight: number; additionalCost: number; invoiceTotal: number }> {
     // Read file as base64 in the browser
     const base64Data = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -3305,7 +3431,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     if (error) throw new Error(`Edge Function error: ${error.message}`);
     if (data?.error) throw new Error(`Invoice processing failed: ${data.error}`);
 
-    return data as { supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number }[]; freight: number; additionalCost: number; invoiceTotal: number };
+    return data as { supplier: string; invoiceNumber: string; invoiceDate: string; items: { description: string; quantity: number; unitCost: number; batchNumber?: string | null; expirationDate?: string | null }[]; freight: number; additionalCost: number; invoiceTotal: number };
   }
 
   async function handleCreateSmartProduct() {
@@ -3380,19 +3506,65 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number, supplier_name")
       .single();
     if (sessErr) { console.error("[SmartReceive] session create error:", sessErr); setMessage({ text: "Failed to create session: " + sessErr.message, type: "error" }); setIsCreatingSmartSession(false); return; }
-    // Insert receiving items for every matched product
-    const itemsToInsert = smartReceiveResult.items
-      .map((item, i) => ({ item, matchId: smartReceiveMatches[i] }))
-      .filter(({ matchId }) => matchId && matchId !== "new")
-      .map(({ item, matchId }) => ({
-        business_id: businessId,
-        receiving_session_id: session.id,
-        product_id: matchId,
-        quantity_received: item.quantity,
-        unit_cost: item.unitCost,
-      }));
-    const { error: itemsErr } = await supabase.from("receiving_items").insert(itemsToInsert);
+    // Insert receiving items for every matched product — return IDs so we can key sessionItemBatch
+    const itemsWithIdx = smartReceiveResult.items
+      .map((item, i) => ({ item, matchId: smartReceiveMatches[i], origIdx: i }))
+      .filter(({ matchId }) => matchId && matchId !== "new");
+    const itemsToInsert = itemsWithIdx.map(({ item, matchId }) => ({
+      business_id: businessId,
+      receiving_session_id: session.id,
+      product_id: matchId,
+      quantity_received: item.quantity,
+      unit_cost: item.unitCost,
+    }));
+    const { error: itemsErr } = await supabase
+      .from("receiving_items")
+      .insert(itemsToInsert);
     if (itemsErr) { console.error("[SmartReceive] items insert error:", itemsErr); setMessage({ text: "Failed to create session items: " + itemsErr.message, type: "error" }); setIsCreatingSmartSession(false); return; }
+    // Fetch created receiving_items by session ID (product_id match avoids positional ordering
+    // assumptions and bypasses any RETURNING/RLS issue). Insert inventory_batches rows immediately
+    // so the data is persisted regardless of React state lifetime. Also populate sessionItemBatch
+    // so the session view can display the expiry fields.
+    if (smartReceiveItemBatch.length > 0) {
+      const { data: createdItems } = await supabase
+        .from("receiving_items")
+        .select("id, product_id")
+        .eq("receiving_session_id", session.id);
+      if (createdItems && createdItems.length > 0) {
+        const batchTransfer: Record<string, { batch_number: string; lot_number: string; manufactured_date: string; expiration_date: string }> = {};
+        const batchInserts: { business_id: string; product_id: string; receiving_session_id: string; receiving_session_item_id: string; supplier_id: string | null; supplier_name: string | null; batch_number: string | null; lot_number: string | null; manufactured_date: string | null; expiration_date: string | null; quantity_received: number; quantity_remaining: number; unit_cost: number; status: string }[] = [];
+        itemsWithIdx.forEach(({ item, matchId, origIdx }) => {
+          const bf = smartReceiveItemBatch[origIdx];
+          const ri = createdItems.find(r => r.product_id === matchId);
+          if (ri && bf && (bf.expiration_date || bf.lot_number || bf.batch_number || bf.manufactured_date)) {
+            batchTransfer[ri.id] = bf;
+            batchInserts.push({
+              business_id: businessId,
+              product_id: ri.product_id,
+              receiving_session_id: session.id,
+              receiving_session_item_id: ri.id,
+              supplier_id: (session as { supplier_id?: string | null }).supplier_id ?? null,
+              supplier_name: (session as { supplier_name?: string | null }).supplier_name ?? null,
+              batch_number: bf.batch_number || null,
+              lot_number: bf.lot_number || null,
+              manufactured_date: bf.manufactured_date || null,
+              expiration_date: bf.expiration_date || null,
+              quantity_received: item.quantity,
+              quantity_remaining: item.quantity,
+              unit_cost: item.unitCost,
+              status: "active",
+            });
+          }
+        });
+        if (batchInserts.length > 0) {
+          const { error: batchErr } = await supabase.from("inventory_batches").insert(batchInserts);
+          if (batchErr) { console.error("[SmartReceive] batch insert error:", batchErr); }
+        }
+        if (Object.keys(batchTransfer).length > 0) {
+          setSessionItemBatch(batchTransfer);
+        }
+      }
+    }
     // Directly set the session we just created — never query by "newest draft"
     // which could silently return a different/older draft if timing is off
     setActiveReceivingSession({
@@ -3421,12 +3593,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setSmartReceiveLinkedSupplierId("");
     setShowSmartSupplierOverridePicker(false);
     setShowSmartSupplierAdvanced(false);
+    setSmartReceiveItemBatch([]);
     setActiveTab("inventory");
     setIsCreatingSmartSession(false);
     setMessage({ text: `Draft receiving session created — review and click Post Receiving`, type: "success" });
     // Load items for exactly the session we just created (not the newest draft)
     await loadSessionItems(session.id);
     await loadSessionHistory();
+    await loadBatches();
   }
 
   function handleRapidReceiveScan(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -4478,7 +4652,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       const isHighlighted = highlightedProductId === item.product_id;
                       const lineTotal = item.unit_cost * item.quantity_received;
                       return (
-                      <tr key={item.id} style={{ background: isHighlighted ? "#dcfce7" : undefined, transition: "background 0.3s ease-out" }}>
+                      <React.Fragment key={item.id}>
+                      <tr style={{ background: isHighlighted ? "#dcfce7" : undefined, transition: "background 0.3s ease-out" }}>
                         <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
                         <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{prod?.barcode ?? "—"}</td>
                         <td style={{ textAlign: "right" }}>
@@ -4515,6 +4690,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                           </button>
                         </td>
                       </tr>
+                      <tr style={{ background: isHighlighted ? "#dcfce7" : "#fafafa" }}>
+                        <td colSpan={6} style={{ padding: "4px 8px 8px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "4px" }}>
+                            <input type="text" placeholder="Batch #" value={sessionItemBatch[item.id]?.batch_number ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: e.target.value, lot_number: prev[item.id]?.lot_number ?? "", manufactured_date: prev[item.id]?.manufactured_date ?? "", expiration_date: prev[item.id]?.expiration_date ?? "" } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
+                            <input type="text" placeholder="Lot #" value={sessionItemBatch[item.id]?.lot_number ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: prev[item.id]?.batch_number ?? "", lot_number: e.target.value, manufactured_date: prev[item.id]?.manufactured_date ?? "", expiration_date: prev[item.id]?.expiration_date ?? "" } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
+                            <input type="date" title="Manufactured date" value={sessionItemBatch[item.id]?.manufactured_date ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: prev[item.id]?.batch_number ?? "", lot_number: prev[item.id]?.lot_number ?? "", manufactured_date: e.target.value, expiration_date: prev[item.id]?.expiration_date ?? "" } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
+                            <input type="date" title="Expiry date" value={sessionItemBatch[item.id]?.expiration_date ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: prev[item.id]?.batch_number ?? "", lot_number: prev[item.id]?.lot_number ?? "", manufactured_date: prev[item.id]?.manufactured_date ?? "", expiration_date: e.target.value } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
+                          </div>
+                        </td>
+                      </tr>
+                      </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -4549,6 +4735,85 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="section-card">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+          <h3 className="section-card-title" style={{ margin: 0 }}>Expiration Tracking</h3>
+          <button onClick={loadBatches} style={{ padding: "6px 14px", fontSize: "12px", cursor: "pointer", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>
+            {isLoadingBatches ? "Loading..." : "Refresh"}
+          </button>
+        </div>
+        {(() => {
+          const today = new Date(); today.setHours(0,0,0,0);
+          const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
+          const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
+          const activeBatches = batches.filter(b => b.status === "active");
+          const expired = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) < today);
+          const exp7 = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) >= today && new Date(b.expiration_date) <= in7);
+          const exp30 = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) > in7 && new Date(b.expiration_date) <= in30);
+          return (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>
+                <div style={{ padding: "12px", background: expired.length > 0 ? "#fef2f2" : "#f8fafc", border: `1px solid ${expired.length > 0 ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
+                  <div style={{ fontSize: "22px", fontWeight: 700, color: expired.length > 0 ? "#dc2626" : "#94a3b8" }}>{expired.length}</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expired</div>
+                </div>
+                <div style={{ padding: "12px", background: exp7.length > 0 ? "#fff7ed" : "#f8fafc", border: `1px solid ${exp7.length > 0 ? "#fdba74" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
+                  <div style={{ fontSize: "22px", fontWeight: 700, color: exp7.length > 0 ? "#ea580c" : "#94a3b8" }}>{exp7.length}</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expires ≤ 7 days</div>
+                </div>
+                <div style={{ padding: "12px", background: exp30.length > 0 ? "#fffbeb" : "#f8fafc", border: `1px solid ${exp30.length > 0 ? "#fde68a" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
+                  <div style={{ fontSize: "22px", fontWeight: 700, color: exp30.length > 0 ? "#ca8a04" : "#94a3b8" }}>{exp30.length}</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expires ≤ 30 days</div>
+                </div>
+              </div>
+              {activeBatches.length === 0 && !isLoadingBatches ? (
+                <div style={{ textAlign: "center", padding: "24px", color: "#94a3b8", fontSize: "13px" }}>No active batches. Add Batch # / Lot # / Expiry date when receiving inventory.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {activeBatches.map(batch => {
+                    const isExpiredBatch = !!(batch.expiration_date && new Date(batch.expiration_date) < today);
+                    const isNear7 = !!(batch.expiration_date && !isExpiredBatch && new Date(batch.expiration_date) <= in7);
+                    const isNear30 = !!(batch.expiration_date && !isExpiredBatch && !isNear7 && new Date(batch.expiration_date) <= in30);
+                    const borderColor = isExpiredBatch ? "#fca5a5" : isNear7 ? "#fdba74" : isNear30 ? "#fde68a" : "#e2e8f0";
+                    const bgColor = isExpiredBatch ? "#fef2f2" : isNear7 ? "#fff7ed" : isNear30 ? "#fffbeb" : "#f8fafc";
+                    return (
+                      <div key={batch.id} style={{ padding: "10px 14px", background: bgColor, border: `1px solid ${borderColor}`, borderRadius: "8px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <div style={{ flex: 1, minWidth: "120px" }}>
+                          <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{batch.product_name}</div>
+                          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "1px" }}>
+                            {batch.expiration_date ? `Exp: ${batch.expiration_date}` : "No expiry"}
+                            {batch.lot_number ? ` · Lot: ${batch.lot_number}` : ""}
+                            {batch.batch_number ? ` · Batch: ${batch.batch_number}` : ""}
+                            {batch.supplier_name ? ` · ${batch.supplier_name}` : ""}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", fontSize: "13px", color: "#334155", minWidth: "60px" }}>
+                          <div style={{ fontWeight: 600 }}>{batch.quantity_remaining} left</div>
+                          <div style={{ fontSize: "10px", color: "#94a3b8" }}>of {batch.quantity_received} recv</div>
+                        </div>
+                        {isExpiredBatch && <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", background: "#fca5a5", color: "#7f1d1d", borderRadius: "4px" }}>EXPIRED</span>}
+                        {isNear7 && <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", background: "#fdba74", color: "#7c2d12", borderRadius: "4px" }}>EXPIRING SOON</span>}
+                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                          {writeOffBatchId === batch.id ? (
+                            <>
+                              <input type="number" min="0.01" max={batch.quantity_remaining} step="0.01" value={writeOffQty} onChange={e => setWriteOffQty(e.target.value)} placeholder="Qty" style={{ width: "64px", padding: "4px 7px", fontSize: "12px", border: "1px solid #e2e8f0", borderRadius: "4px" }} />
+                              <button onClick={() => { const q = parseFloat(writeOffQty); if (q > 0) handleWriteOffBatch(batch, q); }} disabled={isWritingOffBatch || !writeOffQty} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "#dc2626", color: "#fff", border: "none", borderRadius: "4px", fontWeight: 600 }}>{isWritingOffBatch ? "..." : "Confirm"}</button>
+                              <button onClick={() => { setWriteOffBatchId(null); setWriteOffQty(""); }} style={{ padding: "4px 8px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#64748b" }}>Cancel</button>
+                            </>
+                          ) : (
+                            <button onClick={() => { setWriteOffBatchId(batch.id); setWriteOffQty(String(batch.quantity_remaining)); }} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#64748b", whiteSpace: "nowrap" }}>Write off</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {sessionHistory.length > 0 && (
@@ -7438,7 +7703,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           byProduct[si.product_id].units += si.quantity;
           byProduct[si.product_id].revenue += si.line_total;
         }
-        const productRows = Object.values(byProduct).sort((a, b) => b.units - a.units);
+        const productRows = Object.entries(byProduct).map(([pid, row]) => ({ ...row, product_id: pid })).sort((a, b) => b.units - a.units);
 
         const rangeLabel = analyticsRange === 'today' ? 'Today' : analyticsRange === '7d' ? 'Last 7 Days' : analyticsRange === '30d' ? 'Last 30 Days' : 'All Time';
 
@@ -7546,7 +7811,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       </thead>
                       <tbody>
                         {productRows.map((row, i) => (
-                          <tr key={row.name}>
+                          <tr key={row.product_id}>
                             <td>{i + 1}</td>
                             <td>{row.name}</td>
                             <td>{row.units}</td>
@@ -8872,7 +9137,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {smartReceiveSimpleOpen && (
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1099 }}
-          onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); setShowSmartSupplierAdvanced(false); }}
+          onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); setShowSmartSupplierAdvanced(false); setSmartReceiveItemBatch([]); }}
         />
       )}
       {/* Panel: directly positioned via transform — no full-screen wrapper, no pointerEvents:none ancestor */}
@@ -8952,7 +9217,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", paddingBottom: "8px" }}>
                   <button
                     type="button"
-                    onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); setShowSmartSupplierAdvanced(false); }}
+                    onClick={() => { setSmartReceiveSimpleOpen(false); setSmartReceiveFile(null); setSmartReceiveProcessing(false); setSmartReceiveResult(null); setSmartReceiveLoading(false); setSmartReceiveMatches([]); setSmartReceivePendingIdx(null); setSmartReceiveLinkedSupplierId(""); setShowSmartSupplierOverridePicker(false); setShowSmartSupplierAdvanced(false); setSmartReceiveItemBatch([]); }}
                     style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
                   >Cancel</button>
                   <button
@@ -8974,6 +9239,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                         return found ? found.product_id : "";
                       });
                       setSmartReceiveMatches(matches);
+                      setSmartReceiveItemBatch(result.items.map(item => ({ batch_number: item.batchNumber ?? "", lot_number: "", manufactured_date: "", expiration_date: item.expirationDate ?? "" })));
                       // Auto-match supplier (exact case-insensitive)
                       const autoSupplier = suppliers.find(s => s.name.toLowerCase().trim() === result.supplier.toLowerCase().trim());
                       setSmartReceiveLinkedSupplierId(autoSupplier?.id ?? "");
@@ -9203,6 +9469,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                   )}
                                 </div>
                               )}
+                              {/* Batch / Expiry fields */}
+                              <div style={{ marginTop: "8px", padding: "8px 10px", background: "#fafafa", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+                                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "5px" }}>
+                                  Batch / Expiry
+                                  {smartReceiveItemBatch[i]?.expiration_date && <span style={{ marginLeft: "6px", fontWeight: 400, textTransform: "none", color: "#15803d" }}>✓ extracted</span>}
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px" }}>
+                                  <input type="text" placeholder="Batch #" value={smartReceiveItemBatch[i]?.batch_number ?? ""} onChange={e => setSmartReceiveItemBatch(prev => { const next = [...prev]; next[i] = { ...(next[i] ?? { lot_number: "", manufactured_date: "", expiration_date: "" }), batch_number: e.target.value }; return next; })} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
+                                  <input type="text" placeholder="Lot #" value={smartReceiveItemBatch[i]?.lot_number ?? ""} onChange={e => setSmartReceiveItemBatch(prev => { const next = [...prev]; next[i] = { ...(next[i] ?? { batch_number: "", manufactured_date: "", expiration_date: "" }), lot_number: e.target.value }; return next; })} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
+                                  <input type="date" title="Manufactured date" value={smartReceiveItemBatch[i]?.manufactured_date ?? ""} onChange={e => setSmartReceiveItemBatch(prev => { const next = [...prev]; next[i] = { ...(next[i] ?? { batch_number: "", lot_number: "", expiration_date: "" }), manufactured_date: e.target.value }; return next; })} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
+                                  <input type="date" title="Expiry date" value={smartReceiveItemBatch[i]?.expiration_date ?? ""} onChange={e => setSmartReceiveItemBatch(prev => { const next = [...prev]; next[i] = { ...(next[i] ?? { batch_number: "", lot_number: "", manufactured_date: "" }), expiration_date: e.target.value }; return next; })} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569", fontWeight: smartReceiveItemBatch[i]?.expiration_date ? 600 : 400 }} />
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
