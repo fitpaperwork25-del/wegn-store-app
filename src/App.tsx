@@ -345,7 +345,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     invoiceNumber: string;
   } | null>(null);
   const [isPostingSession, setIsPostingSession] = useState(false);
-  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
+  const [sessionHistory, setSessionHistory] = useState<{ id: string; status: string; supplier_id: string | null; supplier_name: string | null; created_at: string; received_date: string; notes: string | null; invoice_number: string | null; invoice_date: string | null; invoice_total: number; freight_cost: number; additional_cost: number; invoice_status: string; calculated_total: number; variance_amount: number; approved_by: string | null; approved_at: string | null; approval_note: string | null }[]>([]);
   const [invoicePanelSessionId, setInvoicePanelSessionId] = useState<string | null>(null);
   const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
   const [editInvoiceDate, setEditInvoiceDate] = useState("");
@@ -2877,7 +2877,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     if (!businessId) return;
     const { data, error } = await supabase
       .from("receiving_sessions")
-      .select("id, status, supplier_id, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status, calculated_total, variance_amount, approved_by, approved_at, approval_note")
+      .select("id, status, supplier_id, supplier_name, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status, calculated_total, variance_amount, approved_by, approved_at, approval_note")
       .eq("business_id", businessId)
       .in("status", ["completed", "cancelled"])
       .order("created_at", { ascending: false })
@@ -4552,6 +4552,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {sessionHistory.map(session => {
             const supplier = session.supplier_id ? suppliers.find(s => s.id === session.supplier_id) : null;
+            const supplierLabel = supplier
+              ? supplier.name
+              : session.supplier_name
+                ? <>{session.supplier_name} <span style={{ fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>Unlinked</span></>
+                : "No supplier";
             const items = sessionHistoryItems[session.id];
             const isExpanded = expandedHistorySessionId === session.id;
             const isInvoiceOpen = invoicePanelSessionId === session.id;
@@ -4577,7 +4582,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#64748b" }}>{session.id.slice(0, 8)}</span>
                 <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: statusBg, color: statusColor }}>{session.status}</span>
                 <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: invoiceBadgeBg, color: invoiceBadgeColor }}>{invoiceBadgeLabel}</span>
-                <span style={{ fontSize: "12px", color: "#334155" }}>{supplier?.name ?? "No supplier"}</span>
+                <span style={{ fontSize: "12px", color: "#334155" }}>{supplierLabel}</span>
                 {session.notes && <span style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic" }}>{session.notes}</span>}
                 <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>{new Date(session.created_at).toLocaleDateString()}</span>
                 {totalProducts != null && <span style={{ fontSize: "12px", color: "#334155" }}>{totalProducts} products · {totalUnits} units</span>}
