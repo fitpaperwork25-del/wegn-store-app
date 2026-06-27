@@ -338,8 +338,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [newSessionSupplierId, setNewSessionSupplierId] = useState("");
   const [newSessionNotes, setNewSessionNotes] = useState("");
   const [isStartingSession, setIsStartingSession] = useState(false);
-  const [smartReceiveOpen, setSmartReceiveOpen] = useState(false);
-  const [smartReceiveContinued, setSmartReceiveContinued] = useState(false);
   const [smartReceiveSimpleOpen, setSmartReceiveSimpleOpen] = useState(false);
   const [smartReceiveFile, setSmartReceiveFile] = useState<File | null>(null);
   const [smartReceiveProcessing, setSmartReceiveProcessing] = useState(false);
@@ -4703,7 +4701,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isStartingSession ? 0.6 : 1 }}
               >{isStartingSession ? "Starting..." : "Start Receiving Session"}</button>
               <button
-                onClick={() => { setSmartReceiveContinued(false); setSmartReceiveOpen(true); }}
+                onClick={() => setSmartReceiveSimpleOpen(true)}
                 style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#7c3aed", color: "#fff", border: "none", borderRadius: "6px" }}
               >📷 Smart Receive</button>
             </div>
@@ -9790,63 +9788,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 );
               })()
             : null}
-          </div>
-        </div>
-      )}
-
-      {/* Smart Receive Modal */}
-      {smartReceiveOpen && (
-        <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setSmartReceiveOpen(false); setSmartReceiveContinued(false); } }}
-        >
-          <div style={{ background: "#fff", borderRadius: "12px", padding: "28px 28px 24px", width: "420px", maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
-              <span style={{ fontSize: "22px" }}>📷</span>
-              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>Smart Receive</h2>
-            </div>
-            {!smartReceiveContinued ? (
-              <>
-                <p style={{ fontSize: "14px", color: "#475569", marginBottom: "18px", lineHeight: 1.6 }}>
-                  Choose how to import a supplier invoice.
-                </p>
-                <div style={{ display: "flex", gap: "10px", marginBottom: "18px" }}>
-                  <button
-                    disabled
-                    style={{ flex: 1, padding: "12px", fontSize: "13px", fontWeight: 600, cursor: "not-allowed", background: "#f1f5f9", color: "#94a3b8", border: "1px dashed #cbd5e1", borderRadius: "8px" }}
-                  >📸 Take Photo</button>
-                  <button
-                    disabled
-                    style={{ flex: 1, padding: "12px", fontSize: "13px", fontWeight: 600, cursor: "not-allowed", background: "#f1f5f9", color: "#94a3b8", border: "1px dashed #cbd5e1", borderRadius: "8px" }}
-                  >📄 Upload Invoice</button>
-                </div>
-                <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "20px", background: "#f8fafc", padding: "10px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", lineHeight: 1.6 }}>
-                  This feature will import a supplier invoice and prepare a Receiving Session for your review before anything is posted.
-                </p>
-                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                  <button
-                    onClick={() => { setSmartReceiveOpen(false); setSmartReceiveContinued(false); }}
-                    style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
-                  >Cancel</button>
-                  <button
-                    onClick={() => setSmartReceiveContinued(true)}
-                    style={{ padding: "9px 18px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#7c3aed", color: "#fff", border: "none", borderRadius: "6px" }}
-                  >Continue</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ padding: "16px", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", color: "#5b21b6", fontWeight: 500, textAlign: "center" }}>
-                  Smart Receive engine coming in Phase 2.
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <button
-                    onClick={() => { setSmartReceiveOpen(false); setSmartReceiveContinued(false); }}
-                    style={{ padding: "9px 18px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}
-                  >Close</button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
