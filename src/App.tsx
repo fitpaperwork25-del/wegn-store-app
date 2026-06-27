@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "./supabase";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -394,6 +394,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [writeOffBatchId, setWriteOffBatchId] = useState<string | null>(null);
   const [writeOffQty, setWriteOffQty] = useState("");
   const [isWritingOffBatch, setIsWritingOffBatch] = useState(false);
+  const [needsOrderingSelected, setNeedsOrderingSelected] = useState<Set<string>>(new Set());
+  const [needsOrderingQtys, setNeedsOrderingQtys] = useState<Record<string, number>>({});
   const [adjustProductId, setAdjustProductId] = useState("");
   const [adjustType, setAdjustType] = useState("damaged");
   const [adjustQuantity, setAdjustQuantity] = useState("");
@@ -642,6 +644,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editProdMinMargin, setEditProdMinMargin] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [productSearch, setProductSearch] = useState("");
+  const [debouncedProductSearch, setDebouncedProductSearch] = useState("");
   const productSearchRef = useRef<HTMLInputElement>(null);
   const [businessName, setBusinessName] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
@@ -707,6 +710,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
   useEffect(() => { loadSales(); }, [salesDateRange]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedProductSearch(productSearch), 150);
+    return () => clearTimeout(t);
+  }, [productSearch]);
 
   useEffect(() => {
     if (cart.length === 0) return;
@@ -736,6 +743,51 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         return cashIn - cashRefunds;
       })()
     : 0;
+
+  const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s])) as Record<string, Supplier>, [suppliers]);
+  const categoryMap = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])) as Record<string, Category>, [categories]);
+  const employeeMap = useMemo(() => Object.fromEntries(employees.map(e => [e.id, e])) as Record<string, Employee>, [employees]);
+
+  const supplierPOMap = useMemo(() => {
+    const map: Record<string, PurchaseOrder[]> = {};
+    for (const po of purchaseOrders) {
+      if (!map[po.supplier_id]) map[po.supplier_id] = [];
+      map[po.supplier_id].push(po);
+    }
+    return map;
+  }, [purchaseOrders]);
+
+  const lowStockProducts = useMemo(() =>
+    products
+      .filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level)
+      .sort((a, b) => (a.quantity_on_hand - (a.reorder_level ?? 0)) - (b.quantity_on_hand - (b.reorder_level ?? 0))),
+    [products]
+  );
+
+  const filteredProducts = useMemo(() =>
+    products
+      .filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter)
+      .filter(p => {
+        if (!debouncedProductSearch.trim()) return true;
+        const q = debouncedProductSearch.trim().toLowerCase();
+        return p.product_name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.barcode ?? "").toLowerCase().includes(q);
+      }),
+    [products, categoryFilter, debouncedProductSearch]
+  );
+
+  const categoryChips = useMemo(() => [
+    { key: "all", label: "All", count: products.length },
+    { key: "uncategorized", label: "Uncategorized", count: products.filter(p => !p.category_id).length },
+    ...categories.map(c => ({ key: c.id, label: c.name, count: products.filter(p => p.category_id === c.id).length })),
+  ], [products, categories]);
+
+  const recentSales = useMemo(() =>
+    [...sales]
+      .filter(s => s.status === 'completed')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5),
+    [sales]
+  );
 
   async function loadBusiness() {
     const { data, error } = await supabase
@@ -4668,7 +4720,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <span style={{ color: "#64748b" }}>Supplier:</span>
                 <span>
                   {activeReceivingSession.supplier_id
-                    ? (suppliers.find(s => s.id === activeReceivingSession.supplier_id)?.name ?? "Unknown")
+                    ? (supplierMap[activeReceivingSession.supplier_id!]?.name ?? "Unknown")
                     : activeReceivingSession.supplier_name
                       ? <>{activeReceivingSession.supplier_name} <span style={{ fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>unlinked</span></>
                       : "None"}
@@ -4883,7 +4935,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <h3 className="section-card-title">Receiving Session History</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {sessionHistory.map(session => {
-            const supplier = session.supplier_id ? suppliers.find(s => s.id === session.supplier_id) : null;
+            const supplier = session.supplier_id ? (supplierMap[session.supplier_id] ?? null) : null;
             const supplierLabel = session.supplier_id
               ? (supplier?.name ?? "Unknown supplier")
               : session.supplier_name
@@ -5545,14 +5597,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
         const txnCount = todaySales.length;
         const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
-        const lowStockCount = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length;
+        const lowStockCount = lowStockProducts.length;
         const openPoCount = purchaseOrders.filter(po => po.status === 'draft' || po.status === 'ordered' || po.status === 'partially_received').length;
         const activeCustomerCount = customers.filter(c => c.status === 'active').length;
         const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
-        const recentSales = [...sales]
-          .filter(s => s.status === 'completed')
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5);
 
         const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
 
@@ -5649,7 +5697,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <tbody>
                     {recentSales.map((s, i) => {
                       const cashierName = s.cashier_id
-                        ? (employees.find(e => e.id === s.cashier_id)?.name ?? s.cashier_id.slice(0, 8))
+                        ? (employeeMap[s.cashier_id]?.name ?? s.cashier_id.slice(0, 8))
                         : "—";
                       return (
                         <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
@@ -5678,7 +5726,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {/* ── Inventory Summary Cards ── */}
       {(() => {
         const totalProducts = products.length;
-        const lowStockItems = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length;
+        const lowStockItems = lowStockProducts.length;
         const inventoryValue = products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
         const activeSupplierCount = suppliers.filter(s => s.status === 'active').length;
         return (
@@ -5715,38 +5763,208 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         );
       })()}
 
-      {/* ── Low Stock Alert ── */}
+      {/* ── Needs Ordering Today ── */}
       {(() => {
-        const lowStockProducts = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level);
         if (lowStockProducts.length === 0) return null;
+
+        const allIds = lowStockProducts.map(p => p.product_id);
+        const allSelected = allIds.length > 0 && allIds.every(id => needsOrderingSelected.has(id));
+        const selectedCount = allIds.filter(id => needsOrderingSelected.has(id)).length;
+
+        const toggleAll = () => {
+          if (allSelected) {
+            setNeedsOrderingSelected(new Set());
+          } else {
+            setNeedsOrderingSelected(new Set(allIds));
+          }
+        };
+
+        const toggleOne = (id: string) => {
+          setNeedsOrderingSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+          });
+        };
+
+        const getSuggestedQty = (p: typeof lowStockProducts[0]) =>
+          needsOrderingQtys[p.product_id] ?? Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
+
+        const getEstimatedCost = (p: typeof lowStockProducts[0]) =>
+          getSuggestedQty(p) * (p.cost_price ?? p.average_cost ?? 0);
+
+        const handleCreatePO = async () => {
+          const selectedProducts = lowStockProducts.filter(p => needsOrderingSelected.has(p.product_id));
+          if (selectedProducts.length === 0) return;
+
+          const pad = (n: number) => String(n).padStart(2, "0");
+          const now = new Date();
+
+          const withSupplier = selectedProducts.filter(p => !!p.supplier_id);
+          const skippedCount = selectedProducts.length - withSupplier.length;
+
+          const bySupplier: Record<string, typeof withSupplier> = {};
+          for (const p of withSupplier) {
+            const sid = p.supplier_id!;
+            if (!bySupplier[sid]) bySupplier[sid] = [];
+            bySupplier[sid].push(p);
+          }
+
+          let poCount = 0;
+          let itemCount = 0;
+          let firstPoId = "";
+
+          for (const [supplierId, prods] of Object.entries(bySupplier)) {
+            const ts = new Date(now.getTime() + poCount * 1000);
+            const poNumber = `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+            const items = prods.map(p => {
+              const qty = getSuggestedQty(p);
+              const unitCost = p.cost_price ?? p.average_cost ?? 0;
+              return { product_id: p.product_id, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
+            });
+            const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
+            const notes = items.length === 1
+              ? `Reorder: ${prods[0].product_name}`
+              : `Reorder: ${items.length} products`;
+
+            const { data: po, error: poErr } = await supabase
+              .from("purchase_orders")
+              .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
+              .select("id")
+              .single();
+
+            if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create purchase order", type: "error" }); return; }
+
+            if (!firstPoId) firstPoId = po.id;
+
+            const CHUNK = 30;
+            const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
+            let chunkInserted = 0;
+            for (let ci = 0; ci < rows.length; ci += CHUNK) {
+              const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
+              if (chunkErr) { console.error(chunkErr); break; }
+              chunkInserted += Math.min(CHUNK, rows.length - ci);
+            }
+
+            if (chunkInserted === 0) {
+              await supabase.from("purchase_orders").delete().eq("id", po.id);
+              continue;
+            }
+
+            poCount++;
+            itemCount += chunkInserted;
+          }
+
+          setNeedsOrderingSelected(new Set());
+          setNeedsOrderingQtys({});
+          await loadPurchaseOrders();
+          await loadAllPoItems();
+          if (firstPoId) setSelectedPoId(firstPoId);
+          setActiveTab("purchasing");
+
+          const msg = [
+            `Created ${poCount} draft Purchase Order${poCount !== 1 ? "s" : ""} for ${itemCount} product${itemCount !== 1 ? "s" : ""}.`,
+            skippedCount > 0 ? ` ${skippedCount} product${skippedCount !== 1 ? "s were" : " was"} skipped because no supplier is assigned.` : "",
+          ].join("");
+          setMessage({ text: msg, type: "success" });
+        };
+
         return (
-          <div style={{ marginBottom: "24px", border: "1px solid #fecaca", borderRadius: "8px", overflow: "hidden" }}>
-            <div style={{ padding: "10px 16px", background: "#fef2f2", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <strong style={{ color: "#b91c1c", fontSize: "14px" }}>Low Stock Alert — {lowStockProducts.length} product{lowStockProducts.length !== 1 ? "s" : ""} below reorder level</strong>
+          <div style={{ marginBottom: "24px", border: "1px solid #fecaca", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+            {/* Header */}
+            <div style={{ padding: "12px 16px", background: "#fef2f2", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #fecaca" }}>
+              <strong style={{ color: "#b91c1c", fontSize: "15px" }}>🔴 Needs Ordering Today ({lowStockProducts.length})</strong>
             </div>
+
+            {/* Table */}
             <div style={{ overflowX: "auto" }}>
-              <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
+              <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ background: "#fef2f2" }}>
-                    <th style={{ textAlign: "left" }}>Product</th>
-                    <th style={{ textAlign: "left" }}>Category</th>
-                    <th style={{ textAlign: "right" }}>Stock</th>
-                    <th style={{ textAlign: "right" }}>Reorder Level</th>
-                    <th style={{ textAlign: "right" }}>Shortage</th>
+                  <tr style={{ background: "#fff7f7", borderBottom: "1px solid #fecaca" }}>
+                    <th style={{ padding: "8px 10px", textAlign: "center", width: "36px" }}>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        style={{ cursor: "pointer", width: "15px", height: "15px" }}
+                      />
+                    </th>
+                    <th style={{ padding: "8px 10px", textAlign: "left" }}>Product</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Current Stock</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Reorder Level</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right", width: "110px" }}>Suggested Order</th>
+                    <th style={{ padding: "8px 10px", textAlign: "left" }}>Supplier</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Estimated Cost</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lowStockProducts.sort((a, b) => a.quantity_on_hand - (a.reorder_level ?? 0) - (b.quantity_on_hand - (b.reorder_level ?? 0))).map(p => (
-                    <tr key={p.product_id}>
-                      <td style={{ fontWeight: 500 }}>{p.product_name}</td>
-                      <td style={{ color: "#64748b" }}>{categories.find(c => c.id === p.category_id)?.name ?? "—"}</td>
-                      <td style={{ textAlign: "right", fontWeight: 600, color: p.quantity_on_hand === 0 ? "#dc2626" : "#b45309" }}>{p.quantity_on_hand}</td>
-                      <td style={{ textAlign: "right" }}>{p.reorder_level}</td>
-                      <td style={{ textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{(p.reorder_level ?? 0) - p.quantity_on_hand}</td>
-                    </tr>
-                  ))}
+                  {lowStockProducts.map(p => {
+                    const isSelected = needsOrderingSelected.has(p.product_id);
+                    const suggestedQty = getSuggestedQty(p);
+                    const estimatedCost = getEstimatedCost(p);
+                    const supplierName = (p.supplier_id ? supplierMap[p.supplier_id]?.name : null) ?? "No supplier";
+                    return (
+                      <tr
+                        key={p.product_id}
+                        style={{ borderBottom: "1px solid #f3f4f6", background: isSelected ? "#fff7f7" : "#fff", cursor: "pointer" }}
+                        onClick={() => toggleOne(p.product_id)}
+                      >
+                        <td style={{ padding: "8px 10px", textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleOne(p.product_id)}
+                            style={{ cursor: "pointer", width: "15px", height: "15px" }}
+                          />
+                        </td>
+                        <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a" }}>{p.product_name}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: p.quantity_on_hand === 0 ? "#dc2626" : "#b45309" }}>{p.quantity_on_hand}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", color: "#64748b" }}>{p.reorder_level}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right" }} onClick={e => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            min={1}
+                            value={suggestedQty}
+                            onChange={e => {
+                              const val = Math.max(1, Number(e.target.value) || 1);
+                              setNeedsOrderingQtys(prev => ({ ...prev, [p.product_id]: val }));
+                            }}
+                            style={{ width: "72px", padding: "4px 6px", fontSize: "13px", border: "1px solid #e2e8f0", borderRadius: "4px", textAlign: "right" }}
+                          />
+                        </td>
+                        <td style={{ padding: "8px 10px", color: p.supplier_id ? "#0f172a" : "#94a3b8", fontStyle: p.supplier_id ? "normal" : "italic" }}>{supplierName}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#15803d" }}>
+                          {estimatedCost > 0 ? `$${estimatedCost.toFixed(2)}` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "12px 16px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "13px", color: "#475569", fontWeight: 500 }}>
+                Selected: <strong style={{ color: "#0f172a" }}>{selectedCount}</strong> product{selectedCount !== 1 ? "s" : ""}
+              </span>
+              <button
+                onClick={handleCreatePO}
+                disabled={selectedCount === 0}
+                style={{
+                  padding: "9px 22px",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  borderRadius: "7px",
+                  border: "none",
+                  cursor: selectedCount === 0 ? "not-allowed" : "pointer",
+                  background: selectedCount === 0 ? "#e2e8f0" : "#1d4ed8",
+                  color: selectedCount === 0 ? "#94a3b8" : "#fff",
+                  transition: "background 0.15s",
+                }}
+              >
+                Create Purchase Order
+              </button>
             </div>
           </div>
         );
@@ -5815,7 +6033,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       {/* ── Category Filter ── */}
       {categories.length > 0 && (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-          {[{ key: "all", label: "All", count: products.length }, { key: "uncategorized", label: "Uncategorized", count: products.filter(p => !p.category_id).length }, ...categories.map(c => ({ key: c.id, label: c.name, count: products.filter(p => p.category_id === c.id).length }))].map(chip => {
+          {categoryChips.map(chip => {
             const active = categoryFilter === chip.key;
             return (
               <button
@@ -5851,15 +6069,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
           <tbody>
             {(() => {
-              const filtered = products.filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter).filter(p => {
-                if (!productSearch.trim()) return true;
-                const q = productSearch.trim().toLowerCase();
-                return p.product_name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.barcode ?? "").toLowerCase().includes(q);
-              });
-              if (filtered.length === 0) return (
+              if (filteredProducts.length === 0) return (
                 <tr><td colSpan={7} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
               );
-              return filtered.map((product) => {
+              return filteredProducts.map((product) => {
               const isLowStock = product.status === 'active' && product.reorder_level !== null && product.quantity_on_hand < product.reorder_level;
               const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
               const inactive = product.status !== "active";
@@ -5868,7 +6081,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 <React.Fragment key={product.product_id}>
                   <tr className={inactive ? "inv-row-inactive" : ""}>
                     <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
-                    <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{categories.find(c => c.id === product.category_id)?.name ?? "—"}</td>
+                    <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{(product.category_id ? categoryMap[product.category_id]?.name : null) ?? "—"}</td>
                     <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
                     <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
                     <td data-label="Stock" style={{ textAlign: "right" }}>
@@ -6085,7 +6298,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 const inactive = s.status !== "active";
                 const isEditing = editingSupplierId === s.id;
                 const isExpanded = expandedCustomerId === `sup-${s.id}`;
-                const pos = purchaseOrders.filter(po => po.supplier_id === s.id);
+                const pos = supplierPOMap[s.id] ?? [];
                 const received = pos.filter(po => po.status === "received");
                 const nonCancelled = pos.filter(po => po.status !== "cancelled");
                 const totalSpend = nonCancelled.reduce((sum, po) => sum + Number(po.subtotal), 0);
