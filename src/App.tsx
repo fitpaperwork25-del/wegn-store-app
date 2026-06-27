@@ -2776,8 +2776,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadSupplierStatement(supplierId: string) {
     setIsLoadingStatement(true);
     setSupplierStatement([]);
-    // Only FK-linked sessions — linkage is determined solely by supplier_id.
-    const { data: sessions, error: sessErr } = await supabase
+    const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? "";
+    // Query 1: sessions FK-linked to this supplier
+    const { data: linked, error: sessErr } = await supabase
       .from("receiving_sessions")
       .select("id, invoice_number, invoice_date, invoice_total")
       .eq("business_id", businessId)
@@ -2786,21 +2787,37 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .not("invoice_number", "is", null)
       .order("created_at", { ascending: false });
     if (sessErr) { console.error("[Statement] sessions error:", sessErr); setIsLoadingStatement(false); return; }
-    if (!sessions || sessions.length === 0) { setIsLoadingStatement(false); return; }
+    // Query 2: sessions received before the supplier existed in catalog (supplier_id = null,
+    // supplier_name matches). Shown without a badge — the statement context implies association.
+    const { data: byName } = supplierName
+      ? await supabase
+          .from("receiving_sessions")
+          .select("id, invoice_number, invoice_date, invoice_total")
+          .eq("business_id", businessId)
+          .is("supplier_id", null)
+          .ilike("supplier_name", supplierName)
+          .eq("status", "completed")
+          .not("invoice_number", "is", null)
+          .order("created_at", { ascending: false })
+      : { data: [] };
+    // FK-linked sessions are listed first so they win the deduplication when an invoice
+    // number appears in both result sets (edge case: same invoice received twice, once
+    // linked and once unlinked).
+    const allSessions = [...(linked ?? []), ...(byName ?? [])];
+    if (allSessions.length === 0) { setIsLoadingStatement(false); return; }
     // Deduplicate by invoice_number (Supabase REST has no DISTINCT ON).
-    // Sessions are sorted created_at DESC so the first occurrence is the most recent.
-    // Payments are aggregated across all sessions that share an invoice_number so the
-    // paid total is accurate even when a payment was recorded against an older session.
-    const byInvoice = new Map<string, typeof sessions[0]>();
+    // Payments are aggregated across ALL session IDs sharing an invoice_number so the
+    // paid total is accurate even when a payment was recorded against a duplicate session.
+    const byInvoice = new Map<string, typeof allSessions[0]>();
     const sessionToInvoice: Record<string, string> = {};
-    for (const s of sessions) {
+    for (const s of allSessions) {
       if (!byInvoice.has(s.invoice_number)) byInvoice.set(s.invoice_number, s);
       sessionToInvoice[s.id] = s.invoice_number;
     }
     const { data: payments } = await supabase
       .from("supplier_payments")
       .select("receiving_session_id, amount")
-      .in("receiving_session_id", sessions.map(s => s.id));
+      .in("receiving_session_id", allSessions.map(s => s.id));
     const paidByInvoice: Record<string, number> = {};
     for (const p of (payments ?? [])) {
       const inv = sessionToInvoice[p.receiving_session_id];
