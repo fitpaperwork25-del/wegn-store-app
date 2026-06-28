@@ -436,6 +436,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [txHistoryOpen, setTxHistoryOpen] = useState(false);
   const [productsTableOpen, setProductsTableOpen] = useState(false);
   const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
+  const [poReportOpen, setPoReportOpen] = useState(false);
+  const [returnHistoryOpen, setReturnHistoryOpen] = useState(false);
+  const [supplierListOpen, setSupplierListOpen] = useState<boolean | null>(null);
+  const [poListOpen, setPoListOpen] = useState<boolean | null>(null);
+  const [customerListOpen, setCustomerListOpen] = useState<boolean | null>(null);
+  const [employeeListOpen, setEmployeeListOpen] = useState<boolean | null>(null);
+  const [stockCountHistoryOpen, setStockCountHistoryOpen] = useState<boolean | null>(null);
+  const [invValuationOpen, setInvValuationOpen] = useState<boolean | null>(null);
+  const [lowStockReportOpen, setLowStockReportOpen] = useState<boolean | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [negotiatingProductId, setNegotiatingProductId] = useState<string | null>(null);
   const [negotiatePrice, setNegotiatePrice] = useState("");
@@ -603,6 +612,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [drawerSession, setDrawerSession] = useState<DrawerSession | null>(null);
   const [drawerPaidOuts, setDrawerPaidOuts] = useState<DrawerPaidOut[]>([]);
   const [drawerLoading, setDrawerLoading] = useState(false);
+  const [posDrawerCloseOpen, setPosDrawerCloseOpen] = useState(false);
   const [openingFloat, setOpeningFloat] = useState("");
   const [paidOutAmount, setPaidOutAmount] = useState("");
   const [paidOutReason, setPaidOutReason] = useState("");
@@ -1196,6 +1206,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setDrawerSession(data as DrawerSession);
     setDrawerPaidOuts([]);
     setOpeningFloat('');
+    setPosDrawerCloseOpen(false);
     setDrawerLoading(false);
     setMessage({ text: 'Cash drawer opened', type: "success" });
   }
@@ -4237,6 +4248,80 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <p className="page-subtitle">Scan items, process sales, manage returns and receipts</p>
       </div>
 
+      {/* Drawer status bar — always visible */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 16px", borderRadius: "8px", marginBottom: "16px", flexWrap: "wrap", gap: "8px",
+        background: drawerSession ? "#f0fdf4" : "#fef2f2",
+        border: `1px solid ${drawerSession ? "#bbf7d0" : "#fecaca"}`,
+      }}>
+        {!drawerSession ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#dc2626", display: "inline-block", flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: "#dc2626", fontSize: "14px" }}>Drawer Closed</span>
+            </div>
+            <form onSubmit={handleOpenDrawer} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                type="number" min="0" step="0.01" placeholder="Opening float ($)"
+                value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)}
+                style={{ padding: "6px 10px", width: "150px", fontSize: "13px", border: "1px solid #fca5a5", borderRadius: "6px" }}
+              />
+              <button type="submit" disabled={drawerLoading || !openingFloat}
+                style={{ padding: "6px 16px", fontWeight: 600, fontSize: "13px", background: drawerLoading || !openingFloat ? "#fca5a5" : "#dc2626", color: "#fff", border: "none", borderRadius: "6px", cursor: drawerLoading || !openingFloat ? "not-allowed" : "pointer" }}
+              >
+                {drawerLoading ? "Opening…" : "Open Drawer"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#16a34a", display: "inline-block", flexShrink: 0 }} />
+                <span style={{ fontWeight: 600, color: "#15803d", fontSize: "14px" }}>Drawer Open</span>
+              </div>
+              {drawerSession.cashier_id && (
+                <span style={{ fontSize: "13px", color: "#374151" }}>
+                  Cashier: <strong>{employees.find(e => e.id === drawerSession.cashier_id)?.name ?? "Unknown"}</strong>
+                </span>
+              )}
+              <span style={{ fontSize: "13px", color: "#374151" }}>
+                Opened: <strong>{new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong>
+              </span>
+              <span style={{ fontSize: "13px", color: "#374151" }}>
+                Float: <strong>${Number(drawerSession.opening_float).toFixed(2)}</strong>
+              </span>
+            </div>
+            {!posDrawerCloseOpen ? (
+              <button onClick={() => setPosDrawerCloseOpen(true)}
+                style={{ padding: "6px 14px", fontSize: "13px", fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", borderRadius: "6px", cursor: "pointer" }}
+              >
+                Close Drawer
+              </button>
+            ) : (
+              <form onSubmit={handleCloseDrawer} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="number" min="0" step="0.01" placeholder="Counted cash ($)"
+                  value={closingCount} onChange={(e) => setClosingCount(e.target.value)}
+                  style={{ padding: "6px 10px", width: "150px", fontSize: "13px", border: "1px solid #d1d5db", borderRadius: "6px" }}
+                />
+                <button type="submit" disabled={drawerLoading || !closingCount}
+                  style={{ padding: "6px 14px", fontWeight: 600, fontSize: "13px", background: drawerLoading || !closingCount ? "#9ca3af" : "#15803d", color: "#fff", border: "none", borderRadius: "6px", cursor: drawerLoading || !closingCount ? "not-allowed" : "pointer" }}
+                >
+                  {drawerLoading ? "Closing…" : "Confirm Close"}
+                </button>
+                <button type="button" onClick={() => { setPosDrawerCloseOpen(false); setClosingCount(""); }}
+                  style={{ padding: "6px 12px", fontSize: "13px", background: "none", border: "1px solid #d1d5db", borderRadius: "6px", cursor: "pointer", color: "#374151" }}
+                >
+                  Cancel
+                </button>
+              </form>
+            )}
+          </>
+        )}
+      </div>
+
       <div className="pos-card">
       <input
         type="text"
@@ -6572,7 +6657,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </button>
       </form>
 
-      <div style={{ marginBottom: "40px" }}>
+      <button
+        onClick={() => setSupplierListOpen(!(supplierListOpen ?? (suppliers.length < 10)))}
+        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{(supplierListOpen ?? (suppliers.length < 10)) ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Suppliers</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({suppliers.length} suppliers)</span>
+      </button>
+      <div style={{ display: (supplierListOpen ?? (suppliers.length < 10)) ? '' : 'none', marginBottom: "40px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
           <thead>
             <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
@@ -7339,8 +7432,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         );
       })()}
 
-      <h3 style={{ marginBottom: "4px" }}>Customers</h3>
+      <button
+        onClick={() => setCustomerListOpen(!(customerListOpen ?? (customers.length < 10)))}
+        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{(customerListOpen ?? (customers.length < 10)) ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Customers</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({customers.length} customers)</span>
+      </button>
       <p style={{ fontSize: "12px", color: "#888", marginBottom: "8px" }}>Click a row to see purchase history</p>
+      <div style={{ display: (customerListOpen ?? (customers.length < 10)) ? '' : 'none' }}>
       {(() => {
         const rows = customers.map((c) => {
           const custSales = sales.filter(s => s.customer_id === c.id && s.status === "completed");
@@ -7570,6 +7671,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </div>
         );
       })()}
+      </div>
 
       </div>{/* end customers */}
 
@@ -7614,6 +7716,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </button>
       </form>
 
+      <button
+        onClick={() => setPoListOpen(!(poListOpen ?? (purchaseOrders.length < 10)))}
+        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{(poListOpen ?? (purchaseOrders.length < 10)) ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Purchase Orders</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({purchaseOrders.length} orders)</span>
+      </button>
+      <div style={{ display: (poListOpen ?? (purchaseOrders.length < 10)) ? '' : 'none' }}>
       {(() => {
         const counts = {
           all: purchaseOrders.length,
@@ -8042,6 +8153,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </>
         );
       })()}
+      </div>
 
       </div>{/* end purchasing */}
 
@@ -8925,8 +9037,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
 
       {/* 1. Inventory Valuation Report */}
-      <h3 style={{ marginTop: "24px", marginBottom: "8px" }}>Inventory Valuation</h3>
-      <div style={{ overflowX: "auto" }}>
+      <button
+        onClick={() => setInvValuationOpen(!(invValuationOpen ?? (products.length < 10)))}
+        style={{ marginTop: "24px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{(invValuationOpen ?? (products.length < 10)) ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Inventory Valuation</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.length} products)</span>
+      </button>
+      <div style={{ display: (invValuationOpen ?? (products.length < 10)) ? '' : 'none', overflowX: "auto" }}>
         <table border={1} cellPadding={10} style={{ width: "100%" }}>
           <thead>
             <tr>
@@ -8962,7 +9081,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>
 
       {/* 2. Low Stock Report */}
-      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Low Stock Report</h3>
+      <button
+        onClick={() => setLowStockReportOpen(!(lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)))}
+        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{(lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)) ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Low Stock Report</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length} items)</span>
+      </button>
+      <div style={{ display: (lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)) ? '' : 'none' }}>
       {(() => {
         const lowStock = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level);
         return (
@@ -8996,6 +9123,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </div>
         );
       })()}
+      </div>
 
       {/* 3. Product Movement Report */}
       <button
@@ -9085,8 +9213,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </>}
 
       {/* 4. Purchase Order Report */}
-      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Purchase Order Report</h3>
-      {(() => {
+      <button
+        onClick={() => setPoReportOpen(o => !o)}
+        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{poReportOpen ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Purchase Order Report</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({purchaseOrders.length} orders)</span>
+      </button>
+      {poReportOpen && (() => {
         const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
         const totalPO = purchaseOrders.reduce((sum, po) => sum + po.subtotal, 0);
         return (
@@ -9316,8 +9451,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       })()}
 
       {/* Return History */}
-      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Return History</h3>
-      {(() => {
+      <button
+        onClick={() => setReturnHistoryOpen(o => !o)}
+        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{returnHistoryOpen ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Return History</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({new Set(returnHistory.map(r => r.return_number || r.id)).size} returns)</span>
+      </button>
+      {returnHistoryOpen && (() => {
         const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
         const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
         const employeeMap = Object.fromEntries(employees.map(e => [e.id, e.name]));
@@ -9516,7 +9658,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       )}
 
       {/* Past Stock Counts */}
-      <h3 style={{ marginTop: "32px", marginBottom: "12px" }}>Past Stock Counts</h3>
+      <button
+        onClick={() => setStockCountHistoryOpen(!(stockCountHistoryOpen ?? (stockCounts.length < 10)))}
+        style={{ marginTop: "32px", marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{(stockCountHistoryOpen ?? (stockCounts.length < 10)) ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Past Stock Counts</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({stockCounts.length} counts)</span>
+      </button>
+      <div style={{ display: (stockCountHistoryOpen ?? (stockCounts.length < 10)) ? '' : 'none' }}>
       {stockCounts.length === 0 ? (
         <p style={{ color: "#888", fontSize: "14px", marginBottom: "24px" }}>No stock counts recorded yet.</p>
       ) : (
@@ -9610,6 +9760,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           </table>
         </div>
       )}
+      </div>
 
       </div>{/* end inventory */}
 
@@ -9660,7 +9811,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </form>
       )}
 
-      <div style={{ overflowX: "auto", marginBottom: "40px" }}>
+      <button
+        onClick={() => setEmployeeListOpen(!(employeeListOpen ?? (employees.length < 10)))}
+        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+      >
+        <span style={{ fontSize: "16px" }}>{(employeeListOpen ?? (employees.length < 10)) ? "▼" : "▶"}</span>
+        <h3 style={{ margin: 0 }}>Employees</h3>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({employees.length} employees)</span>
+      </button>
+      <div style={{ display: (employeeListOpen ?? (employees.length < 10)) ? '' : 'none', overflowX: "auto", marginBottom: "40px" }}>
         <table border={1} cellPadding={10} style={{ width: "100%" }}>
           <thead>
             <tr style={{ background: "#f3f4f6" }}>
