@@ -292,6 +292,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [receivingItems, setReceivingItems] = useState<POItem[]>([]);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
   const [receiveUnitCosts, setReceiveUnitCosts] = useState<Record<string, string>>({});
+  const [receiveDamagedQtys, setReceiveDamagedQtys] = useState<Record<string, string>>({});
+  const [receiveExpiredQtys, setReceiveExpiredQtys] = useState<Record<string, string>>({});
+  const [receiveRejectedQtys, setReceiveRejectedQtys] = useState<Record<string, string>>({});
   const [isConfirmingReceive, setIsConfirmingReceive] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poNotes, setPoNotes] = useState("");
@@ -1671,6 +1674,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setReceivingItems([]);
       setReceiveQtys({});
       setReceiveUnitCosts({});
+      setReceiveDamagedQtys({});
+      setReceiveExpiredQtys({});
+      setReceiveRejectedQtys({});
       return;
     }
 
@@ -1694,13 +1700,22 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     const qtys: Record<string, string> = {};
     const costs: Record<string, string> = {};
+    const damaged: Record<string, string> = {};
+    const expired: Record<string, string> = {};
+    const rejected: Record<string, string> = {};
     items.forEach((item) => {
       const remaining = item.quantity - (item.quantity_received ?? 0);
       qtys[item.id] = String(Math.max(0, remaining));
       costs[item.id] = String(item.unit_cost);
+      damaged[item.id] = "0";
+      expired[item.id] = "0";
+      rejected[item.id] = "0";
     });
     setReceiveQtys(qtys);
     setReceiveUnitCosts(costs);
+    setReceiveDamagedQtys(damaged);
+    setReceiveExpiredQtys(expired);
+    setReceiveRejectedQtys(rejected);
   }
 
   async function handleConfirmReceive() {
@@ -1711,6 +1726,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
     try {
       const receiveNotes: string[] = [];
+      const exceptionParts: string[] = [];
 
       for (const item of receivingItems) {
         const receiveQty = Number(receiveQtys[item.id] ?? 0);
@@ -1720,6 +1736,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
         const product = products.find((p) => p.product_id === item.product_id);
         if (!product) continue;
+
+        const damagedQty = Math.max(0, Number(receiveDamagedQtys[item.id] ?? 0));
+        const expiredQty = Math.max(0, Number(receiveExpiredQtys[item.id] ?? 0));
+        const rejectedQty = Math.max(0, Number(receiveRejectedQtys[item.id] ?? 0));
+        const excParts: string[] = [];
+        if (damagedQty > 0) excParts.push(`${damagedQty} damaged`);
+        if (expiredQty > 0) excParts.push(`${expiredQty} expired`);
+        if (rejectedQty > 0) excParts.push(`${rejectedQty} rejected`);
+        if (excParts.length > 0) exceptionParts.push(`${product.product_name}: ${excParts.join(", ")}`);
 
         const quantityBefore = product.quantity_on_hand;
         const quantityAfter = quantityBefore + clampedQty;
@@ -1791,7 +1816,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       }
 
       const timestamp = new Date().toLocaleString();
-      const historyLine = `[Received ${timestamp}] ${receiveNotes.join("; ")}`;
+      let historyLine = `[Received ${timestamp}] ${receiveNotes.join("; ")}`;
+      if (exceptionParts.length > 0) historyLine += ` | Exceptions: ${exceptionParts.join("; ")}`;
       const updatedNotes = po.notes ? `${po.notes}\n${historyLine}` : historyLine;
 
       const { error: statusError } = await supabase
@@ -1806,6 +1832,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setReceivingItems([]);
       setReceiveQtys({});
       setReceiveUnitCosts({});
+      setReceiveDamagedQtys({});
+      setReceiveExpiredQtys({});
+      setReceiveRejectedQtys({});
       setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated`, type: "success" });
       await loadProducts();
       await loadPurchaseOrders();
@@ -2493,7 +2522,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (poError) { console.error(poError); setMessage({ text: "Failed to delete purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); }
     setMessage({ text: `PO ${po.po_number} deleted`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -2506,7 +2535,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (error) { console.error(error); setMessage({ text: "Failed to cancel purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); }
     setMessage({ text: `PO ${po.po_number} cancelled`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -7860,13 +7889,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                   <th>Received</th>
                                   <th>Remaining</th>
                                   <th>Receive Qty</th>
+                                  <th style={{ color: "#dc2626" }}>Damaged</th>
+                                  <th style={{ color: "#d97706" }}>Expired</th>
+                                  <th style={{ color: "#6b7280" }}>Rejected</th>
                                   <th>Unit Cost</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {receivingItems.length === 0 ? (
                                   <tr>
-                                    <td colSpan={6}>No line items on this PO</td>
+                                    <td colSpan={9}>No line items on this PO</td>
                                   </tr>
                                 ) : (
                                   receivingItems.map((item) => {
@@ -7894,6 +7926,45 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                             />
                                           ) : (
                                             <span style={{ color: "#15803d", fontWeight: "bold" }}>Done</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {remaining > 0 ? (
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              value={receiveDamagedQtys[item.id] ?? "0"}
+                                              onChange={(e) => setReceiveDamagedQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                              style={{ width: "60px", padding: "4px" }}
+                                            />
+                                          ) : (
+                                            <span style={{ color: "#94a3b8" }}>—</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {remaining > 0 ? (
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              value={receiveExpiredQtys[item.id] ?? "0"}
+                                              onChange={(e) => setReceiveExpiredQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                              style={{ width: "60px", padding: "4px" }}
+                                            />
+                                          ) : (
+                                            <span style={{ color: "#94a3b8" }}>—</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {remaining > 0 ? (
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              value={receiveRejectedQtys[item.id] ?? "0"}
+                                              onChange={(e) => setReceiveRejectedQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                              style={{ width: "60px", padding: "4px" }}
+                                            />
+                                          ) : (
+                                            <span style={{ color: "#94a3b8" }}>—</span>
                                           )}
                                         </td>
                                         <td>
