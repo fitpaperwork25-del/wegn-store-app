@@ -44,6 +44,7 @@ type POItem = {
   unit_cost: number;
   line_total: number;
   created_at: string;
+  receive_notes: string | null;
 };
 
 type ReceiptItem = {
@@ -283,6 +284,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [poStatusFilter, setPoStatusFilter] = useState<"all" | "draft" | "ordered" | "partially_received" | "received" | "cancelled">("all");
+  const [showAllPOs, setShowAllPOs] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState("");
   const [poItems, setPoItems] = useState<POItem[]>([]);
   const [itemProductId, setItemProductId] = useState("");
@@ -295,6 +297,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [receiveDamagedQtys, setReceiveDamagedQtys] = useState<Record<string, string>>({});
   const [receiveExpiredQtys, setReceiveExpiredQtys] = useState<Record<string, string>>({});
   const [receiveRejectedQtys, setReceiveRejectedQtys] = useState<Record<string, string>>({});
+  const [receiveLineNotes, setReceiveLineNotes] = useState<Record<string, string>>({});
   const [isConfirmingReceive, setIsConfirmingReceive] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poNotes, setPoNotes] = useState("");
@@ -1382,7 +1385,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadAllPoItems() {
     const { data } = await supabase
       .from('purchase_order_items')
-      .select('id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at');
+      .select('id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at, receive_notes');
     const items = (data || []).map((item: any) => ({
       ...item,
       quantity_received: item.quantity_received ?? 0,
@@ -1580,7 +1583,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   async function loadPOItems(poId: string) {
     const { data, error } = await supabase
       .from("purchase_order_items")
-      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at")
+      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at, receive_notes")
       .eq("purchase_order_id", poId)
       .order("created_at", { ascending: true });
 
@@ -1677,12 +1680,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setReceiveDamagedQtys({});
       setReceiveExpiredQtys({});
       setReceiveRejectedQtys({});
+      setReceiveLineNotes({});
       return;
     }
 
     const { data, error } = await supabase
       .from("purchase_order_items")
-      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at")
+      .select("id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at, receive_notes")
       .eq("purchase_order_id", po.id)
       .order("created_at", { ascending: true });
 
@@ -1703,6 +1707,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const damaged: Record<string, string> = {};
     const expired: Record<string, string> = {};
     const rejected: Record<string, string> = {};
+    const notes: Record<string, string> = {};
     items.forEach((item) => {
       const remaining = item.quantity - (item.quantity_received ?? 0);
       qtys[item.id] = String(Math.max(0, remaining));
@@ -1710,12 +1715,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       damaged[item.id] = "0";
       expired[item.id] = "0";
       rejected[item.id] = "0";
+      notes[item.id] = item.receive_notes ?? "";
     });
     setReceiveQtys(qtys);
     setReceiveUnitCosts(costs);
     setReceiveDamagedQtys(damaged);
     setReceiveExpiredQtys(expired);
     setReceiveRejectedQtys(rejected);
+    setReceiveLineNotes(notes);
   }
 
   async function handleConfirmReceive() {
@@ -1746,6 +1753,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         if (rejectedQty > 0) excParts.push(`${rejectedQty} rejected`);
         if (excParts.length > 0) exceptionParts.push(`${product.product_name}: ${excParts.join(", ")}`);
 
+        const lineNote = (receiveLineNotes[item.id] ?? "").trim();
+
         const quantityBefore = product.quantity_on_hand;
         const quantityAfter = quantityBefore + clampedQty;
         const receivedUnitCost = Number(receiveUnitCosts[item.id] ?? item.unit_cost);
@@ -1754,6 +1763,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           ? ((quantityBefore * oldAvgCost) + (clampedQty * receivedUnitCost)) / (quantityBefore + clampedQty)
           : receivedUnitCost;
 
+        // Phase 1: inventory gate — must succeed before remaining writes fire
         const { error: invError } = await supabase
           .from("inventory")
           .update({ quantity_on_hand: quantityAfter })
@@ -1761,16 +1771,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
         if (invError) { console.error(invError); continue; }
 
-        const { error: avgCostError } = await supabase
-          .from("products")
-          .update({ average_cost: newAvgCost })
-          .eq("id", item.product_id);
+        // Phase 2: remaining writes in parallel (all values computed from pre-receive snapshot)
+        const newReceived = (item.quantity_received ?? 0) + clampedQty;
+        const poiPayload: Record<string, unknown> = { quantity_received: newReceived };
+        if (lineNote) poiPayload.receive_notes = lineNote;
 
-        if (avgCostError) { console.error(avgCostError); }
-
-        const { error: txError } = await supabase
-          .from("inventory_transactions")
-          .insert({
+        const [avgCostRes, txRes] = await Promise.all([
+          supabase.from("products").update({ average_cost: newAvgCost }).eq("id", item.product_id),
+          supabase.from("inventory_transactions").insert({
             business_id: product.business_id,
             product_id: item.product_id,
             transaction_type: "receiving",
@@ -1778,15 +1786,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             quantity_before: quantityBefore,
             quantity_after: quantityAfter,
             reason: `PO ${po.po_number}`,
-          });
+          }),
+          supabase.from("purchase_order_items").update(poiPayload).eq("id", item.id),
+        ]);
 
+        const { error: avgCostError } = avgCostRes;
+        const { error: txError } = txRes;
+        if (avgCostError) { console.error(avgCostError); }
         if (txError) { console.error(txError); }
-
-        const newReceived = (item.quantity_received ?? 0) + clampedQty;
-        await supabase
-          .from("purchase_order_items")
-          .update({ quantity_received: newReceived })
-          .eq("id", item.id);
 
         const productName = product.product_name;
         receiveNotes.push(`${productName}: +${clampedQty} (${newReceived}/${item.quantity})`);
@@ -1835,11 +1842,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setReceiveDamagedQtys({});
       setReceiveExpiredQtys({});
       setReceiveRejectedQtys({});
+      setReceiveLineNotes({});
       setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated`, type: "success" });
-      await loadProducts();
-      await loadPurchaseOrders();
-      await loadAllPoItems();
-      await loadTransactions();
+      await Promise.all([loadProducts(), loadPurchaseOrders(), loadAllPoItems(), loadTransactions()]);
     } catch (err) {
       console.error(err);
       setMessage({ text: "Receive failed unexpectedly", type: "error" });
@@ -2522,7 +2527,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (poError) { console.error(poError); setMessage({ text: "Failed to delete purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); setReceiveLineNotes({}); }
     setMessage({ text: `PO ${po.po_number} deleted`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -2535,7 +2540,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (error) { console.error(error); setMessage({ text: "Failed to cancel purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); setReceiveLineNotes({}); }
     setMessage({ text: `PO ${po.po_number} cancelled`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -7629,9 +7634,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const filteredPOs = poStatusFilter === "all"
           ? purchaseOrders
           : purchaseOrders.filter(po => po.status === poStatusFilter);
+        const visiblePOs = showAllPOs ? filteredPOs : filteredPOs.slice(0, 50);
         const supplierMap = Object.fromEntries(
           suppliers.map((supplier) => [supplier.id, supplier.name])
         );
+        const productItemMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
         return (
           <>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
@@ -7640,7 +7647,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               return (
                 <button
                   key={chip.key}
-                  onClick={() => setPoStatusFilter(chip.key)}
+                  onClick={() => { setPoStatusFilter(chip.key); setShowAllPOs(false); }}
                   style={{
                     padding: "6px 16px",
                     borderRadius: "20px",
@@ -7658,6 +7665,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             })}
           </div>
           <div style={{ marginBottom: "40px" }}>
+            {filteredPOs.length > 50 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px", color: "#64748b" }}>
+                <span>Showing {visiblePOs.length} of {filteredPOs.length} purchase orders</span>
+                {!showAllPOs && (
+                  <button onClick={() => setShowAllPOs(true)} style={{ fontSize: "13px", color: "#1d4ed8", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                    Show All
+                  </button>
+                )}
+              </div>
+            )}
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
               <thead>
                 <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
@@ -7675,7 +7692,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     <td colSpan={6} style={{ padding: "16px", color: "#94a3b8" }}>{poStatusFilter === "all" ? "No purchase orders found" : `No ${poStatusFilter} purchase orders`}</td>
                   </tr>
                 ) : (
-                  filteredPOs.map((po) => {
+                  visiblePOs.map((po) => {
                     const isDraft = po.status === "draft";
                     const isOrdered = po.status === "ordered";
                     const isPartiallyReceived = po.status === "partially_received";
@@ -7686,7 +7703,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isPartiallyReceived ? "#a16207" : isCancelled ? "#6b7280" : "#15803d";
                     const badgeLabel = isDraft ? "Draft" : isOrdered ? "Awaiting" : isPartiallyReceived ? "Partial" : isCancelled ? "Cancelled" : "Received";
                     const isDraftPO = isDraft;
-                    const productItemMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
                     const moreOpen = poMoreOpen === po.id;
                     const hasSecondary = isDraft || isOrdered || isPartiallyReceived;
                     return (
@@ -7826,12 +7842,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                   <th>Unit Cost</th>
                                   <th>Line Total</th>
                                   {isDraftPO && <th></th>}
+                                  {!isDraftPO && poItems.some(i => i.receive_notes) && <th>Notes</th>}
                                 </tr>
                               </thead>
                               <tbody>
                                 {poItems.length === 0 ? (
                                   <tr>
-                                    <td colSpan={isDraftPO ? 5 : 6}>No items yet</td>
+                                    <td colSpan={isDraftPO ? 5 : (poItems.some(i => i.receive_notes) ? 7 : 6)}>No items yet</td>
                                   </tr>
                                 ) : (
                                   poItems.map((item) => {
@@ -7858,6 +7875,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                               ×
                                             </button>
                                           </td>
+                                        )}
+                                        {!isDraftPO && poItems.some(i => i.receive_notes) && (
+                                          <td style={{ color: "#6b7280", fontSize: "12px" }}>{item.receive_notes ?? ""}</td>
                                         )}
                                       </tr>
                                     );
@@ -7893,12 +7913,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                   <th style={{ color: "#d97706" }}>Expired</th>
                                   <th style={{ color: "#6b7280" }}>Rejected</th>
                                   <th>Unit Cost</th>
+                                  <th>Notes</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {receivingItems.length === 0 ? (
                                   <tr>
-                                    <td colSpan={9}>No line items on this PO</td>
+                                    <td colSpan={10}>No line items on this PO</td>
                                   </tr>
                                 ) : (
                                   receivingItems.map((item) => {
@@ -7979,6 +8000,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                             />
                                           ) : (
                                             <span>${Number(item.unit_cost).toFixed(2)}</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {remaining > 0 ? (
+                                            <input
+                                              type="text"
+                                              placeholder="Optional note…"
+                                              value={receiveLineNotes[item.id] ?? ""}
+                                              onChange={(e) => setReceiveLineNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                              style={{ width: "160px", padding: "4px" }}
+                                            />
+                                          ) : (
+                                            item.receive_notes ? <span style={{ color: "#6b7280", fontSize: "12px" }}>{item.receive_notes}</span> : <span style={{ color: "#94a3b8" }}>—</span>
                                           )}
                                         </td>
                                       </tr>
