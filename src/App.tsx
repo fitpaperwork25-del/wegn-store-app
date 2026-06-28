@@ -2294,8 +2294,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setShowEod(true);
   }
 
-  async function handleBatchReorderPO() {
-    const selected = Array.from(reorderSelected);
+  async function handleBatchReorderPO(overrideSelected?: Set<string>) {
+    const selected = Array.from(overrideSelected ?? reorderSelected);
     if (selected.length === 0) { setMessage({ text: "No products selected", type: "error" }); return; }
 
     if (selected.length > 25 && !window.confirm(`Create PO with ${selected.length} products?`)) return;
@@ -2328,7 +2328,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       const items = productIds.map(pid => {
         const product = products.find(p => p.product_id === pid)!;
         const qty = Math.max(1, Number(reorderQtys[pid] ?? ((product.reorder_level ?? 0) - product.quantity_on_hand)));
-        const unitCost = product.average_cost ?? 0;
+        const unitCost = product.cost_price ?? product.average_cost ?? 0;
         return { product_id: pid, product_name: product.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
       });
       const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
@@ -2364,7 +2364,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       itemCount += chunkInserted;
     }
 
-    setReorderSelected(new Set());
+    setReorderSelected(prev => { const n = new Set(prev); selected.forEach(pid => n.delete(pid)); return n; });
     const clearedSuppliers = { ...reorderSuppliers };
     const clearedQtys = { ...reorderQtys };
     for (const pid of selected) { delete clearedSuppliers[pid]; delete clearedQtys[pid]; }
@@ -6879,7 +6879,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         </table>
       </div>
 
-      <h2 style={{ marginTop: "40px" }}>Reorder Center</h2>
+      <h2 style={{ marginTop: "40px" }}>Smart Purchase Planning</h2>
 
       {(() => {
         const lowStock = products.filter((p) => p.reorder_level !== null && p.quantity_on_hand < p.reorder_level && p.status === "active");
@@ -7020,7 +7020,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               )}
               {reorderFilter !== "missing" && (
                 <button
-                  onClick={handleBatchReorderPO}
+                  onClick={() => handleBatchReorderPO()}
                   style={{ padding: "8px 22px", cursor: "pointer", borderRadius: "6px", border: "none", background: "#15803d", color: "#fff", fontWeight: 700, fontSize: "14px" }}
                 >Create Draft PO ({selectedCount})</button>
               )}
@@ -7028,7 +7028,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           )}
 
           {/* Grouped by supplier */}
-          {Object.entries(grouped).map(([sid, items]) => {
+          {Object.entries(grouped)
+            .sort(([aSid, aItems], [bSid, bItems]) => {
+              if (aSid === "__unassigned__") return 1;
+              if (bSid === "__unassigned__") return -1;
+              const aVal = aItems.reduce((s, p) => s + Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand))) * (p.average_cost || 0), 0);
+              const bVal = bItems.reduce((s, p) => s + Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand))) * (p.average_cost || 0), 0);
+              return bVal - aVal;
+            })
+            .map(([sid, items]) => {
             const supName = sid === "__unassigned__" ? "No Supplier Assigned" : (supplierMap[sid] ?? "Unknown");
             const isCollapsed = collapsedSuppliers.has(sid);
             const groupValue = items.reduce((sum, p) => {
@@ -7037,6 +7045,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             }, 0);
             const groupSelected = items.filter(p => reorderSelected.has(p.product_id)).length;
             const allGroupSelected = items.every(p => reorderSelected.has(p.product_id));
+            const groupAiCount = items.filter(p => aiReorderRecs[p.product_id]?.hasData).length;
             return (
               <div key={sid} style={{ marginBottom: "16px", border: "1px solid #e2e8f0", borderRadius: "6px", overflow: "hidden" }}>
                 <div
@@ -7048,7 +7057,27 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   <span style={{ fontSize: "13px", color: "#64748b" }}>{items.length} product{items.length !== 1 ? "s" : ""}</span>
                   <span style={{ fontSize: "13px", color: "#64748b" }}>Est. ${groupValue.toFixed(2)}</span>
                   {groupSelected > 0 && <span style={{ fontSize: "12px", color: "#1d4ed8", fontWeight: 600 }}>{groupSelected} selected</span>}
-                  <div style={{ marginLeft: "auto" }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }} onClick={(e) => e.stopPropagation()}>
+                    {sid !== "__unassigned__" && (
+                      <>
+                        {groupAiCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updates: Record<string, string> = {};
+                              for (const p of items) { const r = aiReorderRecs[p.product_id]; if (r?.hasData) updates[p.product_id] = String(r.qty); }
+                              setReorderQtys(prev => ({ ...prev, ...updates }));
+                            }}
+                            style={{ fontSize: "12px", padding: "3px 10px", cursor: "pointer", borderRadius: "4px", border: "1px solid #7c3aed", background: "#faf5ff", color: "#7c3aed", fontWeight: 600 }}
+                          >✦ AI Qty</button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleBatchReorderPO(new Set(items.map(p => p.product_id)))}
+                          style={{ fontSize: "12px", padding: "3px 10px", cursor: "pointer", borderRadius: "4px", border: "none", background: "#15803d", color: "#fff", fontWeight: 700 }}
+                        >Create PO →</button>
+                      </>
+                    )}
                     <input
                       type="checkbox"
                       checked={allGroupSelected}
@@ -7087,7 +7116,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             <td style={{ padding: "6px 8px" }}>
                               <input type="checkbox" checked={checked} onChange={() => { setReorderSelected(prev => { const n = new Set(prev); if (n.has(p.product_id)) n.delete(p.product_id); else n.add(p.product_id); return n; }); }} style={{ cursor: "pointer" }} />
                             </td>
-                            <td style={{ padding: "6px 8px" }}>{p.product_name}</td>
+                            <td style={{ padding: "6px 8px" }}>{p.product_name}{p.quantity_on_hand === 0 && <span style={{ marginLeft: 4, fontSize: 10, color: "#dc2626", fontWeight: 700, background: "#fee2e2", borderRadius: 3, padding: "1px 4px" }}>OUT</span>}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{(p.reorder_level ?? 0) - p.quantity_on_hand}</td>
