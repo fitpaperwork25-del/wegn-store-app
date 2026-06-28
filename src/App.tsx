@@ -384,6 +384,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editPaymentReference, setEditPaymentReference] = useState("");
   const [editPaymentNotes, setEditPaymentNotes] = useState("");
   const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [resolvingSupplierSessionId, setResolvingSupplierSessionId] = useState<string | null>(null);
+  const [resolveSupplierPickId, setResolveSupplierPickId] = useState("");
+  const [resolveNewSupplierName, setResolveNewSupplierName] = useState("");
+  const [resolveMode, setResolveMode] = useState<"pick" | "create" | "nolinkconfirm">("pick");
+  const [isResolvingSupplier, setIsResolvingSupplier] = useState(false);
+  const [noLinkAcknowledgedSessions, setNoLinkAcknowledgedSessions] = useState<Set<string>>(new Set());
   // Expiration / batch tracking
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [isLoadingBatches, setIsLoadingBatches] = useState(false);
@@ -701,10 +707,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadDrawerSession();
     loadEmployees();
     loadStockCounts();
-    loadActiveReceivingSession();
-    loadSessionHistory();
     loadBatches();
   }, []);
+
+  // businessId is set asynchronously by loadBusiness(); these two loaders guard
+  // on it being non-empty, so they must re-run once it is available.
+  useEffect(() => {
+    if (!businessId) return;
+    loadActiveReceivingSession();
+    loadSessionHistory();
+  }, [businessId]);
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
   useEffect(() => { loadSales(); }, [salesDateRange]);
@@ -3025,6 +3037,57 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setIsSavingPayment(false);
   }
 
+  async function handleLinkSessionSupplier(sessionId: string, supplierId: string) {
+    setIsResolvingSupplier(true);
+    const { error } = await supabase
+      .from("receiving_sessions")
+      .update({ supplier_id: supplierId })
+      .eq("id", sessionId);
+    if (error) {
+      setMessage({ text: "Failed to link supplier: " + error.message, type: "error" });
+      setIsResolvingSupplier(false);
+      return;
+    }
+    setSessionHistory(prev => prev.map(s => s.id === sessionId ? { ...s, supplier_id: supplierId } : s));
+    setResolvingSupplierSessionId(null);
+    setResolveSupplierPickId("");
+    setResolveNewSupplierName("");
+    setResolveMode("pick");
+    setIsResolvingSupplier(false);
+    setMessage({ text: "Supplier linked. Payment recording is now available.", type: "success" });
+  }
+
+  async function handleCreateAndLinkSupplier(sessionId: string, name: string) {
+    if (!name.trim()) return;
+    setIsResolvingSupplier(true);
+    const { data: newSup, error: supErr } = await supabase
+      .from("suppliers")
+      .insert({ business_id: businessId, name: name.trim(), status: "active" })
+      .select("id")
+      .single();
+    if (supErr || !newSup) {
+      setMessage({ text: "Failed to create supplier: " + (supErr?.message ?? ""), type: "error" });
+      setIsResolvingSupplier(false);
+      return;
+    }
+    await loadSuppliers();
+    const { error } = await supabase
+      .from("receiving_sessions")
+      .update({ supplier_id: newSup.id })
+      .eq("id", sessionId);
+    if (error) {
+      setMessage({ text: "Failed to link new supplier: " + error.message, type: "error" });
+      setIsResolvingSupplier(false);
+      return;
+    }
+    setSessionHistory(prev => prev.map(s => s.id === sessionId ? { ...s, supplier_id: newSup.id } : s));
+    setResolvingSupplierSessionId(null);
+    setResolveNewSupplierName("");
+    setResolveMode("pick");
+    setIsResolvingSupplier(false);
+    setMessage({ text: "Supplier created and linked. Payment recording is now available.", type: "success" });
+  }
+
   async function loadSessionHistory() {
     if (!businessId) return;
     const { data, error } = await supabase
@@ -4984,6 +5047,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isInvoiceOpen ? "#1d4ed8" : "none", color: isInvoiceOpen ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px" }}
                   >{isInvoiceOpen ? "Close Invoice" : "Invoice"}</button>
                 )}
+                {!session.supplier_id && session.supplier_name && !noLinkAcknowledgedSessions.has(session.id) && (
+                  <button
+                    onClick={() => { const isOpen = resolvingSupplierSessionId === session.id; setResolvingSupplierSessionId(isOpen ? null : session.id); setResolveMode("pick"); setResolveSupplierPickId(""); }}
+                    style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: resolvingSupplierSessionId === session.id ? "#7c3aed" : "none", color: resolvingSupplierSessionId === session.id ? "#fff" : "#7c3aed", border: "1px solid #a78bfa", borderRadius: "5px" }}
+                  >{resolvingSupplierSessionId === session.id ? "Close" : "🔗 Link Supplier"}</button>
+                )}
                 {session.status === "completed" && session.approved_by && session.invoice_total > 0 && session.supplier_id && (() => {
                   const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
                   const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
@@ -5065,6 +5134,48 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 </div>
                 );
               })()}
+              {resolvingSupplierSessionId === session.id && (
+                <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#faf5ff" }}>
+                  <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", color: "#0f172a" }}>🔗 Link Supplier</div>
+                  <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+                    AI detected: <strong>{session.supplier_name}</strong> — link to a supplier to enable payment recording.
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
+                    <button onClick={() => setResolveMode("pick")} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "pick" ? 700 : 400, cursor: "pointer", background: resolveMode === "pick" ? "#7c3aed" : "none", color: resolveMode === "pick" ? "#fff" : "#7c3aed", border: "1px solid #7c3aed", borderRadius: "5px" }}>Match existing</button>
+                    <button onClick={() => { setResolveMode("create"); setResolveNewSupplierName(session.supplier_name ?? ""); }} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "create" ? 700 : 400, cursor: "pointer", background: resolveMode === "create" ? "#7c3aed" : "none", color: resolveMode === "create" ? "#fff" : "#7c3aed", border: "1px solid #7c3aed", borderRadius: "5px" }}>Create new</button>
+                    <button onClick={() => setResolveMode("nolinkconfirm")} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "nolinkconfirm" ? 700 : 400, cursor: "pointer", background: resolveMode === "nolinkconfirm" ? "#64748b" : "none", color: resolveMode === "nolinkconfirm" ? "#fff" : "#64748b", border: "1px solid #94a3b8", borderRadius: "5px" }}>Continue without linking</button>
+                  </div>
+                  {resolveMode === "pick" && (
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <select value={resolveSupplierPickId} onChange={e => setResolveSupplierPickId(e.target.value)} style={{ flex: 1, padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
+                        <option value="">— Select supplier —</option>
+                        {suppliers.filter(s => s.status === "active").map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => { if (resolveSupplierPickId) void handleLinkSessionSupplier(session.id, resolveSupplierPickId); }} disabled={!resolveSupplierPickId || isResolvingSupplier} style={{ padding: "7px 16px", fontSize: "13px", fontWeight: 600, cursor: resolveSupplierPickId ? "pointer" : "not-allowed", background: resolveSupplierPickId ? "#7c3aed" : "#e2e8f0", color: resolveSupplierPickId ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px", opacity: isResolvingSupplier ? 0.6 : 1 }}>{isResolvingSupplier ? "Linking..." : "Link"}</button>
+                    </div>
+                  )}
+                  {resolveMode === "create" && (
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <input type="text" value={resolveNewSupplierName} onChange={e => setResolveNewSupplierName(e.target.value)} placeholder="Supplier name" style={{ flex: 1, padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
+                      <button onClick={() => { if (resolveNewSupplierName.trim()) void handleCreateAndLinkSupplier(session.id, resolveNewSupplierName); }} disabled={!resolveNewSupplierName.trim() || isResolvingSupplier} style={{ padding: "7px 16px", fontSize: "13px", fontWeight: 600, cursor: resolveNewSupplierName.trim() ? "pointer" : "not-allowed", background: resolveNewSupplierName.trim() ? "#7c3aed" : "#e2e8f0", color: resolveNewSupplierName.trim() ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px", opacity: isResolvingSupplier ? 0.6 : 1 }}>{isResolvingSupplier ? "Creating..." : "Create & Link"}</button>
+                    </div>
+                  )}
+                  {resolveMode === "nolinkconfirm" && (
+                    <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: "6px", padding: "12px 14px" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#92400e", marginBottom: "6px" }}>⚠ Owner / Manager Confirmation</div>
+                      <div style={{ fontSize: "12px", color: "#78350f", marginBottom: "10px", lineHeight: 1.6 }}>
+                        Proceeding without a linked supplier disables payment recording for this session. Confirm only if you intend to track this payment outside the system.
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button onClick={() => { setNoLinkAcknowledgedSessions(prev => new Set([...prev, session.id])); setResolvingSupplierSessionId(null); setResolveMode("pick"); }} style={{ padding: "7px 16px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#92400e", color: "#fff", border: "none", borderRadius: "6px" }}>Confirm — Proceed Without Supplier</button>
+                        <button onClick={() => setResolveMode("pick")} style={{ padding: "7px 14px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {isInvoiceOpen && (
                 <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#fafbff" }}>
                   <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "10px", color: "#0f172a" }}>Supplier Invoice</div>
