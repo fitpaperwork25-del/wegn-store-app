@@ -756,6 +756,41 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s])) as Record<string, Supplier>, [suppliers]);
   const categoryMap = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])) as Record<string, Category>, [categories]);
+
+  // AI Smart Reorder — velocity-based demand forecast from in-memory sales history.
+  // No API calls; re-derives whenever sales, saleItems, or products change.
+  const aiReorderRecs = useMemo((): Record<string, { qty: number; sold7: number; sold30: number; hasData: boolean }> => {
+    const now = Date.now();
+    const ms7 = 7 * 86_400_000;
+    const ms30 = 30 * 86_400_000;
+    const saleIds7 = new Set(
+      sales.filter(s => s.status === "completed" && now - new Date(s.created_at).getTime() <= ms7).map(s => s.id)
+    );
+    const saleIds30 = new Set(
+      sales.filter(s => s.status === "completed" && now - new Date(s.created_at).getTime() <= ms30).map(s => s.id)
+    );
+    const sold7: Record<string, number> = {};
+    const sold30: Record<string, number> = {};
+    for (const si of saleItems) {
+      if (saleIds7.has(si.sale_id)) sold7[si.product_id] = (sold7[si.product_id] ?? 0) + si.quantity;
+      if (saleIds30.has(si.sale_id)) sold30[si.product_id] = (sold30[si.product_id] ?? 0) + si.quantity;
+    }
+
+    const result: Record<string, { qty: number; sold7: number; sold30: number; hasData: boolean }> = {};
+    for (const p of products) {
+      const s7 = sold7[p.product_id] ?? 0;
+      const s30 = sold30[p.product_id] ?? 0;
+      const hasData = s30 > 0;
+      if (!hasData) { result[p.product_id] = { qty: 0, sold7: s7, sold30: s30, hasData: false }; continue; }
+      // Prefer 7-day velocity when available; fall back to 30-day average
+      const velocity = s7 > 0 ? s7 / 7 : s30 / 30;
+      // Target: 30 days of forward cover above the reorder level
+      const targetStock = Math.ceil(velocity * 30) + (p.reorder_level ?? 0);
+      const qty = Math.max(1, Math.ceil(targetStock - p.quantity_on_hand));
+      result[p.product_id] = { qty, sold7: s7, sold30: s30, hasData: true };
+    }
+    return result;
+  }, [sales, saleItems, products]);
   const employeeMap = useMemo(() => Object.fromEntries(employees.map(e => [e.id, e])) as Record<string, Employee>, [employees]);
 
   const supplierPOMap = useMemo(() => {
@@ -2282,7 +2317,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     for (const [supplierId, productIds] of Object.entries(bySupplier)) {
       const items = productIds.map(pid => {
         const product = products.find(p => p.product_id === pid)!;
-        const qty = Number(reorderQtys[pid] ?? ((product.reorder_level ?? 0) - product.quantity_on_hand));
+        const qty = Math.max(1, Number(reorderQtys[pid] ?? ((product.reorder_level ?? 0) - product.quantity_on_hand)));
         const unitCost = product.average_cost ?? 0;
         return { product_id: pid, product_name: product.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
       });
@@ -6745,10 +6780,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const filtered = reorderFilter === "missing" ? missingSup : reorderFilter === "ready" ? readyToOrder : lowStock;
         const selectedCount = lowStock.filter(p => reorderSelected.has(p.product_id)).length;
         const estValue = lowStock.filter(p => reorderSelected.has(p.product_id)).reduce((sum, p) => {
-          const qty = Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand));
+          const qty = Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand)));
           return sum + qty * (p.average_cost || 0);
         }, 0);
         const involvedSuppliers = new Set(lowStock.map(p => reorderSuppliers[p.product_id] || p.supplier_id).filter(Boolean));
+        const aiApplyCount = reorderFilter !== "missing"
+          ? Array.from(reorderSelected).filter(pid => aiReorderRecs[pid]?.hasData).length
+          : 0;
 
         const grouped: Record<string, typeof lowStock> = {};
         for (const p of filtered) {
@@ -6855,6 +6893,20 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#15803d", color: "#fff", fontWeight: 600, fontSize: "13px" }}
                 >Assign to Selected ({selectedCount})</button>
               )}
+              {aiApplyCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updates: Record<string, string> = {};
+                    for (const pid of Array.from(reorderSelected)) {
+                      const r = aiReorderRecs[pid];
+                      if (r?.hasData) updates[pid] = String(r.qty);
+                    }
+                    setReorderQtys(prev => ({ ...prev, ...updates }));
+                  }}
+                  style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "1px solid #7c3aed", background: "#faf5ff", color: "#7c3aed", fontWeight: 600, fontSize: "13px" }}
+                >✦ Apply AI Qty ({aiApplyCount})</button>
+              )}
               {reorderFilter !== "missing" && (
                 <button
                   onClick={handleBatchReorderPO}
@@ -6869,7 +6921,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             const supName = sid === "__unassigned__" ? "No Supplier Assigned" : (supplierMap[sid] ?? "Unknown");
             const isCollapsed = collapsedSuppliers.has(sid);
             const groupValue = items.reduce((sum, p) => {
-              const qty = Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand));
+              const qty = Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand)));
               return sum + qty * (p.average_cost || 0);
             }, 0);
             const groupSelected = items.filter(p => reorderSelected.has(p.product_id)).length;
@@ -6909,6 +6961,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                         <th style={{ textAlign: "right", padding: "6px 8px" }}>Stock</th>
                         <th style={{ textAlign: "right", padding: "6px 8px" }}>Reorder</th>
                         <th style={{ textAlign: "right", padding: "6px 8px" }}>Shortage</th>
+                        <th style={{ textAlign: "right", padding: "6px 8px", color: "#7c3aed" }} title="Units sold in last 7 days (completed sales)">7d Sales</th>
+                        <th style={{ textAlign: "right", padding: "6px 8px", color: "#7c3aed" }} title="AI-recommended order quantity based on 7/30-day sales velocity">AI Rec.</th>
                         <th style={{ padding: "6px 8px" }}>Supplier</th>
                         <th style={{ textAlign: "right", padding: "6px 8px" }}>Order Qty</th>
                       </tr>
@@ -6926,6 +6980,26 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{(p.reorder_level ?? 0) - p.quantity_on_hand}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", color: "#64748b", fontSize: "12px" }}>
+                              {(() => { const r = aiReorderRecs[p.product_id]; return r ? (r.sold7 > 0 ? r.sold7 : <span style={{ color: "#cbd5e1" }}>0</span>) : <span style={{ color: "#cbd5e1" }}>—</span>; })()}
+                            </td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                              {(() => {
+                                const r = aiReorderRecs[p.product_id];
+                                if (!r?.hasData) return <span style={{ color: "#cbd5e1", fontSize: "11px" }}>—</span>;
+                                return (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                    <span style={{ color: "#7c3aed", fontWeight: 600, fontSize: "13px" }}>{r.qty}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setReorderQtys(prev => ({ ...prev, [p.product_id]: String(r.qty) }))}
+                                      title="Apply AI recommendation to Order Qty"
+                                      style={{ fontSize: "10px", cursor: "pointer", background: "#7c3aed", color: "#fff", border: "none", borderRadius: "3px", padding: "1px 5px", lineHeight: 1.4 }}
+                                    >↑</button>
+                                  </span>
+                                );
+                              })()}
+                            </td>
                             <td style={{ padding: "6px 8px" }}>
                               <select
                                 value={reorderSuppliers[p.product_id] ?? savedSupplier}
@@ -6941,7 +7015,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>
                               <input
                                 type="number" min="1"
-                                value={reorderQtys[p.product_id] ?? String((p.reorder_level ?? 0) - p.quantity_on_hand)}
+                                value={reorderQtys[p.product_id] ?? String(Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand))}
                                 onChange={(e) => setReorderQtys((prev) => ({ ...prev, [p.product_id]: e.target.value }))}
                                 style={{ width: "60px", padding: "3px", textAlign: "right" }}
                               />
