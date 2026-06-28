@@ -291,6 +291,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [receivingPoId, setReceivingPoId] = useState("");
   const [receivingItems, setReceivingItems] = useState<POItem[]>([]);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
+  const [receiveUnitCosts, setReceiveUnitCosts] = useState<Record<string, string>>({});
   const [isConfirmingReceive, setIsConfirmingReceive] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poNotes, setPoNotes] = useState("");
@@ -1669,6 +1670,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setReceivingPoId("");
       setReceivingItems([]);
       setReceiveQtys({});
+      setReceiveUnitCosts({});
       return;
     }
 
@@ -1691,11 +1693,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setReceivingItems(items);
 
     const qtys: Record<string, string> = {};
+    const costs: Record<string, string> = {};
     items.forEach((item) => {
       const remaining = item.quantity - (item.quantity_received ?? 0);
       qtys[item.id] = String(Math.max(0, remaining));
+      costs[item.id] = String(item.unit_cost);
     });
     setReceiveQtys(qtys);
+    setReceiveUnitCosts(costs);
   }
 
   async function handleConfirmReceive() {
@@ -1718,10 +1723,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
         const quantityBefore = product.quantity_on_hand;
         const quantityAfter = quantityBefore + clampedQty;
+        const receivedUnitCost = Number(receiveUnitCosts[item.id] ?? item.unit_cost);
         const oldAvgCost = product.average_cost ?? 0;
         const newAvgCost = (quantityBefore + clampedQty) > 0
-          ? ((quantityBefore * oldAvgCost) + (clampedQty * item.unit_cost)) / (quantityBefore + clampedQty)
-          : item.unit_cost;
+          ? ((quantityBefore * oldAvgCost) + (clampedQty * receivedUnitCost)) / (quantityBefore + clampedQty)
+          : receivedUnitCost;
 
         const { error: invError } = await supabase
           .from("inventory")
@@ -1799,6 +1805,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setReceivingPoId("");
       setReceivingItems([]);
       setReceiveQtys({});
+      setReceiveUnitCosts({});
       setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated`, type: "success" });
       await loadProducts();
       await loadPurchaseOrders();
@@ -2486,7 +2493,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (poError) { console.error(poError); setMessage({ text: "Failed to delete purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); }
     setMessage({ text: `PO ${po.po_number} deleted`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -2499,7 +2506,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (error) { console.error(error); setMessage({ text: "Failed to cancel purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); }
     setMessage({ text: `PO ${po.po_number} cancelled`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -7889,7 +7896,20 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                             <span style={{ color: "#15803d", fontWeight: "bold" }}>Done</span>
                                           )}
                                         </td>
-                                        <td>${Number(item.unit_cost).toFixed(2)}</td>
+                                        <td>
+                                          {remaining > 0 ? (
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.01"
+                                              value={receiveUnitCosts[item.id] ?? String(item.unit_cost)}
+                                              onChange={(e) => setReceiveUnitCosts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                              style={{ width: "80px", padding: "4px" }}
+                                            />
+                                          ) : (
+                                            <span>${Number(item.unit_cost).toFixed(2)}</span>
+                                          )}
+                                        </td>
                                       </tr>
                                     );
                                   })
