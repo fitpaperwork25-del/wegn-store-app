@@ -5756,10 +5756,111 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const activeCustomerCount = customers.filter(c => c.status === 'active').length;
         const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
 
+        // ── Today's Priorities derived values ──
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        const isYesterday = (d: string) => {
+          const dt = new Date(d);
+          return dt.getFullYear() === yesterday.getFullYear() &&
+            dt.getMonth() === yesterday.getMonth() &&
+            dt.getDate() === yesterday.getDate();
+        };
+        const yesterdaySales = sales.filter(s => s.status === 'completed' && isYesterday(s.created_at));
+        const yesterdaySaleIds = new Set(yesterdaySales.map(s => s.id));
+        const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + Number(s.total), 0);
+        const yesterdayItems = saleItems.filter(si => yesterdaySaleIds.has(si.sale_id));
+        const productCostMap = Object.fromEntries(products.map(p => [p.product_id, p.average_cost ?? 0]));
+        const yesterdayCOGS = yesterdayItems.reduce((sum, si) => sum + si.quantity * (productCostMap[si.product_id] ?? 0), 0);
+        const yesterdayProfit = (yesterdayItems.length > 0 && yesterdayCOGS > 0) ? yesterdayRevenue - yesterdayCOGS : null;
+        const yesterdayCash = allPayments
+          .filter(p => yesterdaySaleIds.has(p.sale_id) && p.payment_method === 'cash' && p.payment_type !== 'refund')
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+        const qtyBySku: Record<string, number> = {};
+        for (const si of yesterdayItems) qtyBySku[si.product_id] = (qtyBySku[si.product_id] ?? 0) + si.quantity;
+        const topYesterdayId = Object.entries(qtyBySku).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+        const topYesterdayName = topYesterdayId ? (products.find(p => p.product_id === topYesterdayId)?.product_name ?? '—') : '—';
+        const topYesterdayQty = topYesterdayId ? qtyBySku[topYesterdayId] : 0;
+        const buyTodayCost = lowStockProducts.reduce((sum, p) => {
+          const qty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
+          return sum + qty * (p.cost_price ?? p.average_cost ?? 0);
+        }, 0);
+        const receivablePOs = purchaseOrders.filter(po => po.status === 'ordered' || po.status === 'partially_received');
+        const outOfStockCount = lowStockProducts.filter(p => p.quantity_on_hand === 0).length;
+
         const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
+        const pCardStyle: React.CSSProperties = { borderRadius: "10px", padding: "16px 18px", background: "#fff", display: "flex", flexDirection: "column", gap: "6px" };
+        const pCardBtn: React.CSSProperties = { marginTop: "10px", padding: "7px 0", borderRadius: "6px", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "13px", width: "100%" };
 
         return (
           <>
+            {/* ── Today's Priorities ── */}
+            <div style={{ ...sLabel, marginBottom: "10px" }}>Today's Priorities</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "12px", marginBottom: "28px" }}>
+
+              {/* 1. Buy Today */}
+              <div style={{ ...pCardStyle, border: lowStockCount > 0 ? "1px solid #fca5a5" : "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: lowStockCount > 0 ? "#dc2626" : "#94a3b8" }}>Buy Today</div>
+                <div style={{ fontSize: "22px", fontWeight: 700, color: lowStockCount > 0 ? "#0f172a" : "#94a3b8" }}>{lowStockCount} item{lowStockCount !== 1 ? "s" : ""}</div>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                  {lowStockCount > 0
+                    ? (buyTodayCost > 0 ? `Est. $${buyTodayCost.toFixed(2)}` : "Cost data unavailable")
+                    : "All products stocked"}
+                </div>
+                <button
+                  onClick={() => setActiveTab("purchasing")}
+                  disabled={lowStockCount === 0}
+                  style={{ ...pCardBtn, background: lowStockCount > 0 ? "#1d4ed8" : "#e2e8f0", color: lowStockCount > 0 ? "#fff" : "#94a3b8", cursor: lowStockCount > 0 ? "pointer" : "not-allowed" }}
+                >Reorder Center</button>
+              </div>
+
+              {/* 2. Receive Today */}
+              <div style={{ ...pCardStyle, border: receivablePOs.length > 0 ? "1px solid #fed7aa" : "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: receivablePOs.length > 0 ? "#ea580c" : "#94a3b8" }}>Receive Today</div>
+                <div style={{ fontSize: "22px", fontWeight: 700, color: receivablePOs.length > 0 ? "#0f172a" : "#94a3b8" }}>{receivablePOs.length} PO{receivablePOs.length !== 1 ? "s" : ""}</div>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                  {receivablePOs.length > 0 ? "waiting to be received" : "No orders pending"}
+                </div>
+                <button
+                  onClick={() => setActiveTab("purchasing")}
+                  disabled={receivablePOs.length === 0}
+                  style={{ ...pCardBtn, background: receivablePOs.length > 0 ? "#ea580c" : "#e2e8f0", color: receivablePOs.length > 0 ? "#fff" : "#94a3b8", cursor: receivablePOs.length > 0 ? "pointer" : "not-allowed" }}
+                >Open Purchasing</button>
+              </div>
+
+              {/* 3. Inventory Alerts */}
+              <div style={{ ...pCardStyle, border: outOfStockCount > 0 ? "1px solid #fca5a5" : lowStockCount > 0 ? "1px solid #fde68a" : "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: outOfStockCount > 0 ? "#dc2626" : lowStockCount > 0 ? "#b45309" : "#94a3b8" }}>Inventory Alerts</div>
+                <div style={{ fontSize: "22px", fontWeight: 700, color: outOfStockCount > 0 ? "#dc2626" : "#0f172a" }}>{outOfStockCount} out of stock</div>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>{lowStockCount} total below reorder level</div>
+                <button
+                  onClick={() => setActiveTab("inventory")}
+                  style={{ ...pCardBtn, background: outOfStockCount > 0 ? "#dc2626" : lowStockCount > 0 ? "#b45309" : "#64748b", color: "#fff" }}
+                >View Inventory</button>
+              </div>
+
+              {/* 4. Yesterday's Summary */}
+              <div style={{ ...pCardStyle, border: "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Yesterday's Summary</div>
+                {yesterdaySales.length === 0 ? (
+                  <div style={{ fontSize: "13px", color: "#94a3b8", flex: 1 }}>No sales recorded</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>${yesterdayRevenue.toFixed(2)}</div>
+                    <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7 }}>
+                      <div>Profit: <strong>{yesterdayProfit !== null ? `$${yesterdayProfit.toFixed(2)}` : "—"}</strong></div>
+                      <div>Cash: <strong>${yesterdayCash.toFixed(2)}</strong></div>
+                      {topYesterdayId && <div>Top: <strong>{topYesterdayName}</strong> ({topYesterdayQty})</div>}
+                    </div>
+                  </>
+                )}
+                <button
+                  onClick={() => { setActiveTab("pos"); setShowEod(true); }}
+                  style={{ ...pCardBtn, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}
+                >View EOD Report</button>
+              </div>
+
+            </div>
+
             {/* ── Today's Operations ── */}
             <div style={sLabel}>Today's Operations</div>
             <div className="dash-card-row">
