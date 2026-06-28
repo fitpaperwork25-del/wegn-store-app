@@ -754,23 +754,22 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   // Derived from allPayments + sales so it stays current after every sale/void/return.
   // Filters to completed sales only (excludes voided/returned) scoped to current drawer session.
-  const drawerCashSales = drawerSession
-    ? (() => {
-        const openedAt = new Date(drawerSession.opened_at);
-        const validIds = new Set(
-          sales
-            .filter(s => s.status === 'completed' && new Date(s.created_at) >= openedAt)
-            .map(s => s.id)
-        );
-        const cashIn = allPayments
-          .filter(p => p.payment_method === 'cash' && p.payment_type !== 'refund' && validIds.has(p.sale_id))
-          .reduce((sum, p) => sum + Number(p.amount), 0);
-        const cashRefunds = allPayments
-          .filter(p => p.payment_method === 'cash' && p.payment_type === 'refund' && validIds.has(p.sale_id))
-          .reduce((sum, p) => sum + Number(p.amount), 0);
-        return cashIn - cashRefunds;
-      })()
-    : 0;
+  const drawerCashSales = useMemo(() => {
+    if (!drawerSession) return 0;
+    const openedAt = new Date(drawerSession.opened_at);
+    const validIds = new Set(
+      sales
+        .filter(s => s.status === 'completed' && new Date(s.created_at) >= openedAt)
+        .map(s => s.id)
+    );
+    const cashIn = allPayments
+      .filter(p => p.payment_method === 'cash' && p.payment_type !== 'refund' && validIds.has(p.sale_id))
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const cashRefunds = allPayments
+      .filter(p => p.payment_method === 'cash' && p.payment_type === 'refund' && validIds.has(p.sale_id))
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    return cashIn - cashRefunds;
+  }, [drawerSession, sales, allPayments]);
 
   const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s])) as Record<string, Supplier>, [suppliers]);
   const categoryMap = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])) as Record<string, Category>, [categories]);
@@ -847,11 +846,19 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     [products, categoryFilter, debouncedProductSearch]
   );
 
-  const categoryChips = useMemo(() => [
-    { key: "all", label: "All", count: products.length },
-    { key: "uncategorized", label: "Uncategorized", count: products.filter(p => !p.category_id).length },
-    ...categories.map(c => ({ key: c.id, label: c.name, count: products.filter(p => p.category_id === c.id).length })),
-  ], [products, categories]);
+  const categoryChips = useMemo(() => {
+    const countByCategory: Record<string, number> = {};
+    let uncategorizedCount = 0;
+    for (const p of products) {
+      if (!p.category_id) uncategorizedCount++;
+      else countByCategory[p.category_id] = (countByCategory[p.category_id] ?? 0) + 1;
+    }
+    return [
+      { key: "all", label: "All", count: products.length },
+      { key: "uncategorized", label: "Uncategorized", count: uncategorizedCount },
+      ...categories.map(c => ({ key: c.id, label: c.name, count: countByCategory[c.id] ?? 0 })),
+    ];
+  }, [products, categories]);
 
   const recentSales = useMemo(() =>
     [...sales]
@@ -860,6 +867,176 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .slice(0, 5),
     [sales]
   );
+
+  // O(1) lookup maps — used across Sales History, Analytics, and Dashboard IIFEs.
+  const customerMap = useMemo(
+    () => Object.fromEntries(customers.map(c => [c.id, c])) as Record<string, Customer>,
+    [customers]
+  );
+  const productIdMap = useMemo(
+    () => Object.fromEntries(products.map(p => [p.product_id, p])) as Record<string, ProductStock>,
+    [products]
+  );
+  const saleItemsBySaleId = useMemo((): Record<string, SaleItemRecord[]> => {
+    const m: Record<string, SaleItemRecord[]> = {};
+    for (const si of saleItems) {
+      if (!m[si.sale_id]) m[si.sale_id] = [];
+      m[si.sale_id].push(si);
+    }
+    return m;
+  }, [saleItems]);
+
+  // POS loyalty balance — replaces 3 inline O(n) scans of loyaltyTransactions in POS tab.
+  const posCustomerLoyaltyBalance = useMemo(() => {
+    if (!posCustomerId) return 0;
+    return loyaltyTransactions
+      .filter(lt => lt.customer_id === posCustomerId)
+      .reduce((s, lt) => s + lt.points, 0);
+  }, [loyaltyTransactions, posCustomerId]);
+
+  // Sales History filter — replaces O(n×m) inline filter+search in the Sales History table.
+  const filteredSalesHistory = useMemo(() =>
+    sales.filter(s => {
+      if (s.status === 'open') return false;
+      if (salesCashierFilter !== "all") {
+        if (salesCashierFilter === "none" && s.cashier_id) return false;
+        if (salesCashierFilter !== "none" && s.cashier_id !== salesCashierFilter) return false;
+      }
+      if (!salesSearchQuery.trim()) return true;
+      const q = salesSearchQuery.toLowerCase();
+      if (s.id.toLowerCase().includes(q)) return true;
+      const customer = customerMap[s.customer_id ?? ""];
+      if (customer) {
+        if ((customer.name ?? "").toLowerCase().includes(q)) return true;
+        if ((customer.phone ?? "").toLowerCase().includes(q)) return true;
+      }
+      const lineItems = saleItemsBySaleId[s.id] ?? [];
+      return lineItems.some(si => {
+        const p = productIdMap[si.product_id];
+        if (!p) return false;
+        if (p.product_name.toLowerCase().includes(q)) return true;
+        if (p.barcode && p.barcode.toLowerCase().includes(q)) return true;
+        return false;
+      });
+    }),
+    [sales, salesCashierFilter, salesSearchQuery, customerMap, saleItemsBySaleId, productIdMap]
+  );
+
+  // Analytics data — replaces the full computation IIFE that ran on every render.
+  const analyticsData = useMemo(() => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const rangeStart: Date | null =
+      analyticsRange === 'today' ? startOfDay :
+      analyticsRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
+      analyticsRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
+      null;
+    const periodSales = sales.filter(s =>
+      s.status === 'completed' &&
+      (rangeStart === null || new Date(s.created_at) >= rangeStart)
+    );
+    const periodSaleIds = new Set(periodSales.map(s => s.id));
+    const periodItems = saleItems.filter(si => periodSaleIds.has(si.sale_id));
+    const periodPayments = allPayments.filter(p => periodSaleIds.has(p.sale_id));
+    const revenue = periodSales.reduce((sum, s) => sum + Number(s.total), 0);
+    const txCount = periodSales.length;
+    const avgTx = txCount > 0 ? revenue / txCount : 0;
+    const itemsSold = periodItems.reduce((sum, i) => sum + i.quantity, 0);
+    const discounts = periodSales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
+    const taxCollected = periodSales.reduce((sum, s) => sum + Number(s.tax), 0);
+    const periodSaleP = periodPayments.filter(p => p.payment_type !== 'refund');
+    const periodRefundP = periodPayments.filter(p => p.payment_type === 'refund');
+    const cashTotal =
+      periodSaleP.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0) -
+      periodRefundP.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0);
+    const cardTotal =
+      periodSaleP.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0) -
+      periodRefundP.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0);
+    const otherTotal =
+      periodSaleP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0) -
+      periodRefundP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0);
+    const byDay: Record<string, { revenue: number; count: number }> = {};
+    for (const s of periodSales) {
+      const d = new Date(s.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (!byDay[key]) byDay[key] = { revenue: 0, count: 0 };
+      byDay[key].revenue += Number(s.total);
+      byDay[key].count += 1;
+    }
+    const dailyRows = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]));
+    const byProduct: Record<string, { name: string; units: number; revenue: number }> = {};
+    for (const si of periodItems) {
+      if (!byProduct[si.product_id]) {
+        byProduct[si.product_id] = { name: productIdMap[si.product_id]?.product_name ?? si.product_id, units: 0, revenue: 0 };
+      }
+      byProduct[si.product_id].units += si.quantity;
+      byProduct[si.product_id].revenue += si.line_total;
+    }
+    const productRows = Object.entries(byProduct)
+      .map(([pid, row]) => ({ ...row, product_id: pid }))
+      .sort((a, b) => b.units - a.units);
+    const rangeLabel =
+      analyticsRange === 'today' ? 'Today' :
+      analyticsRange === '7d'   ? 'Last 7 Days' :
+      analyticsRange === '30d'  ? 'Last 30 Days' : 'All Time';
+    return { revenue, txCount, avgTx, itemsSold, discounts, taxCollected, cashTotal, cardTotal, otherTotal, dailyRows, productRows, rangeLabel };
+  }, [sales, saleItems, allPayments, productIdMap, analyticsRange]);
+
+  // Dashboard derived values — replaces the full computation block in the Dashboard IIFE.
+  const dashboardData = useMemo(() => {
+    const today = new Date();
+    const todaySales = sales.filter(s => {
+      const d = new Date(s.created_at);
+      return s.status === 'completed' &&
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate();
+    });
+    const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
+    const txnCount = todaySales.length;
+    const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
+    const openPoCount = purchaseOrders.filter(po =>
+      po.status === 'draft' || po.status === 'ordered' || po.status === 'partially_received'
+    ).length;
+    const activeCustomerCount = customers.filter(c => c.status === 'active').length;
+    const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const isYesterday = (d: string) => {
+      const dt = new Date(d);
+      return dt.getFullYear() === yesterday.getFullYear() &&
+        dt.getMonth() === yesterday.getMonth() &&
+        dt.getDate() === yesterday.getDate();
+    };
+    const yesterdaySales = sales.filter(s => s.status === 'completed' && isYesterday(s.created_at));
+    const yesterdaySaleIds = new Set(yesterdaySales.map(s => s.id));
+    const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + Number(s.total), 0);
+    const yesterdayItems = saleItems.filter(si => yesterdaySaleIds.has(si.sale_id));
+    const productCostMap = Object.fromEntries(products.map(p => [p.product_id, p.average_cost ?? 0]));
+    const yesterdayCOGS = yesterdayItems.reduce((sum, si) => sum + si.quantity * (productCostMap[si.product_id] ?? 0), 0);
+    const yesterdayProfit = (yesterdayItems.length > 0 && yesterdayCOGS > 0) ? yesterdayRevenue - yesterdayCOGS : null;
+    const yesterdayCash = allPayments
+      .filter(p => yesterdaySaleIds.has(p.sale_id) && p.payment_method === 'cash' && p.payment_type !== 'refund')
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const qtyBySku: Record<string, number> = {};
+    for (const si of yesterdayItems) qtyBySku[si.product_id] = (qtyBySku[si.product_id] ?? 0) + si.quantity;
+    const topYesterdayId = Object.entries(qtyBySku).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const topYesterdayName = topYesterdayId ? (productIdMap[topYesterdayId]?.product_name ?? '—') : '—';
+    const topYesterdayQty = topYesterdayId ? qtyBySku[topYesterdayId] : 0;
+    const buyTodayCost = lowStockProducts.reduce((sum, p) => {
+      const qty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
+      return sum + qty * (p.cost_price ?? p.average_cost ?? 0);
+    }, 0);
+    const receivablePOs = purchaseOrders.filter(po => po.status === 'ordered' || po.status === 'partially_received');
+    const outOfStockCount = lowStockProducts.filter(p => p.quantity_on_hand === 0).length;
+    return {
+      revenueToday, txnCount, avgSale,
+      openPoCount, activeCustomerCount, pointsOutstanding,
+      yesterdaySalesCount: yesterdaySales.length, yesterdayRevenue, yesterdayProfit, yesterdayCash,
+      topYesterdayId, topYesterdayName, topYesterdayQty,
+      buyTodayCost, receivablePOs, outOfStockCount,
+    };
+  }, [sales, saleItems, allPayments, products, purchaseOrders, customers, loyaltyTransactions, lowStockProducts, productIdMap]);
 
   async function loadBusiness() {
     const { data, error } = await supabase
@@ -4440,10 +4617,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         {posCustomerName && (
           <span style={{ color: "#15803d", fontWeight: "bold" }}>
             {posCustomerName}
-            {(() => {
-              const bal = loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0);
-              return ` — ${bal} pts`;
-            })()}
+            {` — ${posCustomerLoyaltyBalance} pts`}
           </span>
         )}
       </div>
@@ -4762,7 +4936,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
           {/* Redeem loyalty points */}
           {posCustomerId && (() => {
-            const custBal = loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0);
+            const custBal = posCustomerLoyaltyBalance;
             const rawRedeem = Math.max(0, Math.floor(Number(posRedeemPoints) || 0));
             const redeemExceeds = posRedeemPoints !== "" && rawRedeem > custBal;
             const redeemVal = Math.min(rawRedeem, custBal);
@@ -4830,9 +5004,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               const discountAmt = rawDiscountAmt > subtotal ? 0 : rawDiscountAmt;
               const cashDiscountedSubtotal = subtotal - discountAmt;
               const cashTaxAmt = Math.round(cashDiscountedSubtotal * (businessTaxRate / 100) * 100) / 100;
-              const cashCustBal = posCustomerId
-                ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
-                : 0;
+              const cashCustBal = posCustomerLoyaltyBalance;
               const cashRedeemPts = posCustomerId
                 ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), cashCustBal)
                 : 0;
@@ -5866,52 +6038,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>
 
       {(() => {
-        const today = new Date();
-        const todaySales = sales.filter(s => {
-          const d = new Date(s.created_at);
-          return s.status === 'completed' &&
-            d.getFullYear() === today.getFullYear() &&
-            d.getMonth() === today.getMonth() &&
-            d.getDate() === today.getDate();
-        });
-        const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
-        const txnCount = todaySales.length;
-        const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
+        const { revenueToday, txnCount, avgSale, openPoCount, activeCustomerCount, pointsOutstanding,
+                yesterdaySalesCount, yesterdayRevenue, yesterdayProfit, yesterdayCash,
+                topYesterdayId, topYesterdayName, topYesterdayQty,
+                buyTodayCost, receivablePOs, outOfStockCount } = dashboardData;
         const lowStockCount = lowStockProducts.length;
-        const openPoCount = purchaseOrders.filter(po => po.status === 'draft' || po.status === 'ordered' || po.status === 'partially_received').length;
-        const activeCustomerCount = customers.filter(c => c.status === 'active').length;
-        const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
-
-        // ── Today's Priorities derived values ──
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        const isYesterday = (d: string) => {
-          const dt = new Date(d);
-          return dt.getFullYear() === yesterday.getFullYear() &&
-            dt.getMonth() === yesterday.getMonth() &&
-            dt.getDate() === yesterday.getDate();
-        };
-        const yesterdaySales = sales.filter(s => s.status === 'completed' && isYesterday(s.created_at));
-        const yesterdaySaleIds = new Set(yesterdaySales.map(s => s.id));
-        const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + Number(s.total), 0);
-        const yesterdayItems = saleItems.filter(si => yesterdaySaleIds.has(si.sale_id));
-        const productCostMap = Object.fromEntries(products.map(p => [p.product_id, p.average_cost ?? 0]));
-        const yesterdayCOGS = yesterdayItems.reduce((sum, si) => sum + si.quantity * (productCostMap[si.product_id] ?? 0), 0);
-        const yesterdayProfit = (yesterdayItems.length > 0 && yesterdayCOGS > 0) ? yesterdayRevenue - yesterdayCOGS : null;
-        const yesterdayCash = allPayments
-          .filter(p => yesterdaySaleIds.has(p.sale_id) && p.payment_method === 'cash' && p.payment_type !== 'refund')
-          .reduce((sum, p) => sum + Number(p.amount), 0);
-        const qtyBySku: Record<string, number> = {};
-        for (const si of yesterdayItems) qtyBySku[si.product_id] = (qtyBySku[si.product_id] ?? 0) + si.quantity;
-        const topYesterdayId = Object.entries(qtyBySku).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-        const topYesterdayName = topYesterdayId ? (products.find(p => p.product_id === topYesterdayId)?.product_name ?? '—') : '—';
-        const topYesterdayQty = topYesterdayId ? qtyBySku[topYesterdayId] : 0;
-        const buyTodayCost = lowStockProducts.reduce((sum, p) => {
-          const qty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
-          return sum + qty * (p.cost_price ?? p.average_cost ?? 0);
-        }, 0);
-        const receivablePOs = purchaseOrders.filter(po => po.status === 'ordered' || po.status === 'partially_received');
-        const outOfStockCount = lowStockProducts.filter(p => p.quantity_on_hand === 0).length;
 
         const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
         const pCardStyle: React.CSSProperties = { borderRadius: "10px", padding: "16px 18px", background: "#fff", display: "flex", flexDirection: "column", gap: "6px" };
@@ -5967,7 +6098,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               {/* 4. Yesterday's Summary */}
               <div style={{ ...pCardStyle, border: "1px solid #e2e8f0" }}>
                 <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Yesterday's Summary</div>
-                {yesterdaySales.length === 0 ? (
+                {yesterdaySalesCount === 0 ? (
                   <div style={{ fontSize: "13px", color: "#94a3b8", flex: 1 }}>No sales recorded</div>
                 ) : (
                   <>
@@ -8315,36 +8446,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             {sales.length === 0 ? (
               <tr><td colSpan={8}>No sales yet</td></tr>
             ) : (
-              sales.filter(s => {
-                if (s.status === 'open') return false;
-                if (salesCashierFilter !== "all") {
-                  if (salesCashierFilter === "none" && s.cashier_id) return false;
-                  if (salesCashierFilter !== "none" && s.cashier_id !== salesCashierFilter) return false;
-                }
-                if (!salesSearchQuery.trim()) return true;
-                const q = salesSearchQuery.toLowerCase();
-                if (s.id.toLowerCase().includes(q)) return true;
-                // match customer name/phone
-                const customer = customers.find(c => c.id === s.customer_id);
-                if (customer) {
-                  if ((customer.name ?? "").toLowerCase().includes(q)) return true;
-                  if ((customer.phone ?? "").toLowerCase().includes(q)) return true;
-                }
-                // match product name/barcode via saleItems
-                const lineItems = saleItems.filter(si => si.sale_id === s.id);
-                return lineItems.some(si => {
-                  const p = products.find(pr => pr.product_id === si.product_id);
-                  if (!p) return false;
-                  if (p.product_name.toLowerCase().includes(q)) return true;
-                  if (p.barcode && p.barcode.toLowerCase().includes(q)) return true;
-                  return false;
-                });
-              }).map((s) => {
-                const cashierName = s.cashier_id ? (employees.find(e => e.id === s.cashier_id)?.name ?? s.cashier_id.slice(0, 8)) : "—";
+              filteredSalesHistory.map((s) => {
+                const cashierName = s.cashier_id ? (employeeMap[s.cashier_id]?.name ?? s.cashier_id.slice(0, 8)) : "—";
                 const rowClass = s.status === "voided" ? "sh-row-voided" : s.status === "returned" ? "sh-row-returned" : "";
-                // Build products summary for the Products column
-                const lineItems = saleItems.filter(si => si.sale_id === s.id);
-                const productNames = lineItems.map(si => products.find(p => p.product_id === si.product_id)?.product_name ?? "—");
+                const lineItems = saleItemsBySaleId[s.id] ?? [];
+                const productNames = lineItems.map(si => productIdMap[si.product_id]?.product_name ?? "—");
                 const productsLabel = productNames.length === 0 ? "—"
                   : productNames.length === 1 ? productNames[0]
                   : `${productNames[0]} (+${productNames.length - 1} more)`;
@@ -8485,62 +8591,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <h2 style={{ marginTop: "40px" }}>Sales Analytics</h2>
 
       {(() => {
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const rangeStart: Date | null =
-          analyticsRange === 'today' ? startOfDay :
-          analyticsRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
-          analyticsRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
-          null;
-
-        const periodSales = sales.filter(s =>
-          s.status === 'completed' &&
-          (rangeStart === null || new Date(s.created_at) >= rangeStart)
-        );
-
-        const periodSaleIds = new Set(periodSales.map(s => s.id));
-
-        const periodItems = saleItems.filter(si => periodSaleIds.has(si.sale_id));
-
-        const periodPayments = allPayments.filter(p => periodSaleIds.has(p.sale_id));
-
-        const revenue = periodSales.reduce((sum, s) => sum + Number(s.total), 0);
-        const txCount = periodSales.length;
-        const avgTx = txCount > 0 ? revenue / txCount : 0;
-        const itemsSold = periodItems.reduce((sum, i) => sum + i.quantity, 0);
-        const discounts = periodSales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
-        const taxCollected = periodSales.reduce((sum, s) => sum + Number(s.tax), 0);
-
-        const periodSaleP = periodPayments.filter(p => p.payment_type !== 'refund');
-        const periodRefundP = periodPayments.filter(p => p.payment_type === 'refund');
-        const cashTotal = periodSaleP.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0) - periodRefundP.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0);
-        const cardTotal = periodSaleP.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0) - periodRefundP.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0);
-        const otherTotal = periodSaleP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0) - periodRefundP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0);
-
-        // Daily revenue breakdown
-        const byDay: Record<string, { revenue: number; count: number }> = {};
-        for (const s of periodSales) {
-          const d = new Date(s.created_at);
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          if (!byDay[key]) byDay[key] = { revenue: 0, count: 0 };
-          byDay[key].revenue += Number(s.total);
-          byDay[key].count += 1;
-        }
-        const dailyRows = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]));
-
-        // Best-selling products
-        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
-        const byProduct: Record<string, { name: string; units: number; revenue: number }> = {};
-        for (const si of periodItems) {
-          if (!byProduct[si.product_id]) {
-            byProduct[si.product_id] = { name: productMap[si.product_id] ?? si.product_id, units: 0, revenue: 0 };
-          }
-          byProduct[si.product_id].units += si.quantity;
-          byProduct[si.product_id].revenue += si.line_total;
-        }
-        const productRows = Object.entries(byProduct).map(([pid, row]) => ({ ...row, product_id: pid })).sort((a, b) => b.units - a.units);
-
-        const rangeLabel = analyticsRange === 'today' ? 'Today' : analyticsRange === '7d' ? 'Last 7 Days' : analyticsRange === '30d' ? 'Last 30 Days' : 'All Time';
+        const { revenue, txCount, avgTx, itemsSold, discounts, taxCollected,
+                cashTotal, cardTotal, otherTotal, dailyRows, productRows, rangeLabel } = analyticsData;
 
         return (
           <>
