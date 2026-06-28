@@ -150,6 +150,7 @@ type ReturnLineItem = {
   product_id: string;
   product_name: string;
   original_qty: number;
+  unit_price: number;
   already_returned: number;
   available_qty: number;
   return_qty: number;
@@ -802,6 +803,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     return map;
   }, [purchaseOrders]);
 
+  const poItemsByPoId = useMemo(() => {
+    const map = new Map<string, POItem[]>();
+    for (const item of allPoItems) {
+      if (!map.has(item.purchase_order_id)) map.set(item.purchase_order_id, []);
+      map.get(item.purchase_order_id)!.push(item);
+    }
+    return map;
+  }, [allPoItems]);
+
   const lowStockProducts = useMemo(() =>
     products
       .filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level)
@@ -931,9 +941,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function loadSaleItems() {
+    const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from("sale_items")
-      .select("sale_id, product_id, quantity, unit_price, line_total");
+      .select("sale_id, product_id, quantity, unit_price, line_total")
+      .gte("created_at", cutoff);
     if (error) { console.error(error); return; }
     setSaleItems((data as SaleItemRecord[]) || []);
   }
@@ -943,7 +955,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
     const { data: items, error: itemsErr } = await supabase
       .from('sale_items')
-      .select('product_id, quantity')
+      .select('product_id, quantity, unit_price')
       .eq('sale_id', sale.id);
     if (itemsErr || !items) { console.error(itemsErr); return; }
     const { data: prior } = await supabase
@@ -957,6 +969,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         product_id: i.product_id,
         product_name: productMap[i.product_id] ?? i.product_id,
         original_qty: i.quantity,
+        unit_price: i.unit_price ?? 0,
         already_returned: priorMap[i.product_id] ?? 0,
         available_qty: i.quantity - (priorMap[i.product_id] ?? 0),
         return_qty: 0,
@@ -1004,10 +1017,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         reason: `Return for sale ${returningSaleId.slice(0, 8)}${returnReason ? ': ' + returnReason : ''}`,
       });
     }
-    const refundAmount = toReturn.reduce((sum, line) => {
-      const si = saleItems.find(s => s.sale_id === returningSaleId && s.product_id === line.product_id);
-      return sum + (si ? line.return_qty * si.unit_price : 0);
-    }, 0);
+    const refundAmount = toReturn.reduce((sum, line) => sum + line.return_qty * line.unit_price, 0);
     if (refundAmount > 0) {
       const originalPayment = allPayments.find(p => p.sale_id === returningSaleId && p.payment_type !== 'refund');
       await supabase.from('payments').insert({
@@ -1019,13 +1029,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         reference: retNum,
       });
     }
-    // Only mark fully returned when every line across the sale is exhausted
-    const origSaleItems = saleItems.filter(si => si.sale_id === returningSaleId);
-    const allFullyReturned = origSaleItems.every(si => {
-      const line = returnLines.find(l => l.product_id === si.product_id);
-      if (!line) return true; // was already fully returned in a prior batch
-      return (line.already_returned + line.return_qty) >= si.quantity;
-    });
+    // Mark fully returned when every returnable line has been exhausted
+    const allFullyReturned = returnLines.every(l => (l.already_returned + l.return_qty) >= l.original_qty);
     if (allFullyReturned) {
       await supabase.from('sales').update({ status: 'returned' }).eq('id', returningSaleId);
     }
@@ -1341,7 +1346,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const { data } = await supabase
       .from('loyalty_transactions')
       .select('id, customer_id, sale_id, points, type, created_at')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(3000);
     setLoyaltyTransactions((data as LoyaltyTransaction[]) ?? []);
   }
 
@@ -1521,19 +1527,23 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .select("id, cashier_id, customer_id, subtotal, tax, discount_amount, total, status, created_at")
       .order("created_at", { ascending: false });
     if (rangeStart) query = query.gte("created_at", rangeStart);
+    else query = query.limit(2000);
     const { data, error } = await query;
     if (error) { console.error(error); return; }
     setSales((data as Sale[]) || []);
   }
 
   async function loadAllPayments() {
+    const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from("payments")
-      .select("sale_id, payment_method, amount, reference, payment_type");
+      .select("sale_id, payment_method, amount, reference, payment_type")
+      .gte("created_at", cutoff);
     if (error) {
       const { data: fallback } = await supabase
         .from("payments")
-        .select("sale_id, payment_method, amount");
+        .select("sale_id, payment_method, amount")
+        .gte("created_at", cutoff);
       setAllPayments((fallback as EodPayment[]) ?? []);
       return;
     }
@@ -6487,7 +6497,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       const catalogValue = supProducts.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
 
                       const poIds = new Set(pos.map(p => p.id));
-                      const supPoItems = allPoItems.filter(i => poIds.has(i.purchase_order_id));
+                      const supPoItems = Array.from(poIds).flatMap(id => poItemsByPoId.get(id) ?? []);
                       const nonCancelledPos = pos.filter(po => po.status !== "cancelled");
                       const totalSpendAll = nonCancelledPos.reduce((sum, po) => sum + Number(po.subtotal), 0);
                       const avgOrderValue = nonCancelledPos.length > 0 ? totalSpendAll / nonCancelledPos.length : 0;
@@ -6564,7 +6574,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                   </thead>
                                   <tbody>
                                     {[...pos].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((po, i) => {
-                                      const poItemsForPo = allPoItems.filter(item => item.purchase_order_id === po.id);
+                                      const poItemsForPo = poItemsByPoId.get(po.id) ?? [];
                                       const ordQty = poItemsForPo.reduce((sum, item) => sum + item.quantity, 0);
                                       const rcvQty = poItemsForPo.reduce((sum, item) => sum + (item.quantity_received ?? 0), 0);
                                       const remQty = ordQty - rcvQty;
