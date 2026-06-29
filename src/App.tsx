@@ -5367,10 +5367,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             const totalValue = items ? items.reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0) : null;
             const statusColor = session.status === "completed" ? "#15803d" : "#6b7280";
             const statusBg = session.status === "completed" ? "#dcfce7" : "#f1f5f9";
-            const hasInvoice = !!session.invoice_number;
+            const invoiceResolved = session.invoice_status === "matched" || session.invoice_status === "variance";
+            const hasInvoice = !!session.invoice_number || invoiceResolved;
             const invoiceBadgeColor = hasInvoice ? "#15803d" : "#b45309";
             const invoiceBadgeBg = hasInvoice ? "#dcfce7" : "#fffbeb";
-            const invoiceBadgeLabel = hasInvoice ? session.invoice_number! : "Invoice: pending";
+            const invoiceBadgeLabel = session.invoice_number
+              ? session.invoice_number
+              : invoiceResolved
+                ? `Invoice: ${session.invoice_status}`
+                : "Invoice: pending";
             return (
             <div key={session.id} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 14px", background: "#f8fafc", cursor: "pointer", flexWrap: "wrap" }}
@@ -5418,7 +5423,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: resolvingSupplierSessionId === session.id ? "#7c3aed" : "none", color: resolvingSupplierSessionId === session.id ? "#fff" : "#7c3aed", border: "1px solid #a78bfa", borderRadius: "5px" }}
                   >{resolvingSupplierSessionId === session.id ? "Close" : "🔗 Link Supplier"}</button>
                 )}
-                {session.status === "completed" && session.approved_by && session.invoice_total > 0 && session.supplier_id && (() => {
+                {session.status === "completed" && (session.invoice_status === "matched" || session.invoice_status === "variance" || session.approved_by) && session.invoice_total > 0 && (() => {
                   const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
                   const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
                   const isPaymentOpen = paymentPanelSessionId === session.id;
