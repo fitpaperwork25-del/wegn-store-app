@@ -3449,7 +3449,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function handleCancelReceivingSession() {
-    if (!activeReceivingSession) return;
+    if (!activeReceivingSession || activeReceivingSession.status !== 'draft') return;
     const { error: delError } = await supabase
       .from("receiving_items")
       .delete()
@@ -5116,7 +5116,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
           <div>
             <div style={{ padding: "12px 16px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px", marginBottom: "12px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                <span style={{ fontSize: "14px", fontWeight: 600, color: "#15803d" }}>Active Draft Session</span>
+                <span style={{ fontSize: "14px", fontWeight: 600, color: activeReceivingSession.status === 'draft' ? "#15803d" : "#dc2626" }}>
+                  {activeReceivingSession.status === 'draft' ? 'Active Draft Session' : `Receiving Session — ${activeReceivingSession.status.charAt(0).toUpperCase() + activeReceivingSession.status.slice(1)}`}
+                </span>
                 <span style={{ fontSize: "11px", color: "#64748b", fontFamily: "monospace" }}>{activeReceivingSession.id.slice(0, 8)}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px", fontSize: "13px", color: "#334155" }}>
@@ -10468,32 +10470,36 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               <button
                 type="button"
                 onClick={async () => {
-                  // Load the existing session
-                  const { data: existingItems } = await supabase
-                    .from("receiving_items")
-                    .select("id, product_id, quantity_received, unit_cost")
-                    .eq("receiving_session_id", smartReceiveDuplicateWarning.existingSessionId)
-                    .order("created_at", { ascending: true });
                   const { data: existingSession } = await supabase
                     .from("receiving_sessions")
                     .select("id, business_id, supplier_id, received_by, status, notes, created_at, invoice_number, supplier_name")
                     .eq("id", smartReceiveDuplicateWarning.existingSessionId)
                     .single();
-                  if (existingSession) {
+                  setSmartReceiveDuplicateWarning(null);
+                  setSmartReceiveSimpleOpen(false);
+                  setSmartReceiveFile(null);
+                  setSmartReceiveProcessing(false);
+                  setSmartReceiveResult(null);
+                  setSmartReceiveLoading(false);
+                  setSmartReceiveMatches([]);
+                  setActiveTab("inventory");
+                  if (!existingSession) return;
+                  if (existingSession.status === 'draft') {
+                    // Resume the in-progress draft
+                    const { data: existingItems } = await supabase
+                      .from("receiving_items")
+                      .select("id, product_id, quantity_received, unit_cost")
+                      .eq("receiving_session_id", existingSession.id)
+                      .order("created_at", { ascending: true });
                     setActiveReceivingSession({ ...existingSession, invoice_number: (existingSession as { invoice_number?: string | null }).invoice_number ?? null, supplier_name: (existingSession as { supplier_name?: string | null }).supplier_name ?? null });
                     setSessionItems((existingItems ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
-                    setSmartReceiveSimpleOpen(false);
-                    setSmartReceiveFile(null);
-                    setSmartReceiveProcessing(false);
-                    setSmartReceiveResult(null);
-                    setSmartReceiveLoading(false);
-                    setSmartReceiveMatches([]);
-                    setActiveTab("inventory");
+                  } else {
+                    // Completed/cancelled — route to history, never activate as draft
+                    setMessage({ text: `Session ${existingSession.id.slice(0, 8)} is already ${existingSession.status}. View it in Receiving History below.`, type: "success" });
                   }
-                  setSmartReceiveDuplicateWarning(null);
                 }}
                 style={{ padding: "11px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "8px" }}
-              >Open Existing Session</button>
+              >{smartReceiveDuplicateWarning.existingStatus === 'draft' ? 'Open Existing Session' : 'View in History'}</button>
               <button
                 type="button"
                 onClick={() => setSmartReceiveDuplicateWarning(null)}
