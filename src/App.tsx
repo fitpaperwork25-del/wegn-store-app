@@ -3198,6 +3198,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       approval_note: invoiceStatus === "matched" ? "Automatically approved — invoice matched" : null,
     } : s));
     setInvoicePanelSessionId(null);
+    await loadSessionHistory();
     setMessage({ text: "Invoice saved", type: "success" });
     setIsSavingInvoice(false);
   }
