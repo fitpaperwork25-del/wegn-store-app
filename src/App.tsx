@@ -381,6 +381,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
@@ -5373,7 +5374,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       {sessionHistory.length > 0 && (
       <div className="section-card">
-        <h3 className="section-card-title">Receiving Session History</h3>
+        <h3
+          className="section-card-title"
+          onClick={() => setHistoryExpanded(prev => !prev)}
+          style={{ cursor: "pointer", userSelect: "none" }}
+        >
+          {historyExpanded ? "▼" : "▶"} Receiving Session History ({sessionHistory.length} shown)
+        </h3>
+        {historyExpanded && (<>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {sessionHistory.map(session => {
             const supplier = session.supplier_id ? (supplierMap[session.supplier_id] ?? null) : null;
@@ -5719,6 +5727,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             >{isLoadingMoreHistory ? "Loading..." : "Load More"}</button>
           </div>
         )}
+        </>)}
       </div>
       )}
 
