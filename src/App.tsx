@@ -5423,7 +5423,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: resolvingSupplierSessionId === session.id ? "#7c3aed" : "none", color: resolvingSupplierSessionId === session.id ? "#fff" : "#7c3aed", border: "1px solid #a78bfa", borderRadius: "5px" }}
                   >{resolvingSupplierSessionId === session.id ? "Close" : "🔗 Link Supplier"}</button>
                 )}
-                {session.status === "completed" && (session.invoice_status === "matched" || session.invoice_status === "variance" || session.approved_by) && session.invoice_total > 0 && (() => {
+                {session.status === "completed" && session.approved_by && session.invoice_total > 0 && session.supplier_id && (() => {
                   const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
                   const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
                   const isPaymentOpen = paymentPanelSessionId === session.id;
@@ -5446,6 +5446,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     >{isPaymentOpen ? "Close Payment" : "Record Payment"}</button>
                   );
                 })()}
+                {session.status === "completed" && (session.invoice_status === "matched" || session.invoice_status === "variance") && session.invoice_total > 0 && !session.supplier_id && !(session.supplier_name && !noLinkAcknowledgedSessions.has(session.id)) && (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#92400e" }}>
+                    Link a supplier to record payment.
+                    <button
+                      onClick={() => { const isOpen = resolvingSupplierSessionId === session.id; setResolvingSupplierSessionId(isOpen ? null : session.id); setResolveMode("pick"); setResolveSupplierPickId(""); }}
+                      style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: resolvingSupplierSessionId === session.id ? "#7c3aed" : "none", color: resolvingSupplierSessionId === session.id ? "#fff" : "#7c3aed", border: "1px solid #a78bfa", borderRadius: "5px" }}
+                    >{resolvingSupplierSessionId === session.id ? "Close" : "🔗 Link Supplier"}</button>
+                  </span>
+                )}
                 <span style={{ fontSize: "12px", color: "#1d4ed8" }}>{isExpanded ? "▲ Hide" : "▼ Details"}</span>
               </div>
               {paymentPanelSessionId === session.id && (() => {
