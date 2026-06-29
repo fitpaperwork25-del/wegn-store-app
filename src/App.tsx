@@ -3762,6 +3762,17 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     }
     setIsPostingSession(true);
     try {
+      // Flush any in-memory cost edits that onBlur may have missed (e.g. if the user
+      // typed a cost and immediately clicked Post without leaving the field).
+      await Promise.all(
+        sessionItems.map(item =>
+          supabase
+            .from("receiving_items")
+            .update({ unit_cost: item.unit_cost, total_cost: item.unit_cost * item.quantity_received })
+            .eq("id", item.id)
+        )
+      );
+
       const { data: existingBatches } = await supabase
         .from("inventory_batches")
         .select("receiving_session_item_id")
@@ -5182,7 +5193,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                             step="0.01"
                             min="0"
                             defaultValue={item.unit_cost}
-                            key={`cost-${item.id}-${item.unit_cost}`}
+                            key={`cost-${item.id}`}
                             onChange={(e) => {
                               const val = Math.max(0, Number(e.target.value) || 0);
                               setSessionItems(prev => prev.map(i => i.id === item.id ? { ...i, unit_cost: val } : i));
