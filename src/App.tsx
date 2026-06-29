@@ -3376,7 +3376,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   }
 
   async function loadSessionHistoryItems(sessionId: string) {
-    if (sessionHistoryItems[sessionId]) { return; }
+    if (sessionHistoryItems[sessionId]) { return sessionHistoryItems[sessionId]; }
     const { data, error } = await supabase
       .from("receiving_items")
       .select("id, product_id, quantity_received, unit_cost, total_cost")
@@ -3393,6 +3393,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         setSessionHistory(prev => prev.map(s => s.id === sessionId ? { ...s, calculated_total: calculatedTotal, variance_amount: varianceAmount, invoice_status: invoiceStatus } : s));
       }
     }
+    return items;
   }
 
   async function loadActiveReceivingSession() {
@@ -5395,10 +5396,18 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       setInvoicePanelSessionId(session.id);
                       setEditInvoiceNumber(session.invoice_number ?? "");
                       setEditInvoiceDate(session.invoice_date ?? "");
-                      setEditInvoiceTotal(session.invoice_total > 0 ? String(session.invoice_total) : "");
                       setEditFreightCost(session.freight_cost > 0 ? String(session.freight_cost) : "");
                       setEditAdditionalCost(session.additional_cost > 0 ? String(session.additional_cost) : "");
-                      await loadSessionHistoryItems(session.id);
+                      const resolvedItems = await loadSessionHistoryItems(session.id);
+                      if (session.invoice_total > 0) {
+                        setEditInvoiceTotal(String(session.invoice_total));
+                      } else {
+                        const calcTotal = (resolvedItems ?? []).reduce(
+                          (s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)),
+                          0
+                        );
+                        setEditInvoiceTotal(calcTotal > 0 ? String(Math.round(calcTotal * 100) / 100) : "");
+                      }
                     }}
                     style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isInvoiceOpen ? "#1d4ed8" : "none", color: isInvoiceOpen ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px" }}
                   >{isInvoiceOpen ? "Close Invoice" : "Invoice"}</button>
