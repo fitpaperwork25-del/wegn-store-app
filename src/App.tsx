@@ -381,6 +381,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
   const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number }[]>([]);
   const [isLoadingStatement, setIsLoadingStatement] = useState(false);
@@ -3373,7 +3375,27 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .order("created_at", { ascending: false })
       .limit(20);
     if (error) { console.error("[SessionHistory] Load error:", error); return; }
-    setSessionHistory((data ?? []) as typeof sessionHistory);
+    const rows = (data ?? []) as typeof sessionHistory;
+    setSessionHistory(rows);
+    setHistoryHasMore(rows.length === 20);
+  }
+
+  async function handleLoadMoreHistory() {
+    if (!businessId || isLoadingMoreHistory) return;
+    setIsLoadingMoreHistory(true);
+    const offset = sessionHistory.length;
+    const { data, error } = await supabase
+      .from("receiving_sessions")
+      .select("id, status, supplier_id, supplier_name, created_at, received_date, notes, invoice_number, invoice_date, invoice_total, freight_cost, additional_cost, invoice_status, calculated_total, variance_amount, approved_by, approved_at, approval_note")
+      .eq("business_id", businessId)
+      .in("status", ["completed", "cancelled"])
+      .order("created_at", { ascending: false })
+      .range(offset, offset + 19);
+    setIsLoadingMoreHistory(false);
+    if (error) { console.error("[SessionHistory] Load more error:", error); return; }
+    const rows = (data ?? []) as typeof sessionHistory;
+    setSessionHistory(prev => [...prev, ...rows]);
+    setHistoryHasMore(rows.length === 20);
   }
 
   async function loadSessionHistoryItems(sessionId: string) {
@@ -5688,6 +5710,15 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             );
           })}
         </div>
+        {historyHasMore && (
+          <div style={{ textAlign: "center", marginTop: "10px" }}>
+            <button
+              onClick={handleLoadMoreHistory}
+              disabled={isLoadingMoreHistory}
+              style={{ padding: "7px 22px", fontSize: "13px", fontWeight: 600, cursor: isLoadingMoreHistory ? "not-allowed" : "pointer", background: "none", color: "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "6px", opacity: isLoadingMoreHistory ? 0.6 : 1 }}
+            >{isLoadingMoreHistory ? "Loading..." : "Load More"}</button>
+          </div>
+        )}
       </div>
       )}
 
