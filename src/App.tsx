@@ -5508,7 +5508,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       ))}
                     </div>
                   )}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
+                  {remaining <= 0 ? (
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#15803d" }}>Invoice fully paid.</div>
+                  ) : (
+                  <><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
                     <div>
                       <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Payment Date</label>
                       <input type="date" value={editPaymentDate} onChange={(e) => setEditPaymentDate(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
@@ -5540,7 +5543,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                     onClick={() => handleSavePayment(session.id, session.supplier_id ?? "", remaining)}
                     disabled={isSavingPayment || !session.supplier_id}
                     style={{ padding: "8px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isSavingPayment ? 0.6 : 1 }}
-                  >{isSavingPayment ? "Saving..." : "Save Payment"}</button>
+                  >{isSavingPayment ? "Saving..." : "Save Payment"}</button></>
+                  )}
                 </div>
                 );
               })()}
