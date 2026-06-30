@@ -51,6 +51,9 @@ Platform-wide reporting and business insights.
 9. **Platform Settings**
 Global configuration, countries, permissions, feature flags, and system administration.
 
+10. **Partners**
+Manage the Wegn partner network: partner onboarding, territory assignment, commission administration, and portfolio visibility.
+
 ## Architecture Principles (LOCKED)
 
 - Each module has a single responsibility.

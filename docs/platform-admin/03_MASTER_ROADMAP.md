@@ -64,4 +64,5 @@ A phase is production-ready only after:
 
 ## Backlog
 
-_To be defined._
+**Partners Module**
+Manage the Wegn partner network from the Platform Admin. Covers partner onboarding, territory assignment, commission administration, and portfolio visibility. Aligns with Phase 4 — Partner Network in the platform charter roadmap. Not yet scheduled into a platform admin phase.
