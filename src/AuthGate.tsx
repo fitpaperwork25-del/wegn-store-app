@@ -10,6 +10,7 @@ export default function AuthGate() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export default function AuthGate() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setSuccessMsg("");
     if (!email.trim() || !password) return;
     setSubmitting(true);
 
@@ -33,17 +35,30 @@ export default function AuthGate() {
       const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: { emailRedirectTo: window.location.origin },
       });
       if (signUpErr) {
         setError(signUpErr.message);
         setSubmitting(false);
         return;
       }
-      if (signUpData.user) {
-        await supabase.from("businesses").insert({
+      if (signUpData.session && signUpData.user) {
+        // Email confirmation disabled — session is live, create the business now.
+        const { error: bizErr } = await supabase.from("businesses").insert({
           owner_id: signUpData.user.id,
           name: "My Store",
         });
+        if (bizErr) {
+          setError("Account created but store setup failed: " + bizErr.message);
+        }
+        // onAuthStateChange will fire and render App automatically.
+      } else {
+        // Email confirmation is required — no session yet, business will be created
+        // after the user confirms and logs in (App shows "Set Up Your Business").
+        setSuccessMsg("Account created — please check your email to confirm, then sign in.");
+        setEmail("");
+        setPassword("");
+        setMode("login");
       }
       setSubmitting(false);
       return;
@@ -112,6 +127,12 @@ export default function AuthGate() {
             />
           </div>
 
+          {successMsg && (
+            <div style={{ padding: "8px 12px", marginBottom: "14px", background: "#f0fdf4", color: "#15803d", borderRadius: "6px", fontSize: "13px" }}>
+              {successMsg}
+            </div>
+          )}
+
           {error && (
             <div style={{ padding: "8px 12px", marginBottom: "14px", background: "#fef2f2", color: "#b91c1c", borderRadius: "6px", fontSize: "13px" }}>
               {error}
@@ -133,9 +154,9 @@ export default function AuthGate() {
 
         <p style={{ textAlign: "center", fontSize: "13px", color: "#64748b", marginTop: "16px" }}>
           {mode === "login" ? (
-            <>No account? <button onClick={() => { setMode("signup"); setError(""); }} style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontWeight: 600, fontSize: "13px", padding: 0 }}>Sign up</button></>
+            <>No account? <button onClick={() => { setMode("signup"); setError(""); setSuccessMsg(""); }} style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontWeight: 600, fontSize: "13px", padding: 0 }}>Sign up</button></>
           ) : (
-            <>Already have an account? <button onClick={() => { setMode("login"); setError(""); }} style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontWeight: 600, fontSize: "13px", padding: 0 }}>Sign in</button></>
+            <>Already have an account? <button onClick={() => { setMode("login"); setError(""); setSuccessMsg(""); }} style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontWeight: 600, fontSize: "13px", padding: 0 }}>Sign in</button></>
           )}
         </p>
       </div>
