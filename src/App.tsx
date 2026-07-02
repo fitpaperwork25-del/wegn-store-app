@@ -696,7 +696,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const canManageStaff = userRole === "owner";
   const canVoidSales = isOwnerOrManager;
 
-  const [activeTab, setActiveTab] = useState<string>('pos');
+  // Deep-linking: on first load, open whichever tab a ?module= query
+  // param requests (used by Platform Admin's Navigation Framework to
+  // link directly into a specific module). An invalid or
+  // not-yet-authorized value is handled by the existing "Access
+  // Restricted" guard below (allowedTabs.includes(activeTab)) — no new
+  // validation needed here. Purely additive — normal in-app tab
+  // switching is unaffected.
+  const [activeTab, setActiveTab] = useState<string>(() => (
+    new URLSearchParams(window.location.search).get('module') || 'pos'
+  ));
   const [navOpen, setNavOpen] = useState(false);
 
   const hasStaffPins = employees.some(e => e.pin && e.status === "active");
@@ -709,6 +718,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     inventory_clerk: ['dashboard', 'inventory', 'purchasing'],
   };
   const allowedTabs = tabAccess[userRole] ?? tabAccess.owner;
+
+  // Keep the URL's ?module= param in sync with the active tab, so each
+  // module has a real, shareable, reloadable URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('module') !== activeTab) {
+      params.set('module', activeTab);
+      window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     loadBusiness();
