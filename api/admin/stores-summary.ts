@@ -15,20 +15,30 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 //
 // Business Lookup (Platform Admin's AI Command Center Live Data
 // Tools): an optional ?businessName= query param switches this same
-// endpoint to a single-business, name-and-email-only lookup — same
-// shared contract as QR-Wegn's own admin-operational-summary adapter
-// (GET, ?businessName=, { business: { name, email } | null,
-// generatedAt }). Kept in this file rather than a new endpoint for the
-// same reason as every other cross-project admin integration in this
-// codebase: one more Vercel function slot isn't worth it for what is
-// structurally the same "shared-secret, service-role, read-only" call.
-// email is already a direct column on businesses (added by
+// endpoint to a name-and-email-only lookup — same shared contract as
+// QR-Wegn's own admin-operational-summary adapter (GET, ?businessName=,
+// { matches: { name, email }[], generatedAt }). Kept in this file
+// rather than a new endpoint for the same reason as every other
+// cross-project admin integration in this codebase: one more Vercel
+// function slot isn't worth it for what is structurally the same
+// "shared-secret, service-role, read-only" call. email is already a
+// direct column on businesses (added by
 // 20260621_add_business_profile_fields.sql) — no join needed, and this
 // query never selects phone/address or any other profile field.
+//
+// Matching is case-insensitive and partial (ilike with wildcards) —
+// production testing found the original exact-match query silently
+// reported "no match" for a real business ("dilla" found nothing for
+// "Dilla Market"). Capped at MATCH_LIMIT rows: 0 means no match,
+// exactly 1 means a confident unique match, more than 1 means the
+// name was ambiguous — Platform Admin's own orchestrator decides what
+// to do with each case; this endpoint never guesses on its own.
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const sharedSecret = process.env.STORE_ADMIN_SHARED_SECRET;
+
+const MATCH_LIMIT = 5;
 
 interface StoreSummary {
   id: string;
@@ -61,15 +71,14 @@ async function handleBusinessLookup(supabase: SupabaseClient, businessName: stri
     const { data, error } = await supabase
       .from("businesses")
       .select("name, email")
-      .ilike("name", businessName)
-      .limit(1)
-      .maybeSingle();
+      .ilike("name", `%${businessName}%`)
+      .limit(MATCH_LIMIT);
 
     if (error) throw error;
 
-    const row = data as BusinessLookupRow | null;
+    const rows = (data ?? []) as BusinessLookupRow[];
     res.status(200).json({
-      business: row ? { name: row.name, email: row.email } : null,
+      matches: rows.map((row) => ({ name: row.name, email: row.email })),
       generatedAt: new Date().toISOString(),
     });
   } catch (err) {
