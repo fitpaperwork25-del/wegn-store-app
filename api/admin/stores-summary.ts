@@ -12,6 +12,19 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 // This RLS-bypassing service-role client is scoped to this one
 // read-only handler; it never touches RLS policies and grants no
 // tenant any access it doesn't already have.
+//
+// Business Lookup (Platform Admin's AI Command Center Live Data
+// Tools): an optional ?businessName= query param switches this same
+// endpoint to a single-business, name-and-email-only lookup — same
+// shared contract as QR-Wegn's own admin-operational-summary adapter
+// (GET, ?businessName=, { business: { name, email } | null,
+// generatedAt }). Kept in this file rather than a new endpoint for the
+// same reason as every other cross-project admin integration in this
+// codebase: one more Vercel function slot isn't worth it for what is
+// structurally the same "shared-secret, service-role, read-only" call.
+// email is already a direct column on businesses (added by
+// 20260621_add_business_profile_fields.sql) — no join needed, and this
+// query never selects phone/address or any other profile field.
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -33,9 +46,35 @@ interface BusinessRow {
   created_at: string;
 }
 
+interface BusinessLookupRow {
+  name: string;
+  email: string | null;
+}
+
 function getSharedSecretHeader(req: VercelRequest): string | null {
   const header = req.headers["x-store-admin-secret"];
   return typeof header === "string" ? header : null;
+}
+
+async function handleBusinessLookup(supabase: SupabaseClient, businessName: string, res: VercelResponse) {
+  try {
+    const { data, error } = await supabase
+      .from("businesses")
+      .select("name, email")
+      .ilike("name", businessName)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const row = data as BusinessLookupRow | null;
+    res.status(200).json({
+      business: row ? { name: row.name, email: row.email } : null,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Internal error" });
+  }
 }
 
 async function loadStoreCounts(
@@ -81,9 +120,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  try {
-    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+  const businessName = typeof req.query.businessName === "string" ? req.query.businessName.trim() : "";
+  if (businessName) {
+    return handleBusinessLookup(supabase, businessName, res);
+  }
+
+  try {
     const { data: businesses, error } = await supabase
       .from("businesses")
       .select("id, name, created_at")
