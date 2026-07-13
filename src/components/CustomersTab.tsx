@@ -1,5 +1,7 @@
 import React from "react";
-import type { Customer, Sale, SaleItemRecord, EodPayment, ProductStock, LoyaltyTransaction } from "../App";
+import type { Customer, Sale, SaleItemRecord, EodPayment, LoyaltyTransaction } from "../App";
+import type { ProductStock } from "../lib/product/types";
+import { buildProductNameMap } from "../lib/product/productHelpers";
 
 type CustomersTabProps = {
   visible: boolean;
@@ -116,7 +118,7 @@ export function CustomersTab({
           completedSales.filter(s => s.customer_id === c.id).length >= 2
         ).length;
 
-        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
+        const productMap = buildProductNameMap(products);
 
         const top5 = customers
           .map(c => {
@@ -300,7 +302,7 @@ export function CustomersTab({
                                 const custReturns = allReturnItems.filter(ri => custSales.some(s => s.id === ri.sale_id));
                                 const totalReturned = custReturns.reduce((s, ri) => s + ri.quantity_returned, 0);
                                 const avgSpend = row.visitCount > 0 ? row.totalSpend / row.visitCount : 0;
-                                const productNameMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
+                                const productNameMap = buildProductNameMap(products);
 
                                 return (
                                   <>

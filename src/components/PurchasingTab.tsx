@@ -1,5 +1,7 @@
 import React from "react";
-import type { Supplier, PurchaseOrder, POItem, ProductStock } from "../App";
+import type { Supplier, PurchaseOrder, POItem } from "../App";
+import type { ProductStock } from "../lib/product/types";
+import { buildProductNameMap } from "../lib/product/productHelpers";
 
 type PurchasingTabProps = {
   visible: boolean;
@@ -977,7 +979,7 @@ export function PurchasingTab({
         const supplierMap = Object.fromEntries(
           suppliers.map((supplier) => [supplier.id, supplier.name])
         );
-        const productItemMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
+        const productItemMap = buildProductNameMap(products);
         return (
           <>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>

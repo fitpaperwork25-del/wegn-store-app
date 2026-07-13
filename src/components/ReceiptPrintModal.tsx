@@ -1,4 +1,6 @@
-import type { Receipt, ProductStock } from "../App";
+import type { Receipt } from "../App";
+import type { ProductStock } from "../lib/product/types";
+import { buildProductNameMap } from "../lib/product/productHelpers";
 
 type ReceiptPrintModalProps = {
   receipt: Receipt | null;
@@ -12,7 +14,7 @@ type ReceiptPrintModalProps = {
 export function ReceiptPrintModal({ receipt, products, businessName, businessPhone, businessAddress, onClose }: ReceiptPrintModalProps) {
   if (!receipt) return null;
 
-  const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
+  const productMap = buildProductNameMap(products);
 
   return (
     <>

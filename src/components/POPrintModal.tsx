@@ -1,4 +1,6 @@
-import type { PurchaseOrder, POItem, Supplier, ProductStock } from "../App";
+import type { PurchaseOrder, POItem, Supplier } from "../App";
+import type { ProductStock } from "../lib/product/types";
+import { buildProductNameMap } from "../lib/product/productHelpers";
 
 type PoSignatures = {
   manager?: { dataUrl: string; signedAt: string };
@@ -30,7 +32,7 @@ export function POPrintModal({
 }: POPrintModalProps) {
   if (!printPo) return null;
 
-  const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
+  const productMap = buildProductNameMap(products);
   const grandTotal = printPo.items.reduce((sum, i) => sum + Number(i.line_total), 0);
   const statusLabel = printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status === "received" ? "Received" : printPo.po.status === "partially_received" ? "Partially Received" : "Draft";
   const statusBg = printPo.po.status === "ordered" ? "#dbeafe" : printPo.po.status === "received" ? "#dcfce7" : printPo.po.status === "partially_received" ? "#fef9c3" : "#f1f5f9";

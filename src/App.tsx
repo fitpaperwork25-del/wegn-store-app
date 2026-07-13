@@ -8,6 +8,8 @@ import { ProductResolutionDialog } from "./components/ProductResolutionDialog";
 import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
 import { POPrintModal } from "./components/POPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
+import type { ProductStock, Category } from "./lib/product/types";
+import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips } from "./lib/product/productHelpers";
 
 type Transaction = {
   id: string;
@@ -130,35 +132,6 @@ export type Customer = {
   name: string;
   phone: string;
   email: string | null;
-  status: string;
-  created_at: string;
-};
-
-export type ProductStock = {
-  inventory_id: string;
-  business_id: string;
-  product_id: string;
-  product_name: string;
-  sku: string | null;
-  barcode: string | null;
-  selling_price: number;
-  quantity_on_hand: number;
-  reorder_level: number | null;
-  status: string;
-  average_cost: number;
-  cost_price: number | null;
-  estimated_overhead_pct: number;
-  target_margin_percent: number | null;
-  minimum_margin_percent: number | null;
-  supplier_id: string | null;
-  category_id: string | null;
-};
-
-export type Category = {
-  id: string;
-  business_id: string;
-  name: string;
-  description: string | null;
   status: string;
   created_at: string;
 };
@@ -857,37 +830,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     return map;
   }, [allPoItems]);
 
-  const lowStockProducts = useMemo(() =>
-    products
-      .filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level)
-      .sort((a, b) => (a.quantity_on_hand - (a.reorder_level ?? 0)) - (b.quantity_on_hand - (b.reorder_level ?? 0))),
-    [products]
-  );
+  const lowStockProducts = useMemo(() => getLowStockProducts(products), [products]);
 
-  const filteredProducts = useMemo(() =>
-    products
-      .filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter)
-      .filter(p => {
-        if (!debouncedProductSearch.trim()) return true;
-        const q = debouncedProductSearch.trim().toLowerCase();
-        return p.product_name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.barcode ?? "").toLowerCase().includes(q);
-      }),
+  const filteredProducts = useMemo(
+    () => filterProducts(products, categoryFilter, debouncedProductSearch),
     [products, categoryFilter, debouncedProductSearch]
   );
 
-  const categoryChips = useMemo(() => {
-    const countByCategory: Record<string, number> = {};
-    let uncategorizedCount = 0;
-    for (const p of products) {
-      if (!p.category_id) uncategorizedCount++;
-      else countByCategory[p.category_id] = (countByCategory[p.category_id] ?? 0) + 1;
-    }
-    return [
-      { key: "all", label: "All", count: products.length },
-      { key: "uncategorized", label: "Uncategorized", count: uncategorizedCount },
-      ...categories.map(c => ({ key: c.id, label: c.name, count: countByCategory[c.id] ?? 0 })),
-    ];
-  }, [products, categories]);
+  const categoryChips = useMemo(() => getCategoryChips(products, categories), [products, categories]);
 
   const recentSales = useMemo(() =>
     [...sales]
@@ -902,10 +852,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     () => Object.fromEntries(customers.map(c => [c.id, c])) as Record<string, Customer>,
     [customers]
   );
-  const productIdMap = useMemo(
-    () => Object.fromEntries(products.map(p => [p.product_id, p])) as Record<string, ProductStock>,
-    [products]
-  );
+  const productIdMap = useMemo(() => buildProductIndex(products), [products]);
   const saleItemsBySaleId = useMemo((): Record<string, SaleItemRecord[]> => {
     const m: Record<string, SaleItemRecord[]> = {};
     for (const si of saleItems) {
