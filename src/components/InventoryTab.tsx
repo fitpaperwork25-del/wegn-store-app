@@ -3,14 +3,9 @@ import type {
   Supplier,
   ProductResolutionRequest,
   Transaction,
-  InventoryBatch,
-  StockCountLine,
-  StockCountRecord,
-  StockCountItemDetail,
   BulkRow,
 } from "../App";
-import type { ProductStock, Category } from "../lib/product/types";
-import { getTotalInventoryValue } from "../lib/product/productHelpers";
+import type { ProductStock } from "../lib/product/types";
 
 type ActiveReceivingSession = {
   id: string;
@@ -60,8 +55,6 @@ type InventoryTabProps = {
   products: ProductStock[];
   suppliers: Supplier[];
   supplierMap: Record<string, Supplier>;
-  categories: Category[];
-  categoryMap: Record<string, Category>;
 
   // Receiving Sessions
   activeReceivingSession: ActiveReceivingSession;
@@ -89,17 +82,6 @@ type InventoryTabProps = {
   onPostReceivingSession: () => void;
   isPostingSession: boolean;
   onCancelReceivingSession: () => void;
-
-  // Expiration Tracking / Batches
-  onLoadBatches: () => void;
-  isLoadingBatches: boolean;
-  batches: InventoryBatch[];
-  writeOffBatchId: string | null;
-  setWriteOffBatchId: (v: string | null) => void;
-  writeOffQty: string;
-  setWriteOffQty: (v: string) => void;
-  isWritingOffBatch: boolean;
-  onWriteOffBatch: (batch: InventoryBatch, qtyToWriteOff: number) => void;
 
   // Receiving Session History
   sessionHistory: SessionHistoryEntry[];
@@ -174,49 +156,6 @@ type InventoryTabProps = {
   receiveQuantity: string;
   setReceiveQuantity: (v: string) => void;
 
-  // Adjust Inventory
-  canAdjustInventory: boolean;
-  onAdjust: (e: React.FormEvent) => void;
-  adjustProductId: string;
-  setAdjustProductId: (v: string) => void;
-  adjustType: string;
-  setAdjustType: (v: string) => void;
-  adjustQuantity: string;
-  setAdjustQuantity: (v: string) => void;
-  adjustReason: string;
-  setAdjustReason: (v: string) => void;
-  adjustNotes: string;
-  setAdjustNotes: (v: string) => void;
-
-  // Add Product
-  canAddProducts: boolean;
-  onAddProduct: (e: React.FormEvent) => void;
-  newName: string;
-  setNewName: (v: string) => void;
-  newSku: string;
-  setNewSku: (v: string) => void;
-  newBarcode: string;
-  setNewBarcode: (v: string) => void;
-  setBarcodeAutoFill: (v: string) => void;
-  onBarcodeLookup: () => void;
-  newCostPrice: string;
-  setNewCostPrice: (v: string) => void;
-  newSellingPrice: string;
-  setNewSellingPrice: (v: string) => void;
-  newReorderLevel: string;
-  setNewReorderLevel: (v: string) => void;
-  newProductCategory: string;
-  setNewProductCategory: (v: string) => void;
-  newOverhead: string;
-  setNewOverhead: (v: string) => void;
-  newTargetMargin: string;
-  setNewTargetMargin: (v: string) => void;
-  newMinMargin: string;
-  setNewMinMargin: (v: string) => void;
-  newInitialStock: string;
-  setNewInitialStock: (v: string) => void;
-  barcodeAutoFill: string;
-
   // Bulk Import
   canBulkImport: boolean;
   onDownloadCsvTemplate: () => void;
@@ -234,58 +173,6 @@ type InventoryTabProps = {
   setNeedsOrderingQtys: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   onCreatePOFromNeedsOrdering: () => void;
 
-  // Categories
-  canManageCategories: boolean;
-  onAddCategory: (e: React.FormEvent) => void;
-  newCatName: string;
-  setNewCatName: (v: string) => void;
-  newCatDesc: string;
-  setNewCatDesc: (v: string) => void;
-  editingCatId: string | null;
-  setEditingCatId: (v: string | null) => void;
-  onEditCategory: (e: React.FormEvent) => void;
-  editCatName: string;
-  setEditCatName: (v: string) => void;
-  editCatDesc: string;
-  setEditCatDesc: (v: string) => void;
-  onToggleCategoryStatus: (cat: Category) => void;
-  onDeleteCategory: (cat: Category) => void;
-
-  // Products & Stock table
-  productsTableOpen: boolean;
-  setProductsTableOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  productSearchRef: React.RefObject<HTMLInputElement | null>;
-  productSearch: string;
-  setProductSearch: (v: string) => void;
-  categoryChips: { key: string; label: string; count: number }[];
-  categoryFilter: string;
-  setCategoryFilter: (v: string) => void;
-  filteredProducts: ProductStock[];
-  editingProductId: string | null;
-  setEditingProductId: (v: string | null) => void;
-  canEditProducts: boolean;
-  setEditProdName: (v: string) => void;
-  setEditProdSku: (v: string) => void;
-  setEditProdBarcode: (v: string) => void;
-  setEditProdPrice: (v: string) => void;
-  setEditProdReorder: (v: string) => void;
-  setEditProdOverhead: (v: string) => void;
-  setEditProdTargetMargin: (v: string) => void;
-  setEditProdMinMargin: (v: string) => void;
-  setEditProdCategory: (v: string) => void;
-  canDeactivateProducts: boolean;
-  onToggleProductStatus: (product: ProductStock) => void;
-  onEditProduct: (e: React.FormEvent, productId: string) => void;
-  editProdName: string;
-  editProdSku: string;
-  editProdBarcode: string;
-  editProdPrice: string;
-  editProdReorder: string;
-  editProdCategory: string;
-  editProdOverhead: string;
-  editProdTargetMargin: string;
-  editProdMinMargin: string;
-
   // Transaction History
   txHistoryOpen: boolean;
   setTxHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -294,34 +181,16 @@ type InventoryTabProps = {
   setTxDateRange: (v: 'today' | '7d' | '30d' | 'all') => void;
   movementFilter: string;
   setMovementFilter: (v: string) => void;
-
-  // Stock Take / Inventory Count
-  stockCountActive: boolean;
-  onStartCount: () => void;
-  stockCountLines: StockCountLine[];
-  setStockCountLines: React.Dispatch<React.SetStateAction<StockCountLine[]>>;
-  onConfirmCount: () => void;
-  stockCountLoading: boolean;
-  setStockCountActive: (v: boolean) => void;
-  stockCountHistoryOpen: boolean | null;
-  setStockCountHistoryOpen: (v: boolean) => void;
-  stockCounts: StockCountRecord[];
-  expandedCountId: string | null;
-  setExpandedCountId: (v: string | null) => void;
-  countItemsMap: Record<string, StockCountItemDetail[]>;
-  onLoadCountItems: (countId: string) => void;
 };
 
 export function InventoryTab(props: InventoryTabProps) {
   const {
-    visible, activeTab, products, suppliers, supplierMap, categories, categoryMap,
+    visible, activeTab, products, suppliers, supplierMap,
     activeReceivingSession, newSessionSupplierId, setNewSessionSupplierId, newSessionNotes, setNewSessionNotes,
     onStartReceivingSession, isStartingSession, setSmartReceiveSimpleOpen, sessionScanRef, sessionScanInput, setSessionScanInput,
     onSessionScan, lastScannedProduct, sessionItems, setSessionItems, highlightedProductId,
     onSessionItemCostChange, onSessionItemQty, onSessionItemRemove, sessionItemBatch, setSessionItemBatch,
     productResolution, onPostReceivingSession, isPostingSession, onCancelReceivingSession,
-    onLoadBatches, isLoadingBatches, batches, writeOffBatchId, setWriteOffBatchId, writeOffQty, setWriteOffQty,
-    isWritingOffBatch, onWriteOffBatch,
     sessionHistory, historyExpanded, setHistoryExpanded, sessionHistoryItems, expandedHistorySessionId, setExpandedHistorySessionId,
     invoicePanelSessionId, setInvoicePanelSessionId, onLoadSessionHistoryItems, noLinkAcknowledgedSessions, setNoLinkAcknowledgedSessions,
     resolvingSupplierSessionId, setResolvingSupplierSessionId, resolveMode, setResolveMode, resolveSupplierPickId, setResolveSupplierPickId,
@@ -335,29 +204,10 @@ export function InventoryTab(props: InventoryTabProps) {
     rapidReceiveInput, setRapidReceiveInput, onRapidReceiveScan, rapidReceiveItems, setRapidReceiveItems,
     rapidReceiveExceptions, setRapidReceiveExceptions, onPostRapidReceive, isPostingRapidReceive,
     onReceive, selectedProductId, setSelectedProductId, receiveQuantity, setReceiveQuantity,
-    canAdjustInventory, onAdjust, adjustProductId, setAdjustProductId, adjustType, setAdjustType,
-    adjustQuantity, setAdjustQuantity, adjustReason, setAdjustReason, adjustNotes, setAdjustNotes,
-    canAddProducts, onAddProduct, newName, setNewName, newSku, setNewSku, newBarcode, setNewBarcode,
-    setBarcodeAutoFill, onBarcodeLookup, newCostPrice, setNewCostPrice, newSellingPrice, setNewSellingPrice,
-    newReorderLevel, setNewReorderLevel, newProductCategory, setNewProductCategory, newOverhead, setNewOverhead,
-    newTargetMargin, setNewTargetMargin, newMinMargin, setNewMinMargin, newInitialStock, setNewInitialStock, barcodeAutoFill,
     canBulkImport, onDownloadCsvTemplate, onCsvUpload, bulkPreview, bulkImporting, onBulkImport, bulkResults,
     lowStockProducts, needsOrderingSelected, setNeedsOrderingSelected, needsOrderingQtys, setNeedsOrderingQtys,
     onCreatePOFromNeedsOrdering,
-    canManageCategories, onAddCategory, newCatName, setNewCatName, newCatDesc, setNewCatDesc,
-    editingCatId, setEditingCatId, onEditCategory, editCatName, setEditCatName, editCatDesc, setEditCatDesc,
-    onToggleCategoryStatus, onDeleteCategory,
-    productsTableOpen, setProductsTableOpen, productSearchRef, productSearch, setProductSearch, categoryChips,
-    categoryFilter, setCategoryFilter, filteredProducts, editingProductId, setEditingProductId, canEditProducts,
-    setEditProdName, setEditProdSku, setEditProdBarcode, setEditProdPrice, setEditProdReorder,
-    setEditProdOverhead, setEditProdTargetMargin, setEditProdMinMargin, setEditProdCategory,
-    canDeactivateProducts, onToggleProductStatus, onEditProduct,
-    editProdName, editProdSku, editProdBarcode, editProdPrice, editProdReorder, editProdCategory,
-    editProdOverhead, editProdTargetMargin, editProdMinMargin,
     txHistoryOpen, setTxHistoryOpen, txDateRange, transactions, setTxDateRange, movementFilter, setMovementFilter,
-    stockCountActive, onStartCount, stockCountLines, setStockCountLines, onConfirmCount, stockCountLoading,
-    setStockCountActive, stockCountHistoryOpen, setStockCountHistoryOpen, stockCounts, expandedCountId, setExpandedCountId,
-    countItemsMap, onLoadCountItems,
   } = props;
 
   return (
@@ -553,85 +403,6 @@ export function InventoryTab(props: InventoryTabProps) {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="section-card">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-          <h3 className="section-card-title" style={{ margin: 0 }}>Expiration Tracking</h3>
-          <button onClick={onLoadBatches} style={{ padding: "6px 14px", fontSize: "12px", cursor: "pointer", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>
-            {isLoadingBatches ? "Loading..." : "Refresh"}
-          </button>
-        </div>
-        {(() => {
-          const today = new Date(); today.setHours(0,0,0,0);
-          const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
-          const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
-          const activeBatches = batches.filter(b => b.status === "active");
-          const expired = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) < today);
-          const exp7 = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) >= today && new Date(b.expiration_date) <= in7);
-          const exp30 = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) > in7 && new Date(b.expiration_date) <= in30);
-          return (
-            <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>
-                <div style={{ padding: "12px", background: expired.length > 0 ? "#fef2f2" : "#f8fafc", border: `1px solid ${expired.length > 0 ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
-                  <div style={{ fontSize: "22px", fontWeight: 700, color: expired.length > 0 ? "#dc2626" : "#94a3b8" }}>{expired.length}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expired</div>
-                </div>
-                <div style={{ padding: "12px", background: exp7.length > 0 ? "#fff7ed" : "#f8fafc", border: `1px solid ${exp7.length > 0 ? "#fdba74" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
-                  <div style={{ fontSize: "22px", fontWeight: 700, color: exp7.length > 0 ? "#ea580c" : "#94a3b8" }}>{exp7.length}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expires ≤ 7 days</div>
-                </div>
-                <div style={{ padding: "12px", background: exp30.length > 0 ? "#fffbeb" : "#f8fafc", border: `1px solid ${exp30.length > 0 ? "#fde68a" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
-                  <div style={{ fontSize: "22px", fontWeight: 700, color: exp30.length > 0 ? "#ca8a04" : "#94a3b8" }}>{exp30.length}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expires ≤ 30 days</div>
-                </div>
-              </div>
-              {activeBatches.length === 0 && !isLoadingBatches ? (
-                <div style={{ textAlign: "center", padding: "24px", color: "#94a3b8", fontSize: "13px" }}>No active batches. Add Batch # / Lot # / Expiry date when receiving inventory.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {activeBatches.map(batch => {
-                    const isExpiredBatch = !!(batch.expiration_date && new Date(batch.expiration_date) < today);
-                    const isNear7 = !!(batch.expiration_date && !isExpiredBatch && new Date(batch.expiration_date) <= in7);
-                    const isNear30 = !!(batch.expiration_date && !isExpiredBatch && !isNear7 && new Date(batch.expiration_date) <= in30);
-                    const borderColor = isExpiredBatch ? "#fca5a5" : isNear7 ? "#fdba74" : isNear30 ? "#fde68a" : "#e2e8f0";
-                    const bgColor = isExpiredBatch ? "#fef2f2" : isNear7 ? "#fff7ed" : isNear30 ? "#fffbeb" : "#f8fafc";
-                    return (
-                      <div key={batch.id} style={{ padding: "10px 14px", background: bgColor, border: `1px solid ${borderColor}`, borderRadius: "8px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                        <div style={{ flex: 1, minWidth: "120px" }}>
-                          <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{batch.product_name}</div>
-                          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "1px" }}>
-                            {batch.expiration_date ? `Exp: ${batch.expiration_date}` : "No expiry"}
-                            {batch.lot_number ? ` · Lot: ${batch.lot_number}` : ""}
-                            {batch.batch_number ? ` · Batch: ${batch.batch_number}` : ""}
-                            {batch.supplier_name ? ` · ${batch.supplier_name}` : ""}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right", fontSize: "13px", color: "#334155", minWidth: "60px" }}>
-                          <div style={{ fontWeight: 600 }}>{batch.quantity_remaining} left</div>
-                          <div style={{ fontSize: "10px", color: "#94a3b8" }}>of {batch.quantity_received} recv</div>
-                        </div>
-                        {isExpiredBatch && <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", background: "#fca5a5", color: "#7f1d1d", borderRadius: "4px" }}>EXPIRED</span>}
-                        {isNear7 && <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", background: "#fdba74", color: "#7c2d12", borderRadius: "4px" }}>EXPIRING SOON</span>}
-                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                          {writeOffBatchId === batch.id ? (
-                            <>
-                              <input type="number" min="0.01" max={batch.quantity_remaining} step="0.01" value={writeOffQty} onChange={e => setWriteOffQty(e.target.value)} placeholder="Qty" style={{ width: "64px", padding: "4px 7px", fontSize: "12px", border: "1px solid #e2e8f0", borderRadius: "4px" }} />
-                              <button onClick={() => { const q = parseFloat(writeOffQty); if (q > 0) onWriteOffBatch(batch, q); }} disabled={isWritingOffBatch || !writeOffQty} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "#dc2626", color: "#fff", border: "none", borderRadius: "4px", fontWeight: 600 }}>{isWritingOffBatch ? "..." : "Confirm"}</button>
-                              <button onClick={() => { setWriteOffBatchId(null); setWriteOffQty(""); }} style={{ padding: "4px 8px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#64748b" }}>Cancel</button>
-                            </>
-                          ) : (
-                            <button onClick={() => { setWriteOffBatchId(batch.id); setWriteOffQty(String(batch.quantity_remaining)); }} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#64748b", whiteSpace: "nowrap" }}>Write off</button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          );
-        })()}
       </div>
 
       {sessionHistory.length > 0 && (
@@ -1126,153 +897,6 @@ export function InventoryTab(props: InventoryTabProps) {
         </form>
       </div>
 
-      {canAdjustInventory && <div className="section-card">
-        <h3 className="section-card-title">Adjust Inventory</h3>
-        <form
-          onSubmit={onAdjust}
-          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
-        >
-          <select
-            value={adjustProductId}
-            onChange={(e) => setAdjustProductId(e.target.value)}
-            style={{ flex: "1 1 200px", padding: "8px" }}
-          >
-            <option value="">Select product...</option>
-            {products.map((product) => (
-              <option key={product.product_id} value={product.product_id}>
-                {product.product_name} (stock: {product.quantity_on_hand})
-              </option>
-            ))}
-          </select>
-          <select
-            value={adjustType}
-            onChange={(e) => setAdjustType(e.target.value)}
-            style={{ flex: "1 1 160px", padding: "8px" }}
-          >
-            <option value="damaged">Damaged (−)</option>
-            <option value="expired">Expired (−)</option>
-            <option value="lost">Lost (−)</option>
-            <option value="found">Found / Extra (+)</option>
-            <option value="correction">Correction (±)</option>
-          </select>
-          <input
-            type="number"
-            placeholder={adjustType === "correction" ? "Qty (±)" : "Quantity"}
-            value={adjustQuantity}
-            onChange={(e) => setAdjustQuantity(e.target.value)}
-            style={{ flex: "1 1 100px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Reason (optional)"
-            value={adjustReason}
-            onChange={(e) => setAdjustReason(e.target.value)}
-            style={{ flex: "1 1 160px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Notes (optional)"
-            value={adjustNotes}
-            onChange={(e) => setAdjustNotes(e.target.value)}
-            style={{ flex: "1 1 160px", padding: "8px" }}
-          />
-          <button type="submit" className="pos-add-btn">
-            Adjust
-          </button>
-        </form>
-        {adjustProductId && (() => {
-          const p = products.find(pr => pr.product_id === adjustProductId);
-          return p ? (
-            <div style={{ marginTop: "8px", fontSize: "13px", color: "#64748b" }}>
-              Current stock: <strong>{p.quantity_on_hand}</strong> &nbsp;|&nbsp; Avg cost: <strong>${p.average_cost.toFixed(2)}</strong>
-            </div>
-          ) : null;
-        })()}
-      </div>}
-
-      {canAddProducts && <div className="section-card">
-        <h3 className="section-card-title">Add Product</h3>
-        <form
-          onSubmit={onAddProduct}
-          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
-        >
-          <input
-            type="text"
-            placeholder="Product Name *"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            style={{ flex: "2 1 200px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="SKU"
-            value={newSku}
-            onChange={(e) => setNewSku(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Barcode"
-            value={newBarcode}
-            onChange={(e) => { setNewBarcode(e.target.value); setBarcodeAutoFill(""); }}
-            onBlur={onBarcodeLookup}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onBarcodeLookup(); } }}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="number"
-            placeholder="Cost Price"
-            value={newCostPrice}
-            onChange={(e) => setNewCostPrice(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="number"
-            placeholder="Selling Price *"
-            value={newSellingPrice}
-            onChange={(e) => setNewSellingPrice(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="number"
-            placeholder="Reorder Level"
-            value={newReorderLevel}
-            onChange={(e) => setNewReorderLevel(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <select
-            value={newProductCategory}
-            onChange={(e) => setNewProductCategory(e.target.value)}
-            style={{ flex: "1 1 140px", padding: "8px" }}
-          >
-            <option value="">No Category</option>
-            {categories.filter(c => c.status === "active").map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <input type="number" min="0" placeholder="Overhead %" value={newOverhead} onChange={(e) => setNewOverhead(e.target.value)} step="0.1" style={{ flex: "1 1 100px", padding: "8px" }} />
-          <input type="number" min="0" placeholder="Target Margin %" value={newTargetMargin} onChange={(e) => setNewTargetMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
-          <input type="number" min="0" placeholder="Min Margin %" value={newMinMargin} onChange={(e) => setNewMinMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
-          <input
-            type="number"
-            min="0"
-            placeholder="Initial Stock *"
-            value={newInitialStock}
-            onChange={(e) => setNewInitialStock(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <button type="submit" className="pos-add-btn">
-            Add Product
-          </button>
-        </form>
-        {barcodeAutoFill && (
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "12px", padding: "8px 14px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "6px", fontSize: "13px" }}>
-            <span style={{ color: "#1d4ed8" }}>{barcodeAutoFill}</span>
-            <button onClick={() => setBarcodeAutoFill("")} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "15px", color: "#64748b" }}>✕</button>
-          </div>
-        )}
-      </div>}
-
       {canBulkImport && <div className="section-card">
         <h3 className="section-card-title">Bulk Import Products</h3>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
@@ -1369,48 +993,6 @@ export function InventoryTab(props: InventoryTabProps) {
           </div>
         )}
       </div>}
-
-      <h2 style={{ marginTop: "40px" }}>Products & Stock</h2>
-
-      {/* ── Inventory Summary Cards ── */}
-      {(() => {
-        const totalProducts = products.length;
-        const lowStockItems = lowStockProducts.length;
-        const inventoryValue = getTotalInventoryValue(products);
-        const activeSupplierCount = suppliers.filter(s => s.status === 'active').length;
-        return (
-          <div className="dash-card-row" style={{ marginBottom: "24px" }}>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>&#x1F4E6;</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Total Products</div>
-                <div className="dash-card-value">{totalProducts}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: lowStockItems > 0 ? "#fef2f2" : "#f0fdf4", color: lowStockItems > 0 ? "#dc2626" : "#16a34a" }}>&#x26A0;</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Low Stock Items</div>
-                <div className="dash-card-value" style={lowStockItems > 0 ? { color: "#dc2626" } : undefined}>{lowStockItems}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>$</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Inventory Value</div>
-                <div className="dash-card-value">${inventoryValue.toFixed(2)}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>&#x1F465;</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Active Suppliers</div>
-                <div className="dash-card-value">{activeSupplierCount}</div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ── Needs Ordering Today ── */}
       {(() => {
@@ -1543,250 +1125,6 @@ export function InventoryTab(props: InventoryTabProps) {
         );
       })()}
 
-      {/* ── Categories ── */}
-      <div style={{ marginBottom: "24px" }}>
-        <h3 style={{ marginBottom: "8px" }}>Categories</h3>
-        {canManageCategories && <form onSubmit={onAddCategory} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
-          <input type="text" placeholder="Category name *" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} required style={{ flex: "2 1 160px", padding: "7px" }} />
-          <input type="text" placeholder="Description" value={newCatDesc} onChange={(e) => setNewCatDesc(e.target.value)} style={{ flex: "2 1 200px", padding: "7px" }} />
-          <button type="submit" style={{ padding: "7px 16px" }}>Add Category</button>
-        </form>}
-        {categories.length > 0 && (
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {categories.map(cat => {
-              const count = products.filter(p => p.category_id === cat.id).length;
-              const isEditing = editingCatId === cat.id;
-              return isEditing ? (
-                <form key={cat.id} onSubmit={onEditCategory} style={{ display: "flex", gap: "6px", alignItems: "center", border: "1px solid #93c5fd", borderRadius: "6px", padding: "4px 8px", background: "#eff6ff" }}>
-                  <input type="text" value={editCatName} onChange={(e) => setEditCatName(e.target.value)} required style={{ width: "120px", padding: "4px", fontSize: "13px" }} />
-                  <input type="text" value={editCatDesc} onChange={(e) => setEditCatDesc(e.target.value)} placeholder="Desc" style={{ width: "120px", padding: "4px", fontSize: "13px" }} />
-                  <button type="submit" style={{ padding: "2px 8px", fontSize: "12px" }}>Save</button>
-                  <button type="button" onClick={() => setEditingCatId(null)} style={{ padding: "2px 8px", fontSize: "12px" }}>Cancel</button>
-                </form>
-              ) : (
-                <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: "6px", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", background: cat.status === "inactive" ? "#f5f5f5" : "#fff", fontSize: "13px", opacity: cat.status === "inactive" ? 0.7 : 1 }}>
-                  <span style={{ fontWeight: 500 }}>{cat.name}</span>
-                  {cat.description && <span style={{ color: "#94a3b8", fontSize: "11px" }} title={cat.description}>— {cat.description.length > 20 ? cat.description.slice(0, 20) + "…" : cat.description}</span>}
-                  <span style={{ color: "#94a3b8", fontSize: "11px" }}>({count})</span>
-                  {cat.status === "inactive" && <span style={{ color: "#b45309", fontSize: "10px", fontWeight: 600 }}>INACTIVE</span>}
-                  {canManageCategories && <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px" }}>Edit</button>}
-                  {canManageCategories && <button onClick={() => onToggleCategoryStatus(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px", color: cat.status === "active" ? "#b45309" : "#15803d" }}>{cat.status === "active" ? "Deactivate" : "Activate"}</button>}
-                  {canManageCategories && count === 0 && <button onClick={() => onDeleteCategory(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "3px", color: "#dc2626" }}>Del</button>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <button
-        onClick={() => setProductsTableOpen(o => !o)}
-        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{productsTableOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Products & Stock</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.length} products)</span>
-      </button>
-      {productsTableOpen && <>
-      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-        <input
-          ref={productSearchRef}
-          type="text"
-          placeholder="Search by product, SKU, or barcode…"
-          value={productSearch}
-          onChange={(e) => setProductSearch(e.target.value)}
-          style={{ flex: 1, padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
-        />
-        <button
-          type="button"
-          onClick={() => productSearchRef.current?.focus()}
-          style={{ padding: "8px 14px", border: "1px solid #d1d5db", borderRadius: "6px", background: "#f9fafb", cursor: "pointer", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap" }}
-        >Scan</button>
-      </div>
-      {/* ── Category Filter ── */}
-      {categories.length > 0 && (
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-          {categoryChips.map(chip => {
-            const active = categoryFilter === chip.key;
-            return (
-              <button
-                key={chip.key}
-                onClick={() => setCategoryFilter(chip.key)}
-                style={{
-                  padding: "6px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "13px",
-                  border: active ? "2px solid #1d4ed8" : "1px solid #d1d5db",
-                  background: active ? "#dbeafe" : "#f9fafb",
-                  color: active ? "#1d4ed8" : "#374151",
-                  fontWeight: active ? 600 : 400,
-                }}
-              >{chip.label} ({chip.count})</button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Desktop table / Mobile cards ── */}
-      <div className="inv-table-wrap">
-        <table className="inv-table">
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left" }}>Product</th>
-              <th style={{ textAlign: "left" }}>Category</th>
-              <th style={{ textAlign: "left" }}>SKU</th>
-              <th style={{ textAlign: "right" }}>Price</th>
-              <th style={{ textAlign: "right" }}>Stock</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {(() => {
-              if (filteredProducts.length === 0) return (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
-              );
-              return filteredProducts.map((product) => {
-              const isLowStock = product.status === 'active' && product.reorder_level !== null && product.quantity_on_hand < product.reorder_level;
-              const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
-              const inactive = product.status !== "active";
-              const isEditing = editingProductId === product.product_id;
-              return (
-                <React.Fragment key={product.product_id}>
-                  <tr className={inactive ? "inv-row-inactive" : ""}>
-                    <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
-                    <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{(product.category_id ? categoryMap[product.category_id]?.name : null) ?? "—"}</td>
-                    <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
-                    <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
-                    <td data-label="Stock" style={{ textAlign: "right" }}>
-                      <span style={{ fontWeight: 500 }}>{product.quantity_on_hand}</span>
-                      {!inactive && isOutOfStock && (
-                        <span className="inv-badge inv-badge-danger" style={{ marginLeft: "8px" }}>Out of Stock</span>
-                      )}
-                      {!inactive && isLowStock && !isOutOfStock && (
-                        <span className="inv-badge inv-badge-warning" style={{ marginLeft: "8px" }}>Low Stock</span>
-                      )}
-                    </td>
-                    <td data-label="Status" style={{ textAlign: "center" }}>
-                      <span className={`inv-badge ${inactive ? "inv-badge-muted" : "inv-badge-success"}`}>{product.status}</span>
-                    </td>
-                    <td data-label="Actions" style={{ whiteSpace: "nowrap" }}>
-                      {canEditProducts && <button
-                        onClick={() => {
-                          if (isEditing) { setEditingProductId(null); return; }
-                          setEditingProductId(product.product_id);
-                          setEditProdName(product.product_name);
-                          setEditProdSku(product.sku ?? "");
-                          setEditProdBarcode(product.barcode ?? "");
-                          setEditProdPrice(product.selling_price.toString());
-                          setEditProdReorder(product.reorder_level?.toString() ?? "");
-                          setEditProdOverhead(product.estimated_overhead_pct?.toString() ?? "0");
-                          setEditProdTargetMargin(product.target_margin_percent?.toString() ?? "");
-                          setEditProdMinMargin(product.minimum_margin_percent?.toString() ?? "");
-                          setEditProdCategory(product.category_id ?? "");
-                        }}
-                        className="sh-btn sh-btn-print"
-                      >{isEditing ? "Cancel" : "Edit"}</button>}
-                      {canDeactivateProducts && <button
-                        onClick={() => onToggleProductStatus(product)}
-                        className={`sh-btn ${inactive ? "sh-btn-return" : "sh-btn-void"}`}
-                        style={{ marginLeft: "6px" }}
-                      >{inactive ? "Activate" : "Deactivate"}</button>}
-                    </td>
-                  </tr>
-                  {canEditProducts && isEditing && (
-                    <tr className="inv-edit-row">
-                      <td colSpan={7} style={{ background: "#f9fafb", padding: "16px" }}>
-                        <form onSubmit={(e) => onEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-                          <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Product — {product.product_name}</strong>
-                          <input
-                            type="text"
-                            placeholder="Product name *"
-                            value={editProdName}
-                            onChange={(e) => setEditProdName(e.target.value)}
-                            required
-                            style={{ flex: "2 1 160px", padding: "7px" }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="SKU"
-                            value={editProdSku}
-                            onChange={(e) => setEditProdSku(e.target.value)}
-                            style={{ flex: "1 1 100px", padding: "7px" }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Barcode"
-                            value={editProdBarcode}
-                            onChange={(e) => setEditProdBarcode(e.target.value)}
-                            style={{ flex: "1 1 110px", padding: "7px" }}
-                          />
-                          <input
-                            type="number"
-                            placeholder="Selling price *"
-                            value={editProdPrice}
-                            onChange={(e) => setEditProdPrice(e.target.value)}
-                            required
-                            min="0"
-                            step="0.01"
-                            style={{ flex: "1 1 110px", padding: "7px" }}
-                          />
-                          <input
-                            type="number"
-                            placeholder="Reorder level"
-                            value={editProdReorder}
-                            onChange={(e) => setEditProdReorder(e.target.value)}
-                            min="0"
-                            style={{ flex: "1 1 110px", padding: "7px" }}
-                          />
-                          <select
-                            value={editProdCategory}
-                            onChange={(e) => setEditProdCategory(e.target.value)}
-                            style={{ flex: "1 1 140px", padding: "7px" }}
-                          >
-                            <option value="">No Category</option>
-                            {categories.filter(c => c.status === "active").map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                          <div style={{ width: "100%", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                            <input type="number" placeholder="Overhead %" value={editProdOverhead} onChange={(e) => setEditProdOverhead(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 100px", padding: "7px" }} />
-                            <input type="number" placeholder="Target Margin %" value={editProdTargetMargin} onChange={(e) => setEditProdTargetMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
-                            <input type="number" placeholder="Min Margin %" value={editProdMinMargin} onChange={(e) => setEditProdMinMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
-                          </div>
-                          {(() => {
-                            const avgCost = product.average_cost;
-                            const oh = Number(editProdOverhead) || 0;
-                            const tm = Number(editProdTargetMargin) || 0;
-                            const mm = Number(editProdMinMargin) || 0;
-                            const breakEven = avgCost * (1 + oh / 100);
-                            const minSafe = mm > 0 ? breakEven * (1 + mm / 100) : null;
-                            const target = tm > 0 ? breakEven * (1 + tm / 100) : null;
-                            return (
-                              <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
-                                <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${avgCost.toFixed(2)}</strong></span>
-                                <span>Break-even: <strong style={{ color: "#64748b" }}>${breakEven.toFixed(2)}</strong></span>
-                                {minSafe !== null && <span>Min Safe: <strong style={{ color: "#b45309" }}>${minSafe.toFixed(2)}</strong></span>}
-                                {target !== null && <span>Target: <strong style={{ color: "#15803d" }}>${target.toFixed(2)}</strong></span>}
-                                <span>Listed: <strong style={{ color: "#1d4ed8" }}>${product.selling_price.toFixed(2)}</strong></span>
-                              </div>
-                            );
-                          })()}
-                          <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
-                          <button type="button" onClick={() => setEditingProductId(null)} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
-                        </form>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            });
-            })()}
-          </tbody>
-        </table>
-      </div>
-
-      </>}
-
       <button
         onClick={() => setTxHistoryOpen(o => !o)}
         style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
@@ -1867,208 +1205,6 @@ export function InventoryTab(props: InventoryTabProps) {
         );
       })()}
       </>}
-
-      {/* Stock Take / Inventory Count */}
-      <h2 style={{ marginTop: "40px" }}>Stock Take / Inventory Count</h2>
-      {!stockCountActive ? (
-        <div style={{ marginBottom: "24px" }}>
-          <p style={{ color: "#555", marginBottom: "12px", fontSize: "14px" }}>
-            Count all products on the shelf and correct any discrepancies between
-            the system quantity and the physical count.
-          </p>
-          <button
-            onClick={onStartCount}
-            disabled={products.length === 0}
-            style={{ padding: "9px 22px", fontWeight: "bold", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px" }}
-          >
-            Start Stock Count ({products.length} products)
-          </button>
-        </div>
-      ) : (
-        <div style={{ marginBottom: "32px" }}>
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
-            <strong>Active Count — {stockCountLines.length} products</strong>
-            <span style={{ fontSize: "13px", color: "#666" }}>
-              Variances: {stockCountLines.filter(l => l.counted_qty !== l.system_qty).length}
-            </span>
-            <button
-              onClick={() => { setStockCountActive(false); setStockCountLines([]); }}
-              style={{ padding: "5px 14px", cursor: "pointer", marginLeft: "auto" }}
-            >
-              Cancel
-            </button>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-              <thead>
-                <tr style={{ background: "#f3f4f6" }}>
-                  <th style={{ textAlign: "left" }}>Product</th>
-                  <th>SKU</th>
-                  <th>Barcode</th>
-                  <th>System Qty</th>
-                  <th>Counted Qty</th>
-                  <th>Variance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stockCountLines.map((line, idx) => {
-                  const variance = line.counted_qty - line.system_qty;
-                  return (
-                    <tr key={line.product_id} style={{ background: variance !== 0 ? "#fefce8" : "inherit" }}>
-                      <td>{line.product_name}</td>
-                      <td style={{ color: "#888" }}>{line.sku ?? "—"}</td>
-                      <td style={{ color: "#888" }}>{line.barcode ?? "—"}</td>
-                      <td style={{ textAlign: "center" }}>{line.system_qty}</td>
-                      <td style={{ textAlign: "center" }}>
-                        <input
-                          type="number"
-                          min={0}
-                          value={line.counted_qty}
-                          onChange={(e) => {
-                            const val = Math.max(0, Number(e.target.value));
-                            setStockCountLines(prev => prev.map((l, i) => i === idx ? { ...l, counted_qty: val } : l));
-                          }}
-                          style={{ width: "70px", padding: "4px 6px", textAlign: "center" }}
-                        />
-                      </td>
-                      <td style={{
-                        textAlign: "center",
-                        fontWeight: variance !== 0 ? "bold" : "normal",
-                        color: variance > 0 ? "#16a34a" : variance < 0 ? "#dc2626" : "#888",
-                      }}>
-                        {variance > 0 ? `+${variance}` : variance}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "14px", flexWrap: "wrap" }}>
-            <button
-              onClick={onConfirmCount}
-              disabled={stockCountLoading}
-              style={{
-                padding: "9px 24px", fontWeight: "bold", cursor: stockCountLoading ? "not-allowed" : "pointer",
-                background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px",
-              }}
-            >
-              {stockCountLoading ? "Saving…" : `Confirm Count (${stockCountLines.filter(l => l.counted_qty !== l.system_qty).length} variance(s))`}
-            </button>
-            <button
-              onClick={() => { setStockCountActive(false); setStockCountLines([]); }}
-              style={{ padding: "9px 18px", cursor: "pointer", borderRadius: "6px" }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Past Stock Counts */}
-      <button
-        onClick={() => setStockCountHistoryOpen(!(stockCountHistoryOpen ?? (stockCounts.length < 10)))}
-        style={{ marginTop: "32px", marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(stockCountHistoryOpen ?? (stockCounts.length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Past Stock Counts</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({stockCounts.length} counts)</span>
-      </button>
-      <div style={{ display: (stockCountHistoryOpen ?? (stockCounts.length < 10)) ? '' : 'none' }}>
-      {stockCounts.length === 0 ? (
-        <p style={{ color: "#888", fontSize: "14px", marginBottom: "24px" }}>No stock counts recorded yet.</p>
-      ) : (
-        <div style={{ overflowX: "auto", marginBottom: "32px" }}>
-          <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ background: "#f3f4f6" }}>
-                <th style={{ textAlign: "left" }}>Date</th>
-                <th style={{ textAlign: "left" }}>Notes</th>
-                <th style={{ textAlign: "center" }}>Status</th>
-                <th style={{ textAlign: "center" }}>Items Counted</th>
-                <th style={{ textAlign: "center" }}>Variances</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stockCounts.map((sc) => {
-                const isExpanded = expandedCountId === sc.id;
-                const items = countItemsMap[sc.id] ?? [];
-                return (
-                  <React.Fragment key={sc.id}>
-                    <tr
-                      style={{ cursor: "pointer", background: isExpanded ? "#eff6ff" : "inherit" }}
-                      onClick={() => {
-                        if (isExpanded) {
-                          setExpandedCountId(null);
-                        } else {
-                          setExpandedCountId(sc.id);
-                          onLoadCountItems(sc.id);
-                        }
-                      }}
-                    >
-                      <td>{new Date(sc.completed_at).toLocaleString()}</td>
-                      <td style={{ color: "#555" }}>{sc.notes ?? "—"}</td>
-                      <td style={{ textAlign: "center" }}>
-                        <span style={{
-                          fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                          background: "#dcfce7", color: "#15803d",
-                        }}>{sc.status}</span>
-                      </td>
-                      <td style={{ textAlign: "center", color: "#555" }}>
-                        {countItemsMap[sc.id] ? countItemsMap[sc.id].length : "—"}
-                      </td>
-                      <td style={{ textAlign: "center", color: "#555" }}>
-                        {countItemsMap[sc.id]
-                          ? countItemsMap[sc.id].filter(i => i.variance !== 0).length
-                          : "—"}
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={5} style={{ background: "#f9fafb", padding: "16px" }}>
-                          {items.length === 0 ? (
-                            <span style={{ color: "#888", fontSize: "13px" }}>Loading…</span>
-                          ) : (
-                            <table border={1} cellPadding={6} style={{ width: "100%", fontSize: "12px" }}>
-                              <thead>
-                                <tr style={{ background: "#e5e7eb" }}>
-                                  <th style={{ textAlign: "left" }}>Product</th>
-                                  <th style={{ textAlign: "left" }}>SKU</th>
-                                  <th style={{ textAlign: "center" }}>System Qty</th>
-                                  <th style={{ textAlign: "center" }}>Counted Qty</th>
-                                  <th style={{ textAlign: "center" }}>Variance</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {items.map((item) => (
-                                  <tr key={item.id}>
-                                    <td>{item.products?.name ?? "—"}</td>
-                                    <td style={{ color: "#888" }}>{item.products?.sku ?? "—"}</td>
-                                    <td style={{ textAlign: "center" }}>{item.system_qty}</td>
-                                    <td style={{ textAlign: "center" }}>{item.counted_qty}</td>
-                                    <td style={{
-                                      textAlign: "center",
-                                      fontWeight: item.variance !== 0 ? "bold" : "normal",
-                                      color: item.variance > 0 ? "#16a34a" : item.variance < 0 ? "#dc2626" : "#9ca3af",
-                                    }}>
-                                      {item.variance > 0 ? `+${item.variance}` : item.variance}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      </div>
 
     </div>
   );

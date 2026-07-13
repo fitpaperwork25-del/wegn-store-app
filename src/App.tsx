@@ -9,6 +9,8 @@ import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
 import { POPrintModal } from "./components/POPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
 import { InventoryTab } from "./components/InventoryTab";
+import { CatalogManagementPanel } from "./components/CatalogManagementPanel";
+import { StockIntegrityPanel } from "./components/StockIntegrityPanel";
 import { Dashboard } from "./components/Dashboard";
 import { SalesAnalyticsReport } from "./components/SalesAnalyticsReport";
 import { InventoryReportsPanel } from "./components/InventoryReportsPanel";
@@ -5114,8 +5116,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         products={products}
         suppliers={suppliers}
         supplierMap={supplierMap}
-        categories={categories}
-        categoryMap={categoryMap}
         activeReceivingSession={activeReceivingSession}
         newSessionSupplierId={newSessionSupplierId} setNewSessionSupplierId={setNewSessionSupplierId}
         newSessionNotes={newSessionNotes} setNewSessionNotes={setNewSessionNotes}
@@ -5136,13 +5136,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         onPostReceivingSession={handlePostReceivingSession}
         isPostingSession={isPostingSession}
         onCancelReceivingSession={handleCancelReceivingSession}
-        onLoadBatches={loadBatches}
-        isLoadingBatches={isLoadingBatches}
-        batches={batches}
-        writeOffBatchId={writeOffBatchId} setWriteOffBatchId={setWriteOffBatchId}
-        writeOffQty={writeOffQty} setWriteOffQty={setWriteOffQty}
-        isWritingOffBatch={isWritingOffBatch}
-        onWriteOffBatch={handleWriteOffBatch}
         sessionHistory={sessionHistory}
         historyExpanded={historyExpanded} setHistoryExpanded={setHistoryExpanded}
         sessionHistoryItems={sessionHistoryItems}
@@ -5186,13 +5179,31 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         onReceive={handleReceive}
         selectedProductId={selectedProductId} setSelectedProductId={setSelectedProductId}
         receiveQuantity={receiveQuantity} setReceiveQuantity={setReceiveQuantity}
-        canAdjustInventory={canAdjustInventory}
-        onAdjust={handleAdjust}
-        adjustProductId={adjustProductId} setAdjustProductId={setAdjustProductId}
-        adjustType={adjustType} setAdjustType={setAdjustType}
-        adjustQuantity={adjustQuantity} setAdjustQuantity={setAdjustQuantity}
-        adjustReason={adjustReason} setAdjustReason={setAdjustReason}
-        adjustNotes={adjustNotes} setAdjustNotes={setAdjustNotes}
+        canBulkImport={canBulkImport}
+        onDownloadCsvTemplate={downloadCsvTemplate}
+        onCsvUpload={handleCsvUpload}
+        bulkPreview={bulkPreview}
+        bulkImporting={bulkImporting}
+        onBulkImport={handleBulkImport}
+        bulkResults={bulkResults}
+        lowStockProducts={lowStockProducts}
+        needsOrderingSelected={needsOrderingSelected} setNeedsOrderingSelected={setNeedsOrderingSelected}
+        needsOrderingQtys={needsOrderingQtys} setNeedsOrderingQtys={setNeedsOrderingQtys}
+        onCreatePOFromNeedsOrdering={handleCreatePOFromNeedsOrdering}
+        txHistoryOpen={txHistoryOpen} setTxHistoryOpen={setTxHistoryOpen}
+        txDateRange={txDateRange} setTxDateRange={setTxDateRange}
+        transactions={transactions}
+        movementFilter={movementFilter} setMovementFilter={setMovementFilter}
+      />{/* end inventory */}
+
+      {/* ── CATALOG MANAGEMENT (Inventory sub-domain) ── */}
+      <CatalogManagementPanel
+        visible={activeTab === 'inventory' && !!businessId && appUnlocked}
+        products={products}
+        suppliers={suppliers}
+        categories={categories}
+        categoryMap={categoryMap}
+        lowStockProducts={lowStockProducts}
         canAddProducts={canAddProducts}
         onAddProduct={handleAddProduct}
         newName={newName} setNewName={setNewName}
@@ -5209,17 +5220,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         newMinMargin={newMinMargin} setNewMinMargin={setNewMinMargin}
         newInitialStock={newInitialStock} setNewInitialStock={setNewInitialStock}
         barcodeAutoFill={barcodeAutoFill}
-        canBulkImport={canBulkImport}
-        onDownloadCsvTemplate={downloadCsvTemplate}
-        onCsvUpload={handleCsvUpload}
-        bulkPreview={bulkPreview}
-        bulkImporting={bulkImporting}
-        onBulkImport={handleBulkImport}
-        bulkResults={bulkResults}
-        lowStockProducts={lowStockProducts}
-        needsOrderingSelected={needsOrderingSelected} setNeedsOrderingSelected={setNeedsOrderingSelected}
-        needsOrderingQtys={needsOrderingQtys} setNeedsOrderingQtys={setNeedsOrderingQtys}
-        onCreatePOFromNeedsOrdering={handleCreatePOFromNeedsOrdering}
         canManageCategories={canManageCategories}
         onAddCategory={handleAddCategory}
         newCatName={newCatName} setNewCatName={setNewCatName}
@@ -5259,10 +5259,26 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         editProdOverhead={editProdOverhead}
         editProdTargetMargin={editProdTargetMargin}
         editProdMinMargin={editProdMinMargin}
-        txHistoryOpen={txHistoryOpen} setTxHistoryOpen={setTxHistoryOpen}
-        txDateRange={txDateRange} setTxDateRange={setTxDateRange}
-        transactions={transactions}
-        movementFilter={movementFilter} setMovementFilter={setMovementFilter}
+      />{/* end catalog management */}
+
+      {/* ── STOCK INTEGRITY (Inventory sub-domain) ── */}
+      <StockIntegrityPanel
+        visible={activeTab === 'inventory' && !!businessId && appUnlocked}
+        products={products}
+        onLoadBatches={loadBatches}
+        isLoadingBatches={isLoadingBatches}
+        batches={batches}
+        writeOffBatchId={writeOffBatchId} setWriteOffBatchId={setWriteOffBatchId}
+        writeOffQty={writeOffQty} setWriteOffQty={setWriteOffQty}
+        isWritingOffBatch={isWritingOffBatch}
+        onWriteOffBatch={handleWriteOffBatch}
+        canAdjustInventory={canAdjustInventory}
+        onAdjust={handleAdjust}
+        adjustProductId={adjustProductId} setAdjustProductId={setAdjustProductId}
+        adjustType={adjustType} setAdjustType={setAdjustType}
+        adjustQuantity={adjustQuantity} setAdjustQuantity={setAdjustQuantity}
+        adjustReason={adjustReason} setAdjustReason={setAdjustReason}
+        adjustNotes={adjustNotes} setAdjustNotes={setAdjustNotes}
         stockCountActive={stockCountActive}
         onStartCount={handleStartCount}
         stockCountLines={stockCountLines} setStockCountLines={setStockCountLines}
@@ -5274,7 +5290,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         expandedCountId={expandedCountId} setExpandedCountId={setExpandedCountId}
         countItemsMap={countItemsMap}
         onLoadCountItems={loadCountItems}
-      />{/* end inventory */}
+      />{/* end stock integrity */}
 
       {/* ── DASHBOARD TAB ── */}
       <Dashboard

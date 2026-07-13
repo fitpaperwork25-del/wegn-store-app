@@ -225,9 +225,9 @@ code {
 
 /* Stat-cards grid. Owned by src/components/Dashboard.tsx (its original and
    primary consumer); also intentionally reused by src/components/
-   InventoryTab.tsx for its "Inventory Summary Cards" row so both modules
-   share one visual language. Not per-module-scoped — changes here affect
-   both consumers. */
+   CatalogManagementPanel.tsx for its "Inventory Summary Cards" row so both
+   modules share one visual language. Not per-module-scoped — changes here
+   affect both consumers. */
 .dash-card-row {
   display: flex;
   gap: 14px;
