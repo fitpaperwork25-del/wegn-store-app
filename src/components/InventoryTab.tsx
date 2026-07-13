@@ -1,5 +1,4 @@
 import React from "react";
-import { supabase } from "../supabase";
 import type {
   Supplier,
   ProductResolutionRequest,
@@ -11,6 +10,7 @@ import type {
   BulkRow,
 } from "../App";
 import type { ProductStock, Category } from "../lib/product/types";
+import { getTotalInventoryValue } from "../lib/product/productHelpers";
 
 type ActiveReceivingSession = {
   id: string;
@@ -57,13 +57,11 @@ type RapidReceiveException = { barcode: string; reason: string };
 type InventoryTabProps = {
   visible: boolean;
   activeTab: string;
-  businessId: string;
   products: ProductStock[];
   suppliers: Supplier[];
   supplierMap: Record<string, Supplier>;
   categories: Category[];
   categoryMap: Record<string, Category>;
-  setMessage: (m: { text: string; type: "success" | "error" } | null) => void;
 
   // Receiving Sessions
   activeReceivingSession: ActiveReceivingSession;
@@ -234,10 +232,7 @@ type InventoryTabProps = {
   setNeedsOrderingSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
   needsOrderingQtys: Record<string, number>;
   setNeedsOrderingQtys: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  onLoadPurchaseOrders: () => void;
-  onLoadAllPoItems: () => void;
-  setSelectedPoId: (v: string) => void;
-  setActiveTab: (v: string) => void;
+  onCreatePOFromNeedsOrdering: () => void;
 
   // Categories
   canManageCategories: boolean;
@@ -319,7 +314,7 @@ type InventoryTabProps = {
 
 export function InventoryTab(props: InventoryTabProps) {
   const {
-    visible, activeTab, businessId, products, suppliers, supplierMap, categories, categoryMap, setMessage,
+    visible, activeTab, products, suppliers, supplierMap, categories, categoryMap,
     activeReceivingSession, newSessionSupplierId, setNewSessionSupplierId, newSessionNotes, setNewSessionNotes,
     onStartReceivingSession, isStartingSession, setSmartReceiveSimpleOpen, sessionScanRef, sessionScanInput, setSessionScanInput,
     onSessionScan, lastScannedProduct, sessionItems, setSessionItems, highlightedProductId,
@@ -348,7 +343,7 @@ export function InventoryTab(props: InventoryTabProps) {
     newTargetMargin, setNewTargetMargin, newMinMargin, setNewMinMargin, newInitialStock, setNewInitialStock, barcodeAutoFill,
     canBulkImport, onDownloadCsvTemplate, onCsvUpload, bulkPreview, bulkImporting, onBulkImport, bulkResults,
     lowStockProducts, needsOrderingSelected, setNeedsOrderingSelected, needsOrderingQtys, setNeedsOrderingQtys,
-    onLoadPurchaseOrders, onLoadAllPoItems, setSelectedPoId, setActiveTab,
+    onCreatePOFromNeedsOrdering,
     canManageCategories, onAddCategory, newCatName, setNewCatName, newCatDesc, setNewCatDesc,
     editingCatId, setEditingCatId, onEditCategory, editCatName, setEditCatName, editCatDesc, setEditCatDesc,
     onToggleCategoryStatus, onDeleteCategory,
@@ -1381,7 +1376,7 @@ export function InventoryTab(props: InventoryTabProps) {
       {(() => {
         const totalProducts = products.length;
         const lowStockItems = lowStockProducts.length;
-        const inventoryValue = products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
+        const inventoryValue = getTotalInventoryValue(products);
         const activeSupplierCount = suppliers.filter(s => s.status === 'active').length;
         return (
           <div className="dash-card-row" style={{ marginBottom: "24px" }}>
@@ -1446,82 +1441,6 @@ export function InventoryTab(props: InventoryTabProps) {
 
         const getEstimatedCost = (p: typeof lowStockProducts[0]) =>
           getSuggestedQty(p) * (p.cost_price ?? p.average_cost ?? 0);
-
-        const handleCreatePO = async () => {
-          const selectedProducts = lowStockProducts.filter(p => needsOrderingSelected.has(p.product_id));
-          if (selectedProducts.length === 0) return;
-
-          const pad = (n: number) => String(n).padStart(2, "0");
-          const now = new Date();
-
-          const withSupplier = selectedProducts.filter(p => !!p.supplier_id);
-          const skippedCount = selectedProducts.length - withSupplier.length;
-
-          const bySupplier: Record<string, typeof withSupplier> = {};
-          for (const p of withSupplier) {
-            const sid = p.supplier_id!;
-            if (!bySupplier[sid]) bySupplier[sid] = [];
-            bySupplier[sid].push(p);
-          }
-
-          let poCount = 0;
-          let itemCount = 0;
-          let firstPoId = "";
-
-          for (const [supplierId, prods] of Object.entries(bySupplier)) {
-            const ts = new Date(now.getTime() + poCount * 1000);
-            const poNumber = `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
-            const items = prods.map(p => {
-              const qty = getSuggestedQty(p);
-              const unitCost = p.cost_price ?? p.average_cost ?? 0;
-              return { product_id: p.product_id, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
-            });
-            const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
-            const notes = items.length === 1
-              ? `Reorder: ${prods[0].product_name}`
-              : `Reorder: ${items.length} products`;
-
-            const { data: po, error: poErr } = await supabase
-              .from("purchase_orders")
-              .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
-              .select("id")
-              .single();
-
-            if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create purchase order", type: "error" }); return; }
-
-            if (!firstPoId) firstPoId = po.id;
-
-            const CHUNK = 30;
-            const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
-            let chunkInserted = 0;
-            for (let ci = 0; ci < rows.length; ci += CHUNK) {
-              const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
-              if (chunkErr) { console.error(chunkErr); break; }
-              chunkInserted += Math.min(CHUNK, rows.length - ci);
-            }
-
-            if (chunkInserted === 0) {
-              await supabase.from("purchase_orders").delete().eq("id", po.id);
-              continue;
-            }
-
-            poCount++;
-            itemCount += chunkInserted;
-          }
-
-          setNeedsOrderingSelected(new Set());
-          setNeedsOrderingQtys({});
-          await onLoadPurchaseOrders();
-          await onLoadAllPoItems();
-          if (firstPoId) setSelectedPoId(firstPoId);
-          setActiveTab("purchasing");
-
-          const msg = [
-            `Created ${poCount} draft Purchase Order${poCount !== 1 ? "s" : ""} for ${itemCount} product${itemCount !== 1 ? "s" : ""}.`,
-            skippedCount > 0 ? ` ${skippedCount} product${skippedCount !== 1 ? "s were" : " was"} skipped because no supplier is assigned.` : "",
-          ].join("");
-          setMessage({ text: msg, type: "success" });
-        };
 
         return (
           <div style={{ marginBottom: "24px", border: "1px solid #fecaca", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
@@ -1603,7 +1522,7 @@ export function InventoryTab(props: InventoryTabProps) {
                 Selected: <strong style={{ color: "#0f172a" }}>{selectedCount}</strong> product{selectedCount !== 1 ? "s" : ""}
               </span>
               <button
-                onClick={handleCreatePO}
+                onClick={onCreatePOFromNeedsOrdering}
                 disabled={selectedCount === 0}
                 style={{
                   padding: "9px 22px",

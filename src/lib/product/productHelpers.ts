@@ -63,6 +63,11 @@ export function getLowStockProducts(products: ProductStock[]): ProductStock[] {
     .sort((a, b) => (a.quantity_on_hand - (a.reorder_level ?? 0)) - (b.quantity_on_hand - (b.reorder_level ?? 0)));
 }
 
+/** Total value of on-hand inventory, valued at each product's average cost. */
+export function getTotalInventoryValue(products: ProductStock[]): number {
+  return products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
+}
+
 export type CategoryChip = { key: string; label: string; count: number };
 
 /** Category filter-chip list (All / Uncategorized / each category) with product counts. */

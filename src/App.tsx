@@ -10,7 +10,7 @@ import { POPrintModal } from "./components/POPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
 import { InventoryTab } from "./components/InventoryTab";
 import type { ProductStock, Category } from "./lib/product/types";
-import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips } from "./lib/product/productHelpers";
+import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips, getTotalInventoryValue } from "./lib/product/productHelpers";
 
 export type Transaction = {
   id: string;
@@ -189,7 +189,7 @@ export type StockCountItemDetail = {
   products: { name: string; sku: string | null } | null;
 };
 
-type DrawerSession = {
+export type DrawerSession = {
   id: string;
   business_id: string;
   cashier_id: string | null;
@@ -221,7 +221,7 @@ export type LoyaltyTransaction = {
   created_at: string;
 };
 
-type Employee = {
+export type Employee = {
   id: string;
   business_id: string;
   name: string;
@@ -2500,6 +2500,48 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setShowEod(true);
   }
 
+  // Shared PO-number format, used by every draft-PO creation path below.
+  function generatePoNumber(offsetMs = 0): string {
+    const ts = new Date(Date.now() + offsetMs);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+  }
+
+  // Shared "insert one draft PO + chunk-insert its items" primitive, used by every
+  // draft-PO creation path below. Callers retain their own supplier-grouping, quantity
+  // defaulting, confirmation, and partial-failure messaging — this only factors out the
+  // insert/chunk-insert mechanics that were previously duplicated at each call site.
+  async function insertDraftPurchaseOrder(
+    supplierId: string,
+    items: { product_id: string; quantity: number; unit_cost: number }[],
+    notes: string | null,
+    poNumberOverride?: string
+  ): Promise<{ poId: string; poNumber: string; itemsInserted: number } | null> {
+    const poNumber = poNumberOverride ?? generatePoNumber();
+    const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_cost, 0);
+
+    const { data: po, error: poErr } = await supabase
+      .from("purchase_orders")
+      .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
+      .select("id")
+      .single();
+
+    if (poErr || !po) { console.error(poErr); return null; }
+
+    if (items.length === 0) return { poId: po.id, poNumber, itemsInserted: 0 };
+
+    const CHUNK = 30;
+    const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.quantity * i.unit_cost }));
+    let inserted = 0;
+    for (let ci = 0; ci < rows.length; ci += CHUNK) {
+      const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
+      if (chunkErr) { console.error(chunkErr); break; }
+      inserted += Math.min(CHUNK, rows.length - ci);
+    }
+
+    return { poId: po.id, poNumber, itemsInserted: inserted };
+  }
+
   async function handleBatchReorderPO(overrideSelected?: Set<string>) {
     const selected = Array.from(overrideSelected ?? reorderSelected);
     if (selected.length === 0) { setMessage({ text: "No products selected", type: "error" }); return; }
@@ -2525,8 +2567,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       bySupplier[sid].push(pid);
     }
 
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
     let poCount = 0;
     let itemCount = 0;
 
@@ -2535,39 +2575,23 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const product = products.find(p => p.product_id === pid)!;
         const qty = Math.max(1, Number(reorderQtys[pid] ?? ((product.reorder_level ?? 0) - product.quantity_on_hand)));
         const unitCost = product.cost_price ?? product.average_cost ?? 0;
-        return { product_id: pid, product_name: product.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
+        return { product_id: pid, quantity: qty, unit_cost: unitCost };
       });
-      const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
-      const ts = new Date(now.getTime() + poCount * 1000);
-      const poNumber = `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+      const productNames = productIds.map(pid => products.find(p => p.product_id === pid)!.product_name);
       const notes = items.length === 1
-        ? `Reorder: ${items[0].product_name}`
+        ? `Reorder: ${productNames[0]}`
         : `Reorder: ${items.length} products`;
 
-      const { data: po, error: poErr } = await supabase
-        .from("purchase_orders")
-        .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
-        .select("id")
-        .single();
+      const result = await insertDraftPurchaseOrder(supplierId, items, notes, generatePoNumber(poCount * 1000));
+      if (!result) { setMessage({ text: "Failed to create PO", type: "error" }); return; }
 
-      if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
-
-      const CHUNK = 30;
-      const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
-      let chunkInserted = 0;
-      for (let ci = 0; ci < rows.length; ci += CHUNK) {
-        const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
-        if (chunkErr) { console.error(chunkErr); break; }
-        chunkInserted += Math.min(CHUNK, rows.length - ci);
-      }
-
-      if (chunkInserted === 0) {
-        await supabase.from("purchase_orders").delete().eq("id", po.id);
+      if (result.itemsInserted === 0) {
+        await supabase.from("purchase_orders").delete().eq("id", result.poId);
         continue;
       }
 
       poCount++;
-      itemCount += chunkInserted;
+      itemCount += result.itemsInserted;
     }
 
     setReorderSelected(prev => { const n = new Set(prev); selected.forEach(pid => n.delete(pid)); return n; });
@@ -2578,6 +2602,64 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setReorderQtys(clearedQtys);
     setMessage({ text: `Created ${poCount} purchase order${poCount !== 1 ? "s" : ""} containing ${itemCount} product${itemCount !== 1 ? "s" : ""}.`, type: "success" });
     await loadPurchaseOrders();
+  }
+
+  // Inventory's "Needs Ordering Today" reorder flow — moved here from InventoryTab.tsx
+  // so that component no longer performs a direct database write.
+  async function handleCreatePOFromNeedsOrdering() {
+    const selectedProducts = lowStockProducts.filter(p => needsOrderingSelected.has(p.product_id));
+    if (selectedProducts.length === 0) return;
+
+    const withSupplier = selectedProducts.filter(p => !!p.supplier_id);
+    const skippedCount = selectedProducts.length - withSupplier.length;
+
+    const bySupplier: Record<string, typeof withSupplier> = {};
+    for (const p of withSupplier) {
+      const sid = p.supplier_id!;
+      if (!bySupplier[sid]) bySupplier[sid] = [];
+      bySupplier[sid].push(p);
+    }
+
+    let poCount = 0;
+    let itemCount = 0;
+    let firstPoId = "";
+
+    for (const [supplierId, prods] of Object.entries(bySupplier)) {
+      const items = prods.map(p => {
+        const qty = needsOrderingQtys[p.product_id] ?? Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
+        const unitCost = p.cost_price ?? p.average_cost ?? 0;
+        return { product_id: p.product_id, quantity: qty, unit_cost: unitCost };
+      });
+      const notes = items.length === 1
+        ? `Reorder: ${prods[0].product_name}`
+        : `Reorder: ${items.length} products`;
+
+      const result = await insertDraftPurchaseOrder(supplierId, items, notes, generatePoNumber(poCount * 1000));
+      if (!result) { setMessage({ text: "Failed to create purchase order", type: "error" }); return; }
+
+      if (!firstPoId) firstPoId = result.poId;
+
+      if (result.itemsInserted === 0) {
+        await supabase.from("purchase_orders").delete().eq("id", result.poId);
+        continue;
+      }
+
+      poCount++;
+      itemCount += result.itemsInserted;
+    }
+
+    setNeedsOrderingSelected(new Set());
+    setNeedsOrderingQtys({});
+    await loadPurchaseOrders();
+    await loadAllPoItems();
+    if (firstPoId) setSelectedPoId(firstPoId);
+    setActiveTab("purchasing");
+
+    const msg = [
+      `Created ${poCount} draft Purchase Order${poCount !== 1 ? "s" : ""} for ${itemCount} product${itemCount !== 1 ? "s" : ""}.`,
+      skippedCount > 0 ? ` ${skippedCount} product${skippedCount !== 1 ? "s were" : " was"} skipped because no supplier is assigned.` : "",
+    ].join("");
+    setMessage({ text: msg, type: "success" });
   }
 
   async function handleBulkAssignSupplier() {
@@ -2598,49 +2680,31 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const supProducts = products.filter(p => p.supplier_id === supplierId && p.status === "active");
     if (supProducts.length === 0) { setMessage({ text: "No products assigned to this supplier", type: "error" }); return; }
 
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const poNumber = `PO-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
     const items = supProducts.map(p => {
       const prefQty = getPrefQty(p.product_id);
       const defaultQty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
       const qty = prefQty ?? defaultQty;
       const unitCost = p.average_cost ?? 0;
-      return { product_id: p.product_id, product_name: p.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
+      return { product_id: p.product_id, quantity: qty, unit_cost: unitCost };
     });
 
-    const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
     const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? "Unknown";
-    const notes = items.length === 1 ? `Catalog: ${items[0].product_name}` : `Catalog: ${items.length} products`;
+    const notes = items.length === 1 ? `Catalog: ${supProducts[0].product_name}` : `Catalog: ${items.length} products`;
 
-    const { data: po, error: poErr } = await supabase
-      .from("purchase_orders")
-      .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
-      .select("id")
-      .single();
+    const result = await insertDraftPurchaseOrder(supplierId, items, notes);
+    if (!result) { setMessage({ text: "Failed to create PO", type: "error" }); return; }
+    const { poId, poNumber, itemsInserted } = result;
 
-    if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
-
-    const CHUNK = 30;
-    let insertedCount = 0;
-    const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(i, i + CHUNK));
-      if (chunkErr) { console.error(chunkErr); break; }
-      insertedCount += Math.min(CHUNK, rows.length - i);
-    }
-
-    if (insertedCount === 0) {
-      await supabase.from("purchase_orders").delete().eq("id", po.id);
+    if (itemsInserted === 0) {
+      await supabase.from("purchase_orders").delete().eq("id", poId);
       setMessage({ text: "Failed to add items — PO was not created", type: "error" });
       await loadPurchaseOrders();
       return;
     }
 
-    if (insertedCount < items.length) {
-      await supabase.from("purchase_orders").update({ subtotal: 0, notes: `${notes} (PARTIAL: ${insertedCount}/${items.length} items)` }).eq("id", po.id);
-      setMessage({ text: `PO ${poNumber} created with only ${insertedCount} of ${items.length} items — some inserts failed`, type: "error" });
+    if (itemsInserted < items.length) {
+      await supabase.from("purchase_orders").update({ subtotal: 0, notes: `${notes} (PARTIAL: ${itemsInserted}/${items.length} items)` }).eq("id", poId);
+      setMessage({ text: `PO ${poNumber} created with only ${itemsInserted} of ${items.length} items — some inserts failed`, type: "error" });
     } else {
       setMessage({ text: `Draft PO ${poNumber} created from ${supplierName} catalog (${items.length} products)`, type: "success" });
     }
@@ -2655,23 +2719,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const supName = suppliers.find(s => s.id === poSupplierId)?.name ?? "this supplier";
     if (!window.confirm(`Create an empty draft PO for ${supName}? You will need to add items manually via View/Edit.`)) return;
 
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const poNumber = `PO-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
-    const { error } = await supabase.from("purchase_orders").insert({
-      business_id: businessId,
-      supplier_id: poSupplierId,
-      po_number: poNumber,
-      status: "draft",
-      subtotal: 0,
-      notes: poNotes || null,
-    });
-
-    if (error) {
-      console.error(error);
-      return;
-    }
+    const result = await insertDraftPurchaseOrder(poSupplierId, [], poNotes || null);
+    if (!result) return;
 
     setPoSupplierId("");
     setPoNotes("");
@@ -5076,13 +5125,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <InventoryTab
         visible={activeTab === 'inventory' && !!businessId && appUnlocked}
         activeTab={activeTab}
-        businessId={businessId}
         products={products}
         suppliers={suppliers}
         supplierMap={supplierMap}
         categories={categories}
         categoryMap={categoryMap}
-        setMessage={setMessage}
         activeReceivingSession={activeReceivingSession}
         newSessionSupplierId={newSessionSupplierId} setNewSessionSupplierId={setNewSessionSupplierId}
         newSessionNotes={newSessionNotes} setNewSessionNotes={setNewSessionNotes}
@@ -5186,10 +5233,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         lowStockProducts={lowStockProducts}
         needsOrderingSelected={needsOrderingSelected} setNeedsOrderingSelected={setNeedsOrderingSelected}
         needsOrderingQtys={needsOrderingQtys} setNeedsOrderingQtys={setNeedsOrderingQtys}
-        onLoadPurchaseOrders={loadPurchaseOrders}
-        onLoadAllPoItems={loadAllPoItems}
-        setSelectedPoId={setSelectedPoId}
-        setActiveTab={setActiveTab}
+        onCreatePOFromNeedsOrdering={handleCreatePOFromNeedsOrdering}
         canManageCategories={canManageCategories}
         onAddCategory={handleAddCategory}
         newCatName={newCatName} setNewCatName={setNewCatName}
@@ -5328,7 +5372,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                   </>
                 )}
                 <button
-                  onClick={() => { setActiveTab("pos"); setShowEod(true); }}
+                  onClick={() => { setActiveTab("employees"); if (!showEod) handleToggleEod(); }}
                   style={{ ...pCardBtn, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}
                 >View EOD Report</button>
               </div>
@@ -6314,7 +6358,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             <tr>
               <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total Inventory Value</td>
               <td style={{ fontWeight: "bold" }}>
-                ${products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0).toFixed(2)}
+                ${getTotalInventoryValue(products).toFixed(2)}
               </td>
             </tr>
           </tfoot>
@@ -6323,16 +6367,16 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       {/* 2. Low Stock Report */}
       <button
-        onClick={() => setLowStockReportOpen(!(lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)))}
+        onClick={() => setLowStockReportOpen(!(lowStockReportOpen ?? (lowStockProducts.length < 10)))}
         style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
       >
-        <span style={{ fontSize: "16px" }}>{(lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)) ? "▼" : "▶"}</span>
+        <span style={{ fontSize: "16px" }}>{(lowStockReportOpen ?? (lowStockProducts.length < 10)) ? "▼" : "▶"}</span>
         <h3 style={{ margin: 0 }}>Low Stock Report</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length} items)</span>
+        <span style={{ fontSize: "13px", color: "#64748b" }}>({lowStockProducts.length} items)</span>
       </button>
-      <div style={{ display: (lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)) ? '' : 'none' }}>
+      <div style={{ display: (lowStockReportOpen ?? (lowStockProducts.length < 10)) ? '' : 'none' }}>
       {(() => {
-        const lowStock = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level);
+        const lowStock = lowStockProducts;
         return (
           <div style={{ overflowX: "auto" }}>
             <table border={1} cellPadding={10} style={{ width: "100%" }}>
@@ -6366,92 +6410,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       })()}
       </div>
 
-      {/* 3. Product Movement Report */}
-      <button
-        onClick={() => setTxHistoryOpen(o => !o)}
-        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{txHistoryOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Transaction History</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>
-          ({txDateRange === 'today' ? 'Today' : txDateRange === '7d' ? 'Last 7 Days' : txDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {transactions.length} records)
-        </span>
-      </button>
-      {txHistoryOpen && <>
-      <div style={{ marginTop: "8px", marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTxDateRange(key as typeof txDateRange)}
-            style={{
-              padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px",
-              background: txDateRange === key ? "#1d4ed8" : "#fff",
-              color: txDateRange === key ? "#fff" : "#333",
-              border: txDateRange === key ? "1px solid #1d4ed8" : "1px solid #ccc",
-              fontWeight: txDateRange === key ? "bold" : "normal",
-            }}
-          >{label}</button>
-        ))}
-      </div>
-      <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {["all", "sale", "receiving", "damaged", "adjustment"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setMovementFilter(f)}
-            style={{
-              padding: "6px 14px",
-              borderRadius: "4px",
-              border: "1px solid #ccc",
-              cursor: "pointer",
-              backgroundColor: movementFilter === f ? "#333" : "#fff",
-              color: movementFilter === f ? "#fff" : "#333",
-              fontWeight: movementFilter === f ? "bold" : "normal",
-            }}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
-      </div>
-      {(() => {
-        const filtered = movementFilter === "all"
-          ? transactions
-          : transactions.filter(tx => tx.transaction_type === movementFilter);
-        return (
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Product</th>
-                  <th>Type</th>
-                  <th>Change</th>
-                  <th>Before</th>
-                  <th>After</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={6}>No transactions</td></tr>
-                ) : (
-                  filtered.map((tx) => (
-                    <tr key={tx.id}>
-                      <td>{new Date(tx.created_at).toLocaleString()}</td>
-                      <td>{tx.products?.name}</td>
-                      <td>{tx.transaction_type}</td>
-                      <td style={{ color: tx.quantity_change < 0 ? "red" : "green", fontWeight: "bold" }}>
-                        {tx.quantity_change > 0 ? `+${tx.quantity_change}` : tx.quantity_change}
-                      </td>
-                      <td>{tx.quantity_before}</td>
-                      <td>{tx.quantity_after}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
-      </>}
+      {/* Transaction History / Product Movement is owned by the Inventory tab
+          (see InventoryTab.tsx) — previously duplicated here with shared
+          txHistoryOpen/txDateRange/movementFilter state; removed to avoid two
+          independently-rendered copies of the same panel. */}
 
       {/* 4. Purchase Order Report */}
       <button
@@ -6701,9 +6663,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <span style={{ fontSize: "13px", color: "#64748b" }}>({new Set(returnHistory.map(r => r.return_number || r.id)).size} returns)</span>
       </button>
       {returnHistoryOpen && (() => {
-        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
-        const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
-        const employeeMap = Object.fromEntries(employees.map(e => [e.id, e.name]));
         const grouped: Record<string, ReturnRecord[]> = {};
         for (const r of returnHistory) {
           const key = r.return_number || r.id;
@@ -6735,8 +6694,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 {groups.map(([key, items]) => {
                   const first = items[0];
                   const sale = sales.find(s => s.id === first.sale_id);
-                  const custName = sale?.customer_id ? (customerMap[sale.customer_id] ?? "—") : "—";
-                  const empName = first.processed_by ? (employeeMap[first.processed_by] ?? "—") : "Owner";
+                  const custName = sale?.customer_id ? (customerMap[sale.customer_id]?.name ?? "—") : "—";
+                  const empName = first.processed_by ? (employeeMap[first.processed_by]?.name ?? "—") : "Owner";
                   const refundValue = items.reduce((sum, r) => {
                     const si = saleItems.find(s => s.sale_id === r.sale_id && s.product_id === r.product_id);
                     return sum + (si ? r.quantity_returned * si.unit_price : 0);
@@ -6775,7 +6734,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                                   const unitPrice = si?.unit_price ?? 0;
                                   return (
                                     <tr key={r.id}>
-                                      <td>{productMap[r.product_id] ?? r.product_id.slice(0, 8)}</td>
+                                      <td>{productIdMap[r.product_id]?.product_name ?? r.product_id.slice(0, 8)}</td>
                                       <td style={{ textAlign: "center" }}>{r.quantity_returned}</td>
                                       <td style={{ textAlign: "right" }}>${unitPrice.toFixed(2)}</td>
                                       <td style={{ textAlign: "right" }}>${(r.quantity_returned * unitPrice).toFixed(2)}</td>
