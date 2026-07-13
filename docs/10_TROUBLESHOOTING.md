@@ -28,6 +28,7 @@
 | BUG-04 | Receiving post is not atomic — partial failures possible | High | If any product fails mid-loop, earlier products are already updated |
 | BUG-05 | `received_date` column has no migration file | Medium | Fresh DB restore will fail without manually adding this column |
 | BUG-06 | `inventory_batches` RLS uses owner-only policy | Medium | Auth-linked staff may not be able to read batch data |
+| BUG-07 | Session-based receiving never reconciles against the originating Purchase Order | Medium | `handlePostReceivingSession` (Smart Receive / Rapid Receive / simple Receive Inventory) has no `purchase_order_id` link and never updates `purchase_orders` or `purchase_order_items`. Only `handleConfirmReceive` (Purchasing's PO-linked "Receive" action) updates PO status. A PO can therefore be fully received via a session while its own PO record still shows it as outstanding. Identified during the Phase 6 stabilization review (Reorder Center / Needs Ordering Today merge decision); deferred pending a product-owner decision on whether/how the two receiving paths should reconcile. No code change made. |
 
 ---
 
@@ -68,6 +69,7 @@
 | `historyExpanded` Fragment boundary | JSX parse error | Closing `</>)}` must match opening `{historyExpanded && (<>` exactly |
 | `average_cost` calculation in post | Cost accuracy | Weighted average formula must use `quantity_on_hand` before the new receive is added |
 | `sessionPayments` transient state | "Fully paid" guard | Payment "remaining" is computed from this; it resets on page reload |
+| `expandedCustomerId` state | Cross-module row-expansion collision | Shared by both `CustomersTab.tsx` (row-expansion keyed by raw customer `id`) and `SupplierManagementPanel.tsx` (row-expansion keyed by `` `sup-${supplierId}` ``). The prefix avoids ID collisions today, but any change to either component's expansion logic must account for the other consumer. Identified during the Phase 8 stabilization audit; not a bug, left as-is (renaming/splitting would touch both components' prop interfaces for a purely cosmetic gain). |
 
 ---
 

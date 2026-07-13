@@ -2,275 +2,31 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { supabase } from "./supabase";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-
-type Transaction = {
-  id: string;
-  created_at: string;
-  transaction_type: string;
-  quantity_change: number;
-  quantity_before: number;
-  quantity_after: number;
-  product_id: string;
-  products: { name: string } | null;
-};
-
-type Supplier = {
-  id: string;
-  name: string;
-  contact_name: string | null;
-  phone: string | null;
-  email: string | null;
-  notes: string | null;
-  status: string;
-  created_at: string;
-};
-
-type PurchaseOrder = {
-  id: string;
-  supplier_id: string;
-  po_number: string;
-  status: string;
-  subtotal: number;
-  notes: string | null;
-  created_at: string;
-};
-
-type POItem = {
-  id: string;
-  purchase_order_id: string;
-  product_id: string;
-  quantity: number;
-  quantity_received: number;
-  unit_cost: number;
-  line_total: number;
-  created_at: string;
-  receive_notes: string | null;
-};
-
-type ReceiptItem = {
-  product_id: string;
-  quantity: number;
-  unit_price: number;
-  line_total: number;
-};
-
-type Receipt = {
-  sale: Sale;
-  items: ReceiptItem[];
-  paymentMethod: string;
-  paymentReference?: string;
-  pointsEarned?: number;
-  pointsRedeemed?: number;
-};
-
-type SaleItemRecord = {
-  sale_id: string;
-  product_id: string;
-  quantity: number;
-  unit_price: number;
-  line_total: number;
-};
-
-type EodItem = {
-  sale_id: string;
-  product_id: string;
-  quantity: number;
-  line_total: number;
-};
-
-type EodPayment = {
-  sale_id: string;
-  payment_method: string;
-  amount: number;
-  reference?: string | null;
-  payment_type?: string;
-};
-
-type CartItem = {
-  product_id: string;
-  product_name: string;
-  quantity: number;
-  unit_price: number;
-  line_total: number;
-  original_unit_price: number;
-  negotiation_reason: string | null;
-  negotiated_by: string | null;
-};
-
-type Sale = {
-  id: string;
-  cashier_id: string | null;
-  customer_id: string | null;
-  subtotal: number;
-  tax: number;
-  discount_amount: number;
-  total: number;
-  status: string;
-  created_at: string;
-};
-
-type Customer = {
-  id: string;
-  name: string;
-  phone: string;
-  email: string | null;
-  status: string;
-  created_at: string;
-};
-
-type ProductStock = {
-  inventory_id: string;
-  business_id: string;
-  product_id: string;
-  product_name: string;
-  sku: string | null;
-  barcode: string | null;
-  selling_price: number;
-  quantity_on_hand: number;
-  reorder_level: number | null;
-  status: string;
-  average_cost: number;
-  cost_price: number | null;
-  estimated_overhead_pct: number;
-  target_margin_percent: number | null;
-  minimum_margin_percent: number | null;
-  supplier_id: string | null;
-  category_id: string | null;
-};
-
-type Category = {
-  id: string;
-  business_id: string;
-  name: string;
-  description: string | null;
-  status: string;
-  created_at: string;
-};
-
-type ReturnLineItem = {
-  product_id: string;
-  product_name: string;
-  original_qty: number;
-  unit_price: number;
-  already_returned: number;
-  available_qty: number;
-  return_qty: number;
-};
-
-type ReturnRecord = {
-  id: string;
-  sale_id: string;
-  product_id: string;
-  quantity_returned: number;
-  reason: string | null;
-  return_number: string | null;
-  return_reason: string | null;
-  notes: string | null;
-  processed_by: string | null;
-  created_at: string;
-};
-
-type StockCountLine = {
-  product_id: string;
-  inventory_id: string;
-  business_id: string;
-  product_name: string;
-  sku: string | null;
-  barcode: string | null;
-  system_qty: number;
-  counted_qty: number;
-};
-
-type StockCountRecord = {
-  id: string;
-  business_id: string;
-  status: string;
-  notes: string | null;
-  completed_at: string;
-  created_at: string;
-};
-
-type StockCountItemDetail = {
-  id: string;
-  product_id: string;
-  system_qty: number;
-  counted_qty: number;
-  variance: number;
-  products: { name: string; sku: string | null } | null;
-};
-
-type DrawerSession = {
-  id: string;
-  business_id: string;
-  cashier_id: string | null;
-  status: string;
-  opening_float: number;
-  opened_at: string;
-  closed_at: string | null;
-  closing_count: number | null;
-  expected_cash: number | null;
-  over_short: number | null;
-  notes: string | null;
-  created_at: string;
-};
-
-type DrawerPaidOut = {
-  id: string;
-  drawer_session_id: string;
-  amount: number;
-  reason: string | null;
-  created_at: string;
-};
-
-type LoyaltyTransaction = {
-  id: string;
-  customer_id: string;
-  sale_id: string | null;
-  points: number;
-  type: string;
-  created_at: string;
-};
-
-type Employee = {
-  id: string;
-  business_id: string;
-  name: string;
-  role: string;
-  status: string;
-  pin: string | null;
-  created_at: string;
-};
-
-type BulkRow = {
-  name: string;
-  selling_price: string;
-  sku: string;
-  barcode: string;
-  cost_price: string;
-  reorder_level: string;
-  initial_stock: string;
-  status: 'valid' | 'missing_name' | 'missing_price' | 'invalid_price' | 'duplicate_barcode';
-};
-
-type InventoryBatch = {
-  id: string;
-  business_id: string;
-  product_id: string;
-  receiving_session_id: string | null;
-  receiving_session_item_id: string | null;
-  supplier_id: string | null;
-  supplier_name: string | null;
-  batch_number: string | null;
-  lot_number: string | null;
-  manufactured_date: string | null;
-  expiration_date: string | null;
-  quantity_received: number;
-  quantity_remaining: number;
-  unit_cost: number | null;
-  status: string;
-  created_at: string;
-  product_name?: string;
-};
+import { SettingsTab } from "./components/SettingsTab";
+import { CustomersTab } from "./components/CustomersTab";
+import { ProductResolutionDialog } from "./components/ProductResolutionDialog";
+import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
+import { POPrintModal } from "./components/POPrintModal";
+import { PurchasingTab } from "./components/PurchasingTab";
+import { SupplierManagementPanel } from "./components/SupplierManagementPanel";
+import { PurchaseOrderLifecyclePanel } from "./components/PurchaseOrderLifecyclePanel";
+import { InventoryTab } from "./components/InventoryTab";
+import { CatalogManagementPanel } from "./components/CatalogManagementPanel";
+import { StockIntegrityPanel } from "./components/StockIntegrityPanel";
+import { Dashboard } from "./components/Dashboard";
+import { SalesAnalyticsReport } from "./components/SalesAnalyticsReport";
+import { InventoryReportsPanel } from "./components/InventoryReportsPanel";
+import type { ProductStock, Category, ProductResolutionRequest } from "./lib/product/types";
+import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips } from "./lib/product/productHelpers";
+import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
+import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
+import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
+import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
+import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail } from "./lib/inventory/types";
+import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow, PoSignatures } from "./lib/purchasing/types";
+import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
+import type { Customer, LoyaltyTransaction } from "./lib/customers/types";
+import type { Employee, DrawerSession, DrawerPaidOut } from "./lib/staff/types";
 
 type AppProps = {
   userId: string;
@@ -320,15 +76,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [sessionItems, setSessionItems] = useState<{ id: string; product_id: string; quantity_received: number; unit_cost: number }[]>([]);
   const [sessionScanInput, setSessionScanInput] = useState("");
   // ── Unified Product Resolution dialog ──
-  type ProductResolutionRequest = {
-    barcode?: string;
-    description?: string;
-    suggestedCost?: number;
-    suggestedQuantity?: number;   // invoice line qty — shown as context, not initial stock
-    suggestedSupplierId?: string; // pre-select supplier
-    onResolved: (productId: string) => Promise<void>;
-    onSkipped: () => void;
-  };
   const [productResolution, setProductResolution] = useState<ProductResolutionRequest | null>(null);
   const [productResolutionMode, setProductResolutionMode] = useState<"link" | "create" | null>(null);
   const [productResolutionLinkId, setProductResolutionLinkId] = useState("");
@@ -385,7 +132,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
-  const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number }[]>([]);
+  const [supplierStatement, setSupplierStatement] = useState<SupplierStatementRow[]>([]);
   const [isLoadingStatement, setIsLoadingStatement] = useState(false);
   const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
   const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
@@ -479,34 +226,67 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [signRole, setSignRole] = useState<"manager" | "supplier">("manager");
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sigDrawingRef = useRef(false);
+  const [poSignatures, setPoSignatures] = useState<Record<string, PoSignatures>>({});
+  const [preferredQtys, setPreferredQtys] = useState<Record<string, number>>({});
 
-  function getPoSignatures(poId: string): { manager?: { dataUrl: string; signedAt: string }; supplier?: { dataUrl: string; signedAt: string } } {
-    try { return JSON.parse(localStorage.getItem(`po-sig-${poId}`) || "{}"); } catch { return {}; }
+  // PO signatures — business_id-scoped in Supabase (po_signatures), cached per-PO in
+  // poSignatures once loaded via loadPoSignatures (defined further down, after the
+  // effects that call it — see the signPoId effect and handlePrintPO). getPoSignatures
+  // stays a synchronous reader of that cache so every existing call site (including
+  // render-time reads in POPrintModal and the Sign PO modal) is unaffected.
+  function getPoSignatures(poId: string): PoSignatures {
+    return poSignatures[poId] ?? {};
   }
-  function savePoSignature(poId: string, role: "manager" | "supplier", dataUrl: string) {
-    const sigs = getPoSignatures(poId);
-    sigs[role] = { dataUrl, signedAt: new Date().toISOString() };
-    localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
+  async function savePoSignature(poId: string, role: "manager" | "supplier", dataUrl: string) {
+    const signedAt = new Date().toISOString();
+    setPoSignatures(prev => ({ ...prev, [poId]: { ...prev[poId], [role]: { dataUrl, signedAt } } }));
+    const { error } = await supabase
+      .from("po_signatures")
+      .upsert({ business_id: businessId, purchase_order_id: poId, role, data_url: dataUrl, signed_at: signedAt }, { onConflict: "purchase_order_id,role" });
+    if (error) console.error("[PoSignatures] save error:", error);
   }
-  function clearPoSignature(poId: string, role: "manager" | "supplier") {
-    const sigs = getPoSignatures(poId);
-    delete sigs[role];
-    localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
+  async function clearPoSignature(poId: string, role: "manager" | "supplier") {
+    setPoSignatures(prev => {
+      const next = { ...(prev[poId] ?? {}) };
+      delete next[role];
+      return { ...prev, [poId]: next };
+    });
+    const { error } = await supabase
+      .from("po_signatures")
+      .delete()
+      .eq("purchase_order_id", poId)
+      .eq("role", role);
+    if (error) console.error("[PoSignatures] clear error:", error);
   }
 
+  // Preferred reorder quantity — business_id-scoped in Supabase (product_reorder_preferences),
+  // loaded once at mount via loadPreferredQtys (defined further down, after the mount
+  // effect that calls it). getPrefQty stays a synchronous reader of preferredQtys so every
+  // existing call site (including render-time reads in SupplierManagementPanel) is unaffected.
   function getPrefQty(productId: string): number | null {
-    try { const v = localStorage.getItem(`pref-qty-${productId}`); return v ? Number(v) : null; } catch { return null; }
+    return preferredQtys[productId] ?? null;
   }
-  function savePrefQty(productId: string, qty: number) {
-    localStorage.setItem(`pref-qty-${productId}`, String(qty));
+  async function savePrefQty(productId: string, qty: number) {
+    setPreferredQtys(prev => ({ ...prev, [productId]: qty }));
+    const { error } = await supabase
+      .from("product_reorder_preferences")
+      .upsert({ business_id: businessId, product_id: productId, preferred_qty: qty, updated_at: new Date().toISOString() }, { onConflict: "product_id" });
+    if (error) console.error("[PreferredQty] save error:", error);
   }
 
-  function getPoEmailLog(poId: string): { lastEmailedAt: string; count: number } | null {
-    try { const v = localStorage.getItem(`po-email-${poId}`); return v ? JSON.parse(v) : null; } catch { return null; }
-  }
-  function savePoEmailLog(poId: string) {
-    const prev = getPoEmailLog(poId);
-    localStorage.setItem(`po-email-${poId}`, JSON.stringify({ lastEmailedAt: new Date().toISOString(), count: (prev?.count ?? 0) + 1 }));
+  // PO email log — business_id-scoped in Supabase (po_email_log). Write-only from the UI
+  // today (nothing currently reads it back for display), so no cached state is needed.
+  async function savePoEmailLog(poId: string) {
+    const { data: existing } = await supabase
+      .from("po_email_log")
+      .select("email_count")
+      .eq("purchase_order_id", poId)
+      .maybeSingle();
+    const newCount = (existing?.email_count ?? 0) + 1;
+    const { error } = await supabase
+      .from("po_email_log")
+      .upsert({ business_id: businessId, purchase_order_id: poId, email_count: newCount, last_emailed_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "purchase_order_id" });
+    if (error) console.error("[PoEmailLog] save error:", error);
   }
 
   async function handleEmailPO(po: PurchaseOrder) {
@@ -748,6 +528,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadEmployees();
     loadStockCounts();
     loadBatches();
+    loadPreferredQtys();
   }, []);
 
   // businessId is set asynchronously by loadBusiness(); these two loaders guard
@@ -760,10 +541,33 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
   useEffect(() => { loadSales(); }, [salesDateRange]);
+  // Populate the signature cache for whichever PO the Sign PO modal is opened for.
+  useEffect(() => { if (signPoId) loadPoSignatures(signPoId); }, [signPoId]);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedProductSearch(productSearch), 150);
     return () => clearTimeout(t);
   }, [productSearch]);
+
+  async function loadPoSignatures(poId: string) {
+    const { data, error } = await supabase
+      .from("po_signatures")
+      .select("role, data_url, signed_at")
+      .eq("purchase_order_id", poId);
+    if (error) { console.error("[PoSignatures] load error:", error); return; }
+    const sigs: PoSignatures = {};
+    for (const row of data ?? []) {
+      sigs[row.role as "manager" | "supplier"] = { dataUrl: row.data_url, signedAt: row.signed_at };
+    }
+    setPoSignatures(prev => ({ ...prev, [poId]: sigs }));
+  }
+
+  async function loadPreferredQtys() {
+    const { data, error } = await supabase
+      .from("product_reorder_preferences")
+      .select("product_id, preferred_qty");
+    if (error) { console.error("[PreferredQty] load error:", error); return; }
+    setPreferredQtys(Object.fromEntries((data ?? []).map(r => [r.product_id, Number(r.preferred_qty)])));
+  }
 
   useEffect(() => {
     if (cart.length === 0) return;
@@ -850,37 +654,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     return map;
   }, [allPoItems]);
 
-  const lowStockProducts = useMemo(() =>
-    products
-      .filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level)
-      .sort((a, b) => (a.quantity_on_hand - (a.reorder_level ?? 0)) - (b.quantity_on_hand - (b.reorder_level ?? 0))),
-    [products]
-  );
+  const lowStockProducts = useMemo(() => getLowStockProducts(products), [products]);
 
-  const filteredProducts = useMemo(() =>
-    products
-      .filter(p => categoryFilter === "all" ? true : categoryFilter === "uncategorized" ? !p.category_id : p.category_id === categoryFilter)
-      .filter(p => {
-        if (!debouncedProductSearch.trim()) return true;
-        const q = debouncedProductSearch.trim().toLowerCase();
-        return p.product_name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.barcode ?? "").toLowerCase().includes(q);
-      }),
+  const filteredProducts = useMemo(
+    () => filterProducts(products, categoryFilter, debouncedProductSearch),
     [products, categoryFilter, debouncedProductSearch]
   );
 
-  const categoryChips = useMemo(() => {
-    const countByCategory: Record<string, number> = {};
-    let uncategorizedCount = 0;
-    for (const p of products) {
-      if (!p.category_id) uncategorizedCount++;
-      else countByCategory[p.category_id] = (countByCategory[p.category_id] ?? 0) + 1;
-    }
-    return [
-      { key: "all", label: "All", count: products.length },
-      { key: "uncategorized", label: "Uncategorized", count: uncategorizedCount },
-      ...categories.map(c => ({ key: c.id, label: c.name, count: countByCategory[c.id] ?? 0 })),
-    ];
-  }, [products, categories]);
+  const categoryChips = useMemo(() => getCategoryChips(products, categories), [products, categories]);
 
   const recentSales = useMemo(() =>
     [...sales]
@@ -895,10 +676,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     () => Object.fromEntries(customers.map(c => [c.id, c])) as Record<string, Customer>,
     [customers]
   );
-  const productIdMap = useMemo(
-    () => Object.fromEntries(products.map(p => [p.product_id, p])) as Record<string, ProductStock>,
-    [products]
-  );
+  const productIdMap = useMemo(() => buildProductIndex(products), [products]);
   const saleItemsBySaleId = useMemo((): Record<string, SaleItemRecord[]> => {
     const m: Record<string, SaleItemRecord[]> = {};
     for (const si of saleItems) {
@@ -945,7 +723,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   );
 
   // Analytics data — replaces the full computation IIFE that ran on every render.
-  const analyticsData = useMemo(() => {
+  const analyticsData = useMemo((): AnalyticsData => {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const rangeStart: Date | null =
@@ -1004,61 +782,25 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     return { revenue, txCount, avgTx, itemsSold, discounts, taxCollected, cashTotal, cardTotal, otherTotal, dailyRows, productRows, rangeLabel };
   }, [sales, saleItems, allPayments, productIdMap, analyticsRange]);
 
-  // Dashboard derived values — replaces the full computation block in the Dashboard IIFE.
-  const dashboardData = useMemo(() => {
-    const today = new Date();
-    const todaySales = sales.filter(s => {
-      const d = new Date(s.created_at);
-      return s.status === 'completed' &&
-        d.getFullYear() === today.getFullYear() &&
-        d.getMonth() === today.getMonth() &&
-        d.getDate() === today.getDate();
-    });
-    const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
-    const txnCount = todaySales.length;
-    const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
-    const openPoCount = purchaseOrders.filter(po =>
-      po.status === 'draft' || po.status === 'ordered' || po.status === 'partially_received'
-    ).length;
-    const activeCustomerCount = customers.filter(c => c.status === 'active').length;
-    const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const isYesterday = (d: string) => {
-      const dt = new Date(d);
-      return dt.getFullYear() === yesterday.getFullYear() &&
-        dt.getMonth() === yesterday.getMonth() &&
-        dt.getDate() === yesterday.getDate();
-    };
-    const yesterdaySales = sales.filter(s => s.status === 'completed' && isYesterday(s.created_at));
-    const yesterdaySaleIds = new Set(yesterdaySales.map(s => s.id));
-    const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + Number(s.total), 0);
-    const yesterdayItems = saleItems.filter(si => yesterdaySaleIds.has(si.sale_id));
-    const productCostMap = Object.fromEntries(products.map(p => [p.product_id, p.average_cost ?? 0]));
-    const yesterdayCOGS = yesterdayItems.reduce((sum, si) => sum + si.quantity * (productCostMap[si.product_id] ?? 0), 0);
-    const yesterdayProfit = (yesterdayItems.length > 0 && yesterdayCOGS > 0) ? yesterdayRevenue - yesterdayCOGS : null;
-    const yesterdayCash = allPayments
-      .filter(p => yesterdaySaleIds.has(p.sale_id) && p.payment_method === 'cash' && p.payment_type !== 'refund')
-      .reduce((sum, p) => sum + Number(p.amount), 0);
-    const qtyBySku: Record<string, number> = {};
-    for (const si of yesterdayItems) qtyBySku[si.product_id] = (qtyBySku[si.product_id] ?? 0) + si.quantity;
-    const topYesterdayId = Object.entries(qtyBySku).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-    const topYesterdayName = topYesterdayId ? (productIdMap[topYesterdayId]?.product_name ?? '—') : '—';
-    const topYesterdayQty = topYesterdayId ? qtyBySku[topYesterdayId] : 0;
-    const buyTodayCost = lowStockProducts.reduce((sum, p) => {
-      const qty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
-      return sum + qty * (p.cost_price ?? p.average_cost ?? 0);
-    }, 0);
-    const receivablePOs = purchaseOrders.filter(po => po.status === 'ordered' || po.status === 'partially_received');
-    const outOfStockCount = lowStockProducts.filter(p => p.quantity_on_hand === 0).length;
-    return {
-      revenueToday, txnCount, avgSale,
-      openPoCount, activeCustomerCount, pointsOutstanding,
-      yesterdaySalesCount: yesterdaySales.length, yesterdayRevenue, yesterdayProfit, yesterdayCash,
-      topYesterdayId, topYesterdayName, topYesterdayQty,
-      buyTodayCost, receivablePOs, outOfStockCount,
-    };
-  }, [sales, saleItems, allPayments, products, purchaseOrders, customers, loyaltyTransactions, lowStockProducts, productIdMap]);
+  // Dashboard derived values — one memo per owning domain (Sales, Purchasing,
+  // Customers, Inventory), each backed by a pure helper in lib/<domain>/.
+  // Replaces the single wide-dependency dashboardData memo.
+  const salesTodaySummary = useMemo(
+    () => getSalesTodaySummary(sales, saleItems, allPayments, products, productIdMap),
+    [sales, saleItems, allPayments, products, productIdMap]
+  );
+  const purchasingDashboardSummary = useMemo(
+    () => getPurchasingDashboardSummary(purchaseOrders),
+    [purchaseOrders]
+  );
+  const customersDashboardSummary = useMemo(
+    () => getCustomersDashboardSummary(customers, loyaltyTransactions),
+    [customers, loyaltyTransactions]
+  );
+  const inventoryDashboardSummary = useMemo(
+    () => getInventoryDashboardSummary(lowStockProducts),
+    [lowStockProducts]
+  );
 
   async function loadBusiness() {
     const { data, error } = await supabase
@@ -2211,6 +1953,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .order("created_at", { ascending: true });
     if (error || !data) { console.error(error); return; }
     const supplier = suppliers.find(s => s.id === po.supplier_id) ?? null;
+    // Awaited so signatures are already in the cache before the print modal's first
+    // render — matches the old localStorage read's zero-delay feel.
+    await loadPoSignatures(po.id);
     setPrintPo({ po, items: data as POItem[], supplier });
   }
 
@@ -2545,6 +2290,48 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setShowEod(true);
   }
 
+  // Shared PO-number format, used by every draft-PO creation path below.
+  function generatePoNumber(offsetMs = 0): string {
+    const ts = new Date(Date.now() + offsetMs);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+  }
+
+  // Shared "insert one draft PO + chunk-insert its items" primitive, used by every
+  // draft-PO creation path below. Callers retain their own supplier-grouping, quantity
+  // defaulting, confirmation, and partial-failure messaging — this only factors out the
+  // insert/chunk-insert mechanics that were previously duplicated at each call site.
+  async function insertDraftPurchaseOrder(
+    supplierId: string,
+    items: { product_id: string; quantity: number; unit_cost: number }[],
+    notes: string | null,
+    poNumberOverride?: string
+  ): Promise<{ poId: string; poNumber: string; itemsInserted: number } | null> {
+    const poNumber = poNumberOverride ?? generatePoNumber();
+    const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_cost, 0);
+
+    const { data: po, error: poErr } = await supabase
+      .from("purchase_orders")
+      .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
+      .select("id")
+      .single();
+
+    if (poErr || !po) { console.error(poErr); return null; }
+
+    if (items.length === 0) return { poId: po.id, poNumber, itemsInserted: 0 };
+
+    const CHUNK = 30;
+    const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.quantity * i.unit_cost }));
+    let inserted = 0;
+    for (let ci = 0; ci < rows.length; ci += CHUNK) {
+      const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
+      if (chunkErr) { console.error(chunkErr); break; }
+      inserted += Math.min(CHUNK, rows.length - ci);
+    }
+
+    return { poId: po.id, poNumber, itemsInserted: inserted };
+  }
+
   async function handleBatchReorderPO(overrideSelected?: Set<string>) {
     const selected = Array.from(overrideSelected ?? reorderSelected);
     if (selected.length === 0) { setMessage({ text: "No products selected", type: "error" }); return; }
@@ -2570,8 +2357,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       bySupplier[sid].push(pid);
     }
 
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
     let poCount = 0;
     let itemCount = 0;
 
@@ -2580,39 +2365,23 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         const product = products.find(p => p.product_id === pid)!;
         const qty = Math.max(1, Number(reorderQtys[pid] ?? ((product.reorder_level ?? 0) - product.quantity_on_hand)));
         const unitCost = product.cost_price ?? product.average_cost ?? 0;
-        return { product_id: pid, product_name: product.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
+        return { product_id: pid, quantity: qty, unit_cost: unitCost };
       });
-      const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
-      const ts = new Date(now.getTime() + poCount * 1000);
-      const poNumber = `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+      const productNames = productIds.map(pid => products.find(p => p.product_id === pid)!.product_name);
       const notes = items.length === 1
-        ? `Reorder: ${items[0].product_name}`
+        ? `Reorder: ${productNames[0]}`
         : `Reorder: ${items.length} products`;
 
-      const { data: po, error: poErr } = await supabase
-        .from("purchase_orders")
-        .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
-        .select("id")
-        .single();
+      const result = await insertDraftPurchaseOrder(supplierId, items, notes, generatePoNumber(poCount * 1000));
+      if (!result) { setMessage({ text: "Failed to create PO", type: "error" }); return; }
 
-      if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
-
-      const CHUNK = 30;
-      const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
-      let chunkInserted = 0;
-      for (let ci = 0; ci < rows.length; ci += CHUNK) {
-        const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
-        if (chunkErr) { console.error(chunkErr); break; }
-        chunkInserted += Math.min(CHUNK, rows.length - ci);
-      }
-
-      if (chunkInserted === 0) {
-        await supabase.from("purchase_orders").delete().eq("id", po.id);
+      if (result.itemsInserted === 0) {
+        await supabase.from("purchase_orders").delete().eq("id", result.poId);
         continue;
       }
 
       poCount++;
-      itemCount += chunkInserted;
+      itemCount += result.itemsInserted;
     }
 
     setReorderSelected(prev => { const n = new Set(prev); selected.forEach(pid => n.delete(pid)); return n; });
@@ -2623,6 +2392,64 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setReorderQtys(clearedQtys);
     setMessage({ text: `Created ${poCount} purchase order${poCount !== 1 ? "s" : ""} containing ${itemCount} product${itemCount !== 1 ? "s" : ""}.`, type: "success" });
     await loadPurchaseOrders();
+  }
+
+  // Inventory's "Needs Ordering Today" reorder flow — moved here from InventoryTab.tsx
+  // so that component no longer performs a direct database write.
+  async function handleCreatePOFromNeedsOrdering() {
+    const selectedProducts = lowStockProducts.filter(p => needsOrderingSelected.has(p.product_id));
+    if (selectedProducts.length === 0) return;
+
+    const withSupplier = selectedProducts.filter(p => !!p.supplier_id);
+    const skippedCount = selectedProducts.length - withSupplier.length;
+
+    const bySupplier: Record<string, typeof withSupplier> = {};
+    for (const p of withSupplier) {
+      const sid = p.supplier_id!;
+      if (!bySupplier[sid]) bySupplier[sid] = [];
+      bySupplier[sid].push(p);
+    }
+
+    let poCount = 0;
+    let itemCount = 0;
+    let firstPoId = "";
+
+    for (const [supplierId, prods] of Object.entries(bySupplier)) {
+      const items = prods.map(p => {
+        const qty = needsOrderingQtys[p.product_id] ?? Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
+        const unitCost = p.cost_price ?? p.average_cost ?? 0;
+        return { product_id: p.product_id, quantity: qty, unit_cost: unitCost };
+      });
+      const notes = items.length === 1
+        ? `Reorder: ${prods[0].product_name}`
+        : `Reorder: ${items.length} products`;
+
+      const result = await insertDraftPurchaseOrder(supplierId, items, notes, generatePoNumber(poCount * 1000));
+      if (!result) { setMessage({ text: "Failed to create purchase order", type: "error" }); return; }
+
+      if (!firstPoId) firstPoId = result.poId;
+
+      if (result.itemsInserted === 0) {
+        await supabase.from("purchase_orders").delete().eq("id", result.poId);
+        continue;
+      }
+
+      poCount++;
+      itemCount += result.itemsInserted;
+    }
+
+    setNeedsOrderingSelected(new Set());
+    setNeedsOrderingQtys({});
+    await loadPurchaseOrders();
+    await loadAllPoItems();
+    if (firstPoId) setSelectedPoId(firstPoId);
+    setActiveTab("purchasing");
+
+    const msg = [
+      `Created ${poCount} draft Purchase Order${poCount !== 1 ? "s" : ""} for ${itemCount} product${itemCount !== 1 ? "s" : ""}.`,
+      skippedCount > 0 ? ` ${skippedCount} product${skippedCount !== 1 ? "s were" : " was"} skipped because no supplier is assigned.` : "",
+    ].join("");
+    setMessage({ text: msg, type: "success" });
   }
 
   async function handleBulkAssignSupplier() {
@@ -2643,49 +2470,31 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const supProducts = products.filter(p => p.supplier_id === supplierId && p.status === "active");
     if (supProducts.length === 0) { setMessage({ text: "No products assigned to this supplier", type: "error" }); return; }
 
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const poNumber = `PO-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
     const items = supProducts.map(p => {
       const prefQty = getPrefQty(p.product_id);
       const defaultQty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
       const qty = prefQty ?? defaultQty;
       const unitCost = p.average_cost ?? 0;
-      return { product_id: p.product_id, product_name: p.product_name, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
+      return { product_id: p.product_id, quantity: qty, unit_cost: unitCost };
     });
 
-    const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
     const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? "Unknown";
-    const notes = items.length === 1 ? `Catalog: ${items[0].product_name}` : `Catalog: ${items.length} products`;
+    const notes = items.length === 1 ? `Catalog: ${supProducts[0].product_name}` : `Catalog: ${items.length} products`;
 
-    const { data: po, error: poErr } = await supabase
-      .from("purchase_orders")
-      .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
-      .select("id")
-      .single();
+    const result = await insertDraftPurchaseOrder(supplierId, items, notes);
+    if (!result) { setMessage({ text: "Failed to create PO", type: "error" }); return; }
+    const { poId, poNumber, itemsInserted } = result;
 
-    if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create PO", type: "error" }); return; }
-
-    const CHUNK = 30;
-    let insertedCount = 0;
-    const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(i, i + CHUNK));
-      if (chunkErr) { console.error(chunkErr); break; }
-      insertedCount += Math.min(CHUNK, rows.length - i);
-    }
-
-    if (insertedCount === 0) {
-      await supabase.from("purchase_orders").delete().eq("id", po.id);
+    if (itemsInserted === 0) {
+      await supabase.from("purchase_orders").delete().eq("id", poId);
       setMessage({ text: "Failed to add items — PO was not created", type: "error" });
       await loadPurchaseOrders();
       return;
     }
 
-    if (insertedCount < items.length) {
-      await supabase.from("purchase_orders").update({ subtotal: 0, notes: `${notes} (PARTIAL: ${insertedCount}/${items.length} items)` }).eq("id", po.id);
-      setMessage({ text: `PO ${poNumber} created with only ${insertedCount} of ${items.length} items — some inserts failed`, type: "error" });
+    if (itemsInserted < items.length) {
+      await supabase.from("purchase_orders").update({ subtotal: 0, notes: `${notes} (PARTIAL: ${itemsInserted}/${items.length} items)` }).eq("id", poId);
+      setMessage({ text: `PO ${poNumber} created with only ${itemsInserted} of ${items.length} items — some inserts failed`, type: "error" });
     } else {
       setMessage({ text: `Draft PO ${poNumber} created from ${supplierName} catalog (${items.length} products)`, type: "success" });
     }
@@ -2700,23 +2509,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const supName = suppliers.find(s => s.id === poSupplierId)?.name ?? "this supplier";
     if (!window.confirm(`Create an empty draft PO for ${supName}? You will need to add items manually via View/Edit.`)) return;
 
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const poNumber = `PO-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
-    const { error } = await supabase.from("purchase_orders").insert({
-      business_id: businessId,
-      supplier_id: poSupplierId,
-      po_number: poNumber,
-      status: "draft",
-      subtotal: 0,
-      notes: poNotes || null,
-    });
-
-    if (error) {
-      console.error(error);
-      return;
-    }
+    const result = await insertDraftPurchaseOrder(poSupplierId, [], poNotes || null);
+    if (!result) return;
 
     setPoSupplierId("");
     setPoNotes("");
@@ -5118,3361 +4912,334 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end pos */}
 
       {/* ── INVENTORY TAB ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
+      <InventoryTab
+        visible={activeTab === 'inventory' && !!businessId && appUnlocked}
+        activeTab={activeTab}
+        products={products}
+        suppliers={suppliers}
+        supplierMap={supplierMap}
+        activeReceivingSession={activeReceivingSession}
+        newSessionSupplierId={newSessionSupplierId} setNewSessionSupplierId={setNewSessionSupplierId}
+        newSessionNotes={newSessionNotes} setNewSessionNotes={setNewSessionNotes}
+        onStartReceivingSession={handleStartReceivingSession}
+        isStartingSession={isStartingSession}
+        setSmartReceiveSimpleOpen={setSmartReceiveSimpleOpen}
+        sessionScanRef={sessionScanRef}
+        sessionScanInput={sessionScanInput} setSessionScanInput={setSessionScanInput}
+        onSessionScan={handleSessionScan}
+        lastScannedProduct={lastScannedProduct}
+        sessionItems={sessionItems} setSessionItems={setSessionItems}
+        highlightedProductId={highlightedProductId}
+        onSessionItemCostChange={handleSessionItemCostChange}
+        onSessionItemQty={handleSessionItemQty}
+        onSessionItemRemove={handleSessionItemRemove}
+        sessionItemBatch={sessionItemBatch} setSessionItemBatch={setSessionItemBatch}
+        productResolution={productResolution}
+        onPostReceivingSession={handlePostReceivingSession}
+        isPostingSession={isPostingSession}
+        onCancelReceivingSession={handleCancelReceivingSession}
+        sessionHistory={sessionHistory}
+        historyExpanded={historyExpanded} setHistoryExpanded={setHistoryExpanded}
+        sessionHistoryItems={sessionHistoryItems}
+        expandedHistorySessionId={expandedHistorySessionId} setExpandedHistorySessionId={setExpandedHistorySessionId}
+        invoicePanelSessionId={invoicePanelSessionId} setInvoicePanelSessionId={setInvoicePanelSessionId}
+        onLoadSessionHistoryItems={loadSessionHistoryItems}
+        noLinkAcknowledgedSessions={noLinkAcknowledgedSessions} setNoLinkAcknowledgedSessions={setNoLinkAcknowledgedSessions}
+        resolvingSupplierSessionId={resolvingSupplierSessionId} setResolvingSupplierSessionId={setResolvingSupplierSessionId}
+        resolveMode={resolveMode} setResolveMode={setResolveMode}
+        resolveSupplierPickId={resolveSupplierPickId} setResolveSupplierPickId={setResolveSupplierPickId}
+        sessionPayments={sessionPayments}
+        paymentPanelSessionId={paymentPanelSessionId} setPaymentPanelSessionId={setPaymentPanelSessionId}
+        editPaymentDate={editPaymentDate} setEditPaymentDate={setEditPaymentDate}
+        editPaymentAmount={editPaymentAmount} setEditPaymentAmount={setEditPaymentAmount}
+        editPaymentMethod={editPaymentMethod} setEditPaymentMethod={setEditPaymentMethod}
+        editPaymentReference={editPaymentReference} setEditPaymentReference={setEditPaymentReference}
+        editPaymentNotes={editPaymentNotes} setEditPaymentNotes={setEditPaymentNotes}
+        onLoadSessionPayments={loadSessionPayments}
+        onSavePayment={handleSavePayment}
+        isSavingPayment={isSavingPayment}
+        resolveNewSupplierName={resolveNewSupplierName} setResolveNewSupplierName={setResolveNewSupplierName}
+        onLinkSessionSupplier={handleLinkSessionSupplier}
+        onCreateAndLinkSupplier={handleCreateAndLinkSupplier}
+        isResolvingSupplier={isResolvingSupplier}
+        editInvoiceNumber={editInvoiceNumber} setEditInvoiceNumber={setEditInvoiceNumber}
+        editInvoiceDate={editInvoiceDate} setEditInvoiceDate={setEditInvoiceDate}
+        editInvoiceTotal={editInvoiceTotal} setEditInvoiceTotal={setEditInvoiceTotal}
+        editFreightCost={editFreightCost} setEditFreightCost={setEditFreightCost}
+        editAdditionalCost={editAdditionalCost} setEditAdditionalCost={setEditAdditionalCost}
+        onSaveInvoice={handleSaveInvoice}
+        isSavingInvoice={isSavingInvoice}
+        historyHasMore={historyHasMore}
+        onLoadMoreHistory={handleLoadMoreHistory}
+        isLoadingMoreHistory={isLoadingMoreHistory}
+        rapidReceiveInput={rapidReceiveInput} setRapidReceiveInput={setRapidReceiveInput}
+        onRapidReceiveScan={handleRapidReceiveScan}
+        rapidReceiveItems={rapidReceiveItems} setRapidReceiveItems={setRapidReceiveItems}
+        rapidReceiveExceptions={rapidReceiveExceptions} setRapidReceiveExceptions={setRapidReceiveExceptions}
+        onPostRapidReceive={handlePostRapidReceive}
+        isPostingRapidReceive={isPostingRapidReceive}
+        onReceive={handleReceive}
+        selectedProductId={selectedProductId} setSelectedProductId={setSelectedProductId}
+        receiveQuantity={receiveQuantity} setReceiveQuantity={setReceiveQuantity}
+        canBulkImport={canBulkImport}
+        onDownloadCsvTemplate={downloadCsvTemplate}
+        onCsvUpload={handleCsvUpload}
+        bulkPreview={bulkPreview}
+        bulkImporting={bulkImporting}
+        onBulkImport={handleBulkImport}
+        bulkResults={bulkResults}
+        lowStockProducts={lowStockProducts}
+        needsOrderingSelected={needsOrderingSelected} setNeedsOrderingSelected={setNeedsOrderingSelected}
+        needsOrderingQtys={needsOrderingQtys} setNeedsOrderingQtys={setNeedsOrderingQtys}
+        onCreatePOFromNeedsOrdering={handleCreatePOFromNeedsOrdering}
+        txHistoryOpen={txHistoryOpen} setTxHistoryOpen={setTxHistoryOpen}
+        txDateRange={txDateRange} setTxDateRange={setTxDateRange}
+        transactions={transactions}
+        movementFilter={movementFilter} setMovementFilter={setMovementFilter}
+      />{/* end inventory */}
 
-      <div className="page-header">
-        <h2 className="page-title">Inventory</h2>
-        <p className="page-subtitle">Manage products, stock levels, reorder points, and product status</p>
-      </div>
+      {/* ── CATALOG MANAGEMENT (Inventory sub-domain) ── */}
+      <CatalogManagementPanel
+        visible={activeTab === 'inventory' && !!businessId && appUnlocked}
+        products={products}
+        suppliers={suppliers}
+        categories={categories}
+        categoryMap={categoryMap}
+        lowStockProducts={lowStockProducts}
+        canAddProducts={canAddProducts}
+        onAddProduct={handleAddProduct}
+        newName={newName} setNewName={setNewName}
+        newSku={newSku} setNewSku={setNewSku}
+        newBarcode={newBarcode} setNewBarcode={setNewBarcode}
+        setBarcodeAutoFill={setBarcodeAutoFill}
+        onBarcodeLookup={handleBarcodeLookup}
+        newCostPrice={newCostPrice} setNewCostPrice={setNewCostPrice}
+        newSellingPrice={newSellingPrice} setNewSellingPrice={setNewSellingPrice}
+        newReorderLevel={newReorderLevel} setNewReorderLevel={setNewReorderLevel}
+        newProductCategory={newProductCategory} setNewProductCategory={setNewProductCategory}
+        newOverhead={newOverhead} setNewOverhead={setNewOverhead}
+        newTargetMargin={newTargetMargin} setNewTargetMargin={setNewTargetMargin}
+        newMinMargin={newMinMargin} setNewMinMargin={setNewMinMargin}
+        newInitialStock={newInitialStock} setNewInitialStock={setNewInitialStock}
+        barcodeAutoFill={barcodeAutoFill}
+        canManageCategories={canManageCategories}
+        onAddCategory={handleAddCategory}
+        newCatName={newCatName} setNewCatName={setNewCatName}
+        newCatDesc={newCatDesc} setNewCatDesc={setNewCatDesc}
+        editingCatId={editingCatId} setEditingCatId={setEditingCatId}
+        onEditCategory={handleEditCategory}
+        editCatName={editCatName} setEditCatName={setEditCatName}
+        editCatDesc={editCatDesc} setEditCatDesc={setEditCatDesc}
+        onToggleCategoryStatus={handleToggleCategoryStatus}
+        onDeleteCategory={handleDeleteCategory}
+        productsTableOpen={productsTableOpen} setProductsTableOpen={setProductsTableOpen}
+        productSearchRef={productSearchRef}
+        productSearch={productSearch} setProductSearch={setProductSearch}
+        categoryChips={categoryChips}
+        categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter}
+        filteredProducts={filteredProducts}
+        editingProductId={editingProductId} setEditingProductId={setEditingProductId}
+        canEditProducts={canEditProducts}
+        setEditProdName={setEditProdName}
+        setEditProdSku={setEditProdSku}
+        setEditProdBarcode={setEditProdBarcode}
+        setEditProdPrice={setEditProdPrice}
+        setEditProdReorder={setEditProdReorder}
+        setEditProdOverhead={setEditProdOverhead}
+        setEditProdTargetMargin={setEditProdTargetMargin}
+        setEditProdMinMargin={setEditProdMinMargin}
+        setEditProdCategory={setEditProdCategory}
+        canDeactivateProducts={canDeactivateProducts}
+        onToggleProductStatus={handleToggleProductStatus}
+        onEditProduct={handleEditProduct}
+        editProdName={editProdName}
+        editProdSku={editProdSku}
+        editProdBarcode={editProdBarcode}
+        editProdPrice={editProdPrice}
+        editProdReorder={editProdReorder}
+        editProdCategory={editProdCategory}
+        editProdOverhead={editProdOverhead}
+        editProdTargetMargin={editProdTargetMargin}
+        editProdMinMargin={editProdMinMargin}
+      />{/* end catalog management */}
 
-      <div className="section-card">
-        <h3 className="section-card-title">Receiving Sessions</h3>
-        {!activeReceivingSession ? (
-          <div>
-            <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 12px" }}>Start a session to scan and receive inventory. Sessions persist across page reloads.</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "flex-end", marginBottom: "12px" }}>
-              <div style={{ flex: "1 1 200px" }}>
-                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Supplier (optional)</label>
-                <select
-                  value={newSessionSupplierId}
-                  onChange={(e) => setNewSessionSupplierId(e.target.value)}
-                  style={{ width: "100%", padding: "8px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
-                >
-                  <option value="">No supplier</option>
-                  {suppliers.filter(s => s.status === "active").map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ flex: "1 1 200px" }}>
-                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Notes (optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Weekly restock, Truck #42"
-                  value={newSessionNotes}
-                  onChange={(e) => setNewSessionNotes(e.target.value)}
-                  style={{ width: "100%", padding: "8px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }}
-                />
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button
-                onClick={handleStartReceivingSession}
-                disabled={isStartingSession}
-                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isStartingSession ? 0.6 : 1 }}
-              >{isStartingSession ? "Starting..." : "Start Receiving Session"}</button>
-              <button
-                onClick={() => setSmartReceiveSimpleOpen(true)}
-                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#7c3aed", color: "#fff", border: "none", borderRadius: "6px" }}
-              >📷 Smart Receive</button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <div style={{ padding: "12px 16px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px", marginBottom: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                <span style={{ fontSize: "14px", fontWeight: 600, color: activeReceivingSession.status === 'draft' ? "#15803d" : "#dc2626" }}>
-                  {activeReceivingSession.status === 'draft' ? 'Active Draft Session' : `Receiving Session — ${activeReceivingSession.status.charAt(0).toUpperCase() + activeReceivingSession.status.slice(1)}`}
-                </span>
-                <span style={{ fontSize: "11px", color: "#64748b", fontFamily: "monospace" }}>{activeReceivingSession.id.slice(0, 8)}</span>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px", fontSize: "13px", color: "#334155" }}>
-                <span style={{ color: "#64748b" }}>Status:</span><span style={{ fontWeight: 500 }}>{activeReceivingSession.status}</span>
-                <span style={{ color: "#64748b" }}>Supplier:</span>
-                <span>
-                  {activeReceivingSession.supplier_id
-                    ? (supplierMap[activeReceivingSession.supplier_id!]?.name ?? "Unknown")
-                    : activeReceivingSession.supplier_name
-                      ? <>{activeReceivingSession.supplier_name} <span style={{ fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>unlinked</span></>
-                      : "None"}
-                </span>
-                {activeReceivingSession.notes && <><span style={{ color: "#64748b" }}>Notes:</span><span>{activeReceivingSession.notes}</span></>}
-                <span style={{ color: "#64748b" }}>Started:</span><span>{new Date(activeReceivingSession.created_at).toLocaleString()}</span>
-              </div>
-            </div>
-            <input
-              ref={sessionScanRef}
-              type="text"
-              autoFocus
-              placeholder="Scan barcode and press Enter"
-              value={sessionScanInput}
-              onChange={(e) => setSessionScanInput(e.target.value)}
-              onKeyDown={handleSessionScan}
-              style={{ width: "100%", padding: "10px 14px", fontSize: "15px", border: "2px solid #86efac", borderRadius: "8px", marginBottom: "12px", boxSizing: "border-box", outline: "none" }}
-            />
-
-            {lastScannedProduct && (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", marginBottom: "10px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "6px", fontSize: "13px", color: "#15803d", animation: "fadeIn 0.15s ease-out" }}>
-                <span style={{ fontWeight: 600 }}>Last scanned:</span> {lastScannedProduct.name} (+1)
-              </div>
-            )}
-
-            {sessionItems.length > 0 && (
-              <div style={{ marginBottom: "12px" }}>
-                <div style={{ overflowX: "auto" }}>
-                <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc" }}>
-                      <th style={{ textAlign: "left" }}>Product</th>
-                      <th style={{ textAlign: "left" }}>Barcode</th>
-                      <th style={{ textAlign: "right" }}>Unit Cost</th>
-                      <th style={{ textAlign: "right" }}>Qty</th>
-                      <th style={{ textAlign: "right" }}>Total Cost</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessionItems.map(item => {
-                      const prod = products.find(p => p.product_id === item.product_id);
-                      const isHighlighted = highlightedProductId === item.product_id;
-                      const lineTotal = item.unit_cost * item.quantity_received;
-                      return (
-                      <React.Fragment key={item.id}>
-                      <tr style={{ background: isHighlighted ? "#dcfce7" : undefined, transition: "background 0.3s ease-out" }}>
-                        <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
-                        <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{prod?.barcode ?? "—"}</td>
-                        <td style={{ textAlign: "right" }}>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            defaultValue={item.unit_cost}
-                            key={`cost-${item.id}`}
-                            onChange={(e) => {
-                              const val = Math.max(0, Number(e.target.value) || 0);
-                              setSessionItems(prev => prev.map(i => i.id === item.id ? { ...i, unit_cost: val } : i));
-                            }}
-                            onBlur={(e) => {
-                              const val = Math.max(0, Number(e.target.value) || 0);
-                              handleSessionItemCostChange(item.id, val);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ width: "80px", padding: "4px 6px", fontSize: "13px", textAlign: "right", border: "1px solid #cbd5e1", borderRadius: "4px" }}
-                          />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                            <button onClick={() => handleSessionItemQty(item.id, -1)} style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>-</button>
-                            <span style={{ minWidth: "24px", textAlign: "center", fontWeight: 600 }}>{item.quantity_received}</span>
-                            <button onClick={() => handleSessionItemQty(item.id, 1)} style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-                          </div>
-                        </td>
-                        <td style={{ textAlign: "right", fontWeight: 500 }}>${lineTotal.toFixed(2)}</td>
-                        <td style={{ textAlign: "center" }}>
-                          <button onClick={() => handleSessionItemRemove(item.id)} title="Remove" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", fontSize: "11px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                      <tr style={{ background: isHighlighted ? "#dcfce7" : "#fafafa" }}>
-                        <td colSpan={6} style={{ padding: "4px 8px 8px" }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "4px" }}>
-                            <input type="text" placeholder="Batch #" value={sessionItemBatch[item.id]?.batch_number ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: e.target.value, lot_number: prev[item.id]?.lot_number ?? "", manufactured_date: prev[item.id]?.manufactured_date ?? "", expiration_date: prev[item.id]?.expiration_date ?? "" } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
-                            <input type="text" placeholder="Lot #" value={sessionItemBatch[item.id]?.lot_number ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: prev[item.id]?.batch_number ?? "", lot_number: e.target.value, manufactured_date: prev[item.id]?.manufactured_date ?? "", expiration_date: prev[item.id]?.expiration_date ?? "" } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
-                            <input type="date" title="Manufactured date" value={sessionItemBatch[item.id]?.manufactured_date ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: prev[item.id]?.batch_number ?? "", lot_number: prev[item.id]?.lot_number ?? "", manufactured_date: e.target.value, expiration_date: prev[item.id]?.expiration_date ?? "" } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
-                            <input type="date" title="Expiry date" value={sessionItemBatch[item.id]?.expiration_date ?? ""} onChange={e => setSessionItemBatch(prev => ({ ...prev, [item.id]: { batch_number: prev[item.id]?.batch_number ?? "", lot_number: prev[item.id]?.lot_number ?? "", manufactured_date: prev[item.id]?.manufactured_date ?? "", expiration_date: e.target.value } }))} style={{ padding: "3px 7px", fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#475569" }} />
-                          </div>
-                        </td>
-                      </tr>
-                      </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-                <div style={{ display: "flex", gap: "20px", alignItems: "center", fontSize: "13px", marginTop: "10px", padding: "10px 14px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                  <span style={{ fontWeight: 600, color: "#334155" }}>Products: <span style={{ color: "#1d4ed8" }}>{sessionItems.length}</span></span>
-                  <span style={{ fontWeight: 600, color: "#334155" }}>Units: <span style={{ color: "#1d4ed8" }}>{sessionItems.reduce((s, i) => s + i.quantity_received, 0)}</span></span>
-                  <span style={{ fontWeight: 600, color: "#334155", marginLeft: "auto" }}>Estimated Value: <span style={{ color: "#15803d" }}>${sessionItems.reduce((s, i) => s + i.unit_cost * i.quantity_received, 0).toFixed(2)}</span></span>
-                </div>
-              </div>
-            )}
-
-            {/* Unknown barcode indicator — the unified dialog handles resolution */}
-            {productResolution?.barcode && (
-              <div style={{ marginBottom: "12px", padding: "8px 12px", background: "#fff7ed", border: "1px solid #fb923c", borderRadius: "6px", fontSize: "12px", color: "#9a3412" }}>
-                ⚠ Barcode not found: <code style={{ background: "#fed7aa", padding: "1px 4px", borderRadius: "3px" }}>{productResolution.barcode}</code> — resolve in the dialog below
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <button
-                onClick={handlePostReceivingSession}
-                disabled={sessionItems.length === 0 || isPostingSession}
-                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: sessionItems.length === 0 || isPostingSession ? "not-allowed" : "pointer", background: sessionItems.length === 0 ? "#e2e8f0" : "#15803d", color: sessionItems.length === 0 ? "#94a3b8" : "#fff", border: "none", borderRadius: "6px", opacity: isPostingSession ? 0.6 : 1 }}
-              >{isPostingSession ? "Posting..." : `Post Receiving (${sessionItems.length} items)`}</button>
-              <button
-                onClick={handleCancelReceivingSession}
-                disabled={isPostingSession}
-                style={{ padding: "8px 16px", fontSize: "13px", cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px" }}
-              >Cancel Session</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="section-card">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-          <h3 className="section-card-title" style={{ margin: 0 }}>Expiration Tracking</h3>
-          <button onClick={loadBatches} style={{ padding: "6px 14px", fontSize: "12px", cursor: "pointer", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>
-            {isLoadingBatches ? "Loading..." : "Refresh"}
-          </button>
-        </div>
-        {(() => {
-          const today = new Date(); today.setHours(0,0,0,0);
-          const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
-          const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
-          const activeBatches = batches.filter(b => b.status === "active");
-          const expired = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) < today);
-          const exp7 = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) >= today && new Date(b.expiration_date) <= in7);
-          const exp30 = activeBatches.filter(b => b.expiration_date && new Date(b.expiration_date) > in7 && new Date(b.expiration_date) <= in30);
-          return (
-            <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>
-                <div style={{ padding: "12px", background: expired.length > 0 ? "#fef2f2" : "#f8fafc", border: `1px solid ${expired.length > 0 ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
-                  <div style={{ fontSize: "22px", fontWeight: 700, color: expired.length > 0 ? "#dc2626" : "#94a3b8" }}>{expired.length}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expired</div>
-                </div>
-                <div style={{ padding: "12px", background: exp7.length > 0 ? "#fff7ed" : "#f8fafc", border: `1px solid ${exp7.length > 0 ? "#fdba74" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
-                  <div style={{ fontSize: "22px", fontWeight: 700, color: exp7.length > 0 ? "#ea580c" : "#94a3b8" }}>{exp7.length}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expires ≤ 7 days</div>
-                </div>
-                <div style={{ padding: "12px", background: exp30.length > 0 ? "#fffbeb" : "#f8fafc", border: `1px solid ${exp30.length > 0 ? "#fde68a" : "#e2e8f0"}`, borderRadius: "8px", textAlign: "center" }}>
-                  <div style={{ fontSize: "22px", fontWeight: 700, color: exp30.length > 0 ? "#ca8a04" : "#94a3b8" }}>{exp30.length}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Expires ≤ 30 days</div>
-                </div>
-              </div>
-              {activeBatches.length === 0 && !isLoadingBatches ? (
-                <div style={{ textAlign: "center", padding: "24px", color: "#94a3b8", fontSize: "13px" }}>No active batches. Add Batch # / Lot # / Expiry date when receiving inventory.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {activeBatches.map(batch => {
-                    const isExpiredBatch = !!(batch.expiration_date && new Date(batch.expiration_date) < today);
-                    const isNear7 = !!(batch.expiration_date && !isExpiredBatch && new Date(batch.expiration_date) <= in7);
-                    const isNear30 = !!(batch.expiration_date && !isExpiredBatch && !isNear7 && new Date(batch.expiration_date) <= in30);
-                    const borderColor = isExpiredBatch ? "#fca5a5" : isNear7 ? "#fdba74" : isNear30 ? "#fde68a" : "#e2e8f0";
-                    const bgColor = isExpiredBatch ? "#fef2f2" : isNear7 ? "#fff7ed" : isNear30 ? "#fffbeb" : "#f8fafc";
-                    return (
-                      <div key={batch.id} style={{ padding: "10px 14px", background: bgColor, border: `1px solid ${borderColor}`, borderRadius: "8px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                        <div style={{ flex: 1, minWidth: "120px" }}>
-                          <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{batch.product_name}</div>
-                          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "1px" }}>
-                            {batch.expiration_date ? `Exp: ${batch.expiration_date}` : "No expiry"}
-                            {batch.lot_number ? ` · Lot: ${batch.lot_number}` : ""}
-                            {batch.batch_number ? ` · Batch: ${batch.batch_number}` : ""}
-                            {batch.supplier_name ? ` · ${batch.supplier_name}` : ""}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right", fontSize: "13px", color: "#334155", minWidth: "60px" }}>
-                          <div style={{ fontWeight: 600 }}>{batch.quantity_remaining} left</div>
-                          <div style={{ fontSize: "10px", color: "#94a3b8" }}>of {batch.quantity_received} recv</div>
-                        </div>
-                        {isExpiredBatch && <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", background: "#fca5a5", color: "#7f1d1d", borderRadius: "4px" }}>EXPIRED</span>}
-                        {isNear7 && <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", background: "#fdba74", color: "#7c2d12", borderRadius: "4px" }}>EXPIRING SOON</span>}
-                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                          {writeOffBatchId === batch.id ? (
-                            <>
-                              <input type="number" min="0.01" max={batch.quantity_remaining} step="0.01" value={writeOffQty} onChange={e => setWriteOffQty(e.target.value)} placeholder="Qty" style={{ width: "64px", padding: "4px 7px", fontSize: "12px", border: "1px solid #e2e8f0", borderRadius: "4px" }} />
-                              <button onClick={() => { const q = parseFloat(writeOffQty); if (q > 0) handleWriteOffBatch(batch, q); }} disabled={isWritingOffBatch || !writeOffQty} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "#dc2626", color: "#fff", border: "none", borderRadius: "4px", fontWeight: 600 }}>{isWritingOffBatch ? "..." : "Confirm"}</button>
-                              <button onClick={() => { setWriteOffBatchId(null); setWriteOffQty(""); }} style={{ padding: "4px 8px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "4px", color: "#64748b" }}>Cancel</button>
-                            </>
-                          ) : (
-                            <button onClick={() => { setWriteOffBatchId(batch.id); setWriteOffQty(String(batch.quantity_remaining)); }} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#64748b", whiteSpace: "nowrap" }}>Write off</button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </div>
-
-      {sessionHistory.length > 0 && (
-      <div className="section-card">
-        <h3
-          className="section-card-title"
-          onClick={() => setHistoryExpanded(prev => !prev)}
-          style={{ cursor: "pointer", userSelect: "none" }}
-        >
-          {historyExpanded ? "▼" : "▶"} Receiving Session History ({sessionHistory.length} shown)
-        </h3>
-        {historyExpanded && (<>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {sessionHistory.map(session => {
-            const supplier = session.supplier_id ? (supplierMap[session.supplier_id] ?? null) : null;
-            const supplierLabel = session.supplier_id
-              ? (supplier?.name ?? "Unknown supplier")
-              : session.supplier_name
-                ? <>{session.supplier_name} <span style={{ fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "8px", background: "#fef3c7", color: "#92400e" }}>Unlinked</span></>
-                : "No supplier";
-            const items = sessionHistoryItems[session.id];
-            const isExpanded = expandedHistorySessionId === session.id;
-            const isInvoiceOpen = invoicePanelSessionId === session.id;
-            const totalProducts = items?.length ?? null;
-            const totalUnits = items ? items.reduce((s, i) => s + Number(i.quantity_received), 0) : null;
-            const totalValue = items ? items.reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0) : null;
-            const statusColor = session.status === "completed" ? "#15803d" : "#6b7280";
-            const statusBg = session.status === "completed" ? "#dcfce7" : "#f1f5f9";
-            const invoiceResolved = session.invoice_status === "matched" || session.invoice_status === "variance";
-            const hasInvoice = !!session.invoice_number || invoiceResolved;
-            const invoiceBadgeColor = hasInvoice ? "#15803d" : "#b45309";
-            const invoiceBadgeBg = hasInvoice ? "#dcfce7" : "#fffbeb";
-            const invoiceBadgeLabel = session.invoice_number
-              ? session.invoice_number
-              : invoiceResolved
-                ? `Invoice: ${session.invoice_status}`
-                : "Invoice: pending";
-            return (
-            <div key={session.id} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 14px", background: "#f8fafc", cursor: "pointer", flexWrap: "wrap" }}
-                onClick={async (e) => {
-                  if ((e.target as HTMLElement).closest("button")) return;
-                  if (isExpanded) { setExpandedHistorySessionId(null); return; }
-                  setExpandedHistorySessionId(session.id);
-                  await loadSessionHistoryItems(session.id);
-                }}
-              >
-                <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#64748b" }}>{session.id.slice(0, 8)}</span>
-                <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: statusBg, color: statusColor }}>{session.status}</span>
-                <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: invoiceBadgeBg, color: invoiceBadgeColor }}>{invoiceBadgeLabel}</span>
-                <span style={{ fontSize: "12px", color: "#334155" }}>{supplierLabel}</span>
-                {session.notes && <span style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic" }}>{session.notes}</span>}
-                <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>{new Date(session.created_at).toLocaleDateString()}</span>
-                {totalProducts != null && <span style={{ fontSize: "12px", color: "#334155" }}>{totalProducts} products · {totalUnits} units</span>}
-                {totalValue != null && <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>${totalValue.toFixed(2)}</span>}
-                {session.status === "completed" && (
-                  <button
-                    onClick={async () => {
-                      if (isInvoiceOpen) { setInvoicePanelSessionId(null); return; }
-                      setInvoicePanelSessionId(session.id);
-                      setEditInvoiceNumber(session.invoice_number ?? "");
-                      setEditInvoiceDate(session.invoice_date ?? "");
-                      setEditFreightCost(session.freight_cost > 0 ? String(session.freight_cost) : "");
-                      setEditAdditionalCost(session.additional_cost > 0 ? String(session.additional_cost) : "");
-                      const resolvedItems = await loadSessionHistoryItems(session.id);
-                      if (session.invoice_total > 0) {
-                        setEditInvoiceTotal(String(session.invoice_total));
-                      } else {
-                        const calcTotal = (resolvedItems ?? []).reduce(
-                          (s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)),
-                          0
-                        );
-                        setEditInvoiceTotal(calcTotal > 0 ? String(Math.round(calcTotal * 100) / 100) : "");
-                      }
-                    }}
-                    style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isInvoiceOpen ? "#1d4ed8" : "none", color: isInvoiceOpen ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px" }}
-                  >{isInvoiceOpen ? "Close Invoice" : "Invoice"}</button>
-                )}
-                {!session.supplier_id && session.supplier_name && !noLinkAcknowledgedSessions.has(session.id) && (
-                  <button
-                    onClick={() => { const isOpen = resolvingSupplierSessionId === session.id; setResolvingSupplierSessionId(isOpen ? null : session.id); setResolveMode("pick"); setResolveSupplierPickId(""); }}
-                    style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: resolvingSupplierSessionId === session.id ? "#7c3aed" : "none", color: resolvingSupplierSessionId === session.id ? "#fff" : "#7c3aed", border: "1px solid #a78bfa", borderRadius: "5px" }}
-                  >{resolvingSupplierSessionId === session.id ? "Close" : "🔗 Link Supplier"}</button>
-                )}
-                {session.status === "completed" && session.approved_by && session.invoice_total > 0 && session.supplier_id && (() => {
-                  const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
-                  const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
-                  const isPaymentOpen = paymentPanelSessionId === session.id;
-                  if (remaining <= 0) {
-                    return <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "10px", background: "#dcfce7", color: "#15803d" }}>Paid</span>;
-                  }
-                  return (
-                    <button
-                      onClick={async () => {
-                        if (isPaymentOpen) { setPaymentPanelSessionId(null); return; }
-                        setPaymentPanelSessionId(session.id);
-                        setEditPaymentDate(new Date().toISOString().slice(0, 10));
-                        setEditPaymentAmount(String(remaining));
-                        setEditPaymentMethod("cash");
-                        setEditPaymentReference("");
-                        setEditPaymentNotes("");
-                        await loadSessionPayments(session.id);
-                      }}
-                      style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: isPaymentOpen ? "#15803d" : "none", color: isPaymentOpen ? "#fff" : "#15803d", border: "1px solid #86efac", borderRadius: "5px" }}
-                    >{isPaymentOpen ? "Close Payment" : "Record Payment"}</button>
-                  );
-                })()}
-                {session.status === "completed" && (session.invoice_status === "matched" || session.invoice_status === "variance") && session.invoice_total > 0 && !session.supplier_id && !(session.supplier_name && !noLinkAcknowledgedSessions.has(session.id)) && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#92400e" }}>
-                    Link a supplier to record payment.
-                    <button
-                      onClick={() => { const isOpen = resolvingSupplierSessionId === session.id; setResolvingSupplierSessionId(isOpen ? null : session.id); setResolveMode("pick"); setResolveSupplierPickId(""); }}
-                      style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 600, cursor: "pointer", background: resolvingSupplierSessionId === session.id ? "#7c3aed" : "none", color: resolvingSupplierSessionId === session.id ? "#fff" : "#7c3aed", border: "1px solid #a78bfa", borderRadius: "5px" }}
-                    >{resolvingSupplierSessionId === session.id ? "Close" : "🔗 Link Supplier"}</button>
-                  </span>
-                )}
-                <span style={{ fontSize: "12px", color: "#1d4ed8" }}>{isExpanded ? "▲ Hide" : "▼ Details"}</span>
-              </div>
-              {paymentPanelSessionId === session.id && (() => {
-                const paid = (sessionPayments[session.id] ?? []).reduce((s, p) => s + Number(p.amount), 0);
-                const remaining = Math.round((session.invoice_total - paid) * 100) / 100;
-                return (
-                <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#f0fdf4" }}>
-                  <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "6px", color: "#0f172a" }}>Record Payment</div>
-                  <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>
-                    Invoice total: <strong>${Number(session.invoice_total).toFixed(2)}</strong> &nbsp;·&nbsp;
-                    Paid: <strong>${paid.toFixed(2)}</strong> &nbsp;·&nbsp;
-                    Remaining: <strong style={{ color: "#dc2626" }}>${remaining.toFixed(2)}</strong>
-                  </div>
-                  {(sessionPayments[session.id] ?? []).length > 0 && (
-                    <div style={{ marginBottom: "10px" }}>
-                      {(sessionPayments[session.id] ?? []).map(p => (
-                        <div key={p.id} style={{ fontSize: "12px", color: "#64748b", padding: "2px 0" }}>
-                          {p.payment_date} · <strong>${Number(p.amount).toFixed(2)}</strong> · {p.payment_method}{p.reference ? ` · ${p.reference}` : ""}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {remaining <= 0 ? (
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#15803d" }}>Invoice fully paid.</div>
-                  ) : (
-                  <><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Payment Date</label>
-                      <input type="date" value={editPaymentDate} onChange={(e) => setEditPaymentDate(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Amount ($)</label>
-                      <input type="number" step="0.01" min="0" max={remaining} value={editPaymentAmount} onChange={(e) => setEditPaymentAmount(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Payment Method</label>
-                      <select value={editPaymentMethod} onChange={(e) => setEditPaymentMethod(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
-                        <option value="cash">Cash</option>
-                        <option value="check">Check</option>
-                        <option value="bank_transfer">Bank Transfer</option>
-                        <option value="card">Card</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Reference</label>
-                      <input type="text" placeholder="Check #, wire ref, etc." value={editPaymentReference} onChange={(e) => setEditPaymentReference(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Notes</label>
-                      <input type="text" placeholder="Optional" value={editPaymentNotes} onChange={(e) => setEditPaymentNotes(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleSavePayment(session.id, session.supplier_id ?? "", remaining)}
-                    disabled={isSavingPayment || !session.supplier_id}
-                    style={{ padding: "8px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isSavingPayment ? 0.6 : 1 }}
-                  >{isSavingPayment ? "Saving..." : "Save Payment"}</button></>
-                  )}
-                </div>
-                );
-              })()}
-              {resolvingSupplierSessionId === session.id && (
-                <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#faf5ff" }}>
-                  <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", color: "#0f172a" }}>🔗 Link Supplier</div>
-                  <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
-                    AI detected: <strong>{session.supplier_name}</strong> — link to a supplier to enable payment recording.
-                  </div>
-                  <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
-                    <button onClick={() => setResolveMode("pick")} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "pick" ? 700 : 400, cursor: "pointer", background: resolveMode === "pick" ? "#7c3aed" : "none", color: resolveMode === "pick" ? "#fff" : "#7c3aed", border: "1px solid #7c3aed", borderRadius: "5px" }}>Match existing</button>
-                    <button onClick={() => { setResolveMode("create"); setResolveNewSupplierName(session.supplier_name ?? ""); }} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "create" ? 700 : 400, cursor: "pointer", background: resolveMode === "create" ? "#7c3aed" : "none", color: resolveMode === "create" ? "#fff" : "#7c3aed", border: "1px solid #7c3aed", borderRadius: "5px" }}>Create new</button>
-                    <button onClick={() => setResolveMode("nolinkconfirm")} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "nolinkconfirm" ? 700 : 400, cursor: "pointer", background: resolveMode === "nolinkconfirm" ? "#64748b" : "none", color: resolveMode === "nolinkconfirm" ? "#fff" : "#64748b", border: "1px solid #94a3b8", borderRadius: "5px" }}>Continue without linking</button>
-                  </div>
-                  {resolveMode === "pick" && (
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <select value={resolveSupplierPickId} onChange={e => setResolveSupplierPickId(e.target.value)} style={{ flex: 1, padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
-                        <option value="">— Select supplier —</option>
-                        {suppliers.filter(s => s.status === "active").map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                      <button onClick={() => { if (resolveSupplierPickId) void handleLinkSessionSupplier(session.id, resolveSupplierPickId); }} disabled={!resolveSupplierPickId || isResolvingSupplier} style={{ padding: "7px 16px", fontSize: "13px", fontWeight: 600, cursor: resolveSupplierPickId ? "pointer" : "not-allowed", background: resolveSupplierPickId ? "#7c3aed" : "#e2e8f0", color: resolveSupplierPickId ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px", opacity: isResolvingSupplier ? 0.6 : 1 }}>{isResolvingSupplier ? "Linking..." : "Link"}</button>
-                    </div>
-                  )}
-                  {resolveMode === "create" && (
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input type="text" value={resolveNewSupplierName} onChange={e => setResolveNewSupplierName(e.target.value)} placeholder="Supplier name" style={{ flex: 1, padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                      <button onClick={() => { if (resolveNewSupplierName.trim()) void handleCreateAndLinkSupplier(session.id, resolveNewSupplierName); }} disabled={!resolveNewSupplierName.trim() || isResolvingSupplier} style={{ padding: "7px 16px", fontSize: "13px", fontWeight: 600, cursor: resolveNewSupplierName.trim() ? "pointer" : "not-allowed", background: resolveNewSupplierName.trim() ? "#7c3aed" : "#e2e8f0", color: resolveNewSupplierName.trim() ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px", opacity: isResolvingSupplier ? 0.6 : 1 }}>{isResolvingSupplier ? "Creating..." : "Create & Link"}</button>
-                    </div>
-                  )}
-                  {resolveMode === "nolinkconfirm" && (
-                    <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: "6px", padding: "12px 14px" }}>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#92400e", marginBottom: "6px" }}>⚠ Owner / Manager Confirmation</div>
-                      <div style={{ fontSize: "12px", color: "#78350f", marginBottom: "10px", lineHeight: 1.6 }}>
-                        Proceeding without a linked supplier disables payment recording for this session. Confirm only if you intend to track this payment outside the system.
-                      </div>
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button onClick={() => { setNoLinkAcknowledgedSessions(prev => new Set([...prev, session.id])); setResolvingSupplierSessionId(null); setResolveMode("pick"); }} style={{ padding: "7px 16px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#92400e", color: "#fff", border: "none", borderRadius: "6px" }}>Confirm — Proceed Without Supplier</button>
-                        <button onClick={() => setResolveMode("pick")} style={{ padding: "7px 14px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#475569" }}>Cancel</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              {isInvoiceOpen && (
-                <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#fafbff" }}>
-                  <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "10px", color: "#0f172a" }}>Supplier Invoice</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Invoice Number</label>
-                      <input type="text" value={editInvoiceNumber} onChange={(e) => setEditInvoiceNumber(e.target.value)} placeholder="e.g. INV-20260625" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Invoice Date</label>
-                      <input type="date" value={editInvoiceDate} onChange={(e) => setEditInvoiceDate(e.target.value)} style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Invoice Total ($)</label>
-                      <input type="number" step="0.01" min="0" value={editInvoiceTotal} onChange={(e) => setEditInvoiceTotal(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Freight ($)</label>
-                      <input type="number" step="0.01" min="0" value={editFreightCost} onChange={(e) => setEditFreightCost(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Additional Costs ($)</label>
-                      <input type="number" step="0.01" min="0" value={editAdditionalCost} onChange={(e) => setEditAdditionalCost(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                  </div>
-                  {(() => {
-                    const previewItems = sessionHistoryItems[session.id] ?? [];
-                    const previewFreight = parseFloat(editFreightCost) || 0;
-                    const previewAdditional = parseFloat(editAdditionalCost) || 0;
-                    const previewInvoiceTotal = parseFloat(editInvoiceTotal) || 0;
-                    const previewItemsTotal = previewItems.reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0);
-                    const previewCalcTotal = previewItemsTotal + previewFreight + previewAdditional;
-                    const previewVariance = Math.round((previewInvoiceTotal - previewCalcTotal) * 100) / 100;
-                    const previewMatched = Math.abs(previewVariance) <= 0.01;
-                    const summaryColor = previewMatched ? "#15803d" : "#dc2626";
-                    const summaryBg = previewMatched ? "#f0fdf4" : "#fef2f2";
-                    const summaryBorder = previewMatched ? "#86efac" : "#fecaca";
-                    return (
-                    <div style={{ margin: "12px 0", padding: "12px 14px", background: summaryBg, border: `1px solid ${summaryBorder}`, borderRadius: "8px" }}>
-                      <div style={{ fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "8px" }}>Reconciliation Preview</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: "12px" }}>
-                        <span style={{ color: "#64748b" }}>Received items</span><span style={{ textAlign: "right" }}>${previewItemsTotal.toFixed(2)}</span>
-                        <span style={{ color: "#64748b" }}>Freight</span><span style={{ textAlign: "right" }}>+${previewFreight.toFixed(2)}</span>
-                        <span style={{ color: "#64748b" }}>Additional costs</span><span style={{ textAlign: "right" }}>+${previewAdditional.toFixed(2)}</span>
-                        <span style={{ color: "#334155", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>Calculated total</span><span style={{ textAlign: "right", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>${previewCalcTotal.toFixed(2)}</span>
-                        <span style={{ color: "#334155", fontWeight: 600 }}>Invoice total</span><span style={{ textAlign: "right", fontWeight: 600 }}>${previewInvoiceTotal.toFixed(2)}</span>
-                        <span style={{ color: summaryColor, fontWeight: 700 }}>Variance</span><span style={{ textAlign: "right", fontWeight: 700, color: summaryColor }}>{previewVariance >= 0 ? "+" : ""}{previewVariance.toFixed(2)}</span>
-                      </div>
-                      <div style={{ marginTop: "8px", display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", background: previewMatched ? "#dcfce7" : "#fef2f2", border: `1px solid ${summaryBorder}`, borderRadius: "12px" }}>
-                        <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: summaryColor }} />
-                        <span style={{ fontSize: "12px", fontWeight: 600, color: summaryColor }}>{previewMatched ? "Matched" : "Variance"}</span>
-                      </div>
-                    </div>
-                    );
-                  })()}
-                  {(() => {
-                    const previewMatched = Math.abs((parseFloat(editInvoiceTotal) || 0) - ((sessionHistoryItems[session.id] ?? []).reduce((s, i) => s + (i.total_cost != null ? Number(i.total_cost) : Number(i.unit_cost) * Number(i.quantity_received)), 0) + (parseFloat(editFreightCost) || 0) + (parseFloat(editAdditionalCost) || 0))) <= 0.01;
-                    return previewMatched ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", marginBottom: "12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px" }}>
-                        <span style={{ fontSize: "16px" }}>🟢</span>
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#15803d" }}>Automatically Approved</span>
-                        <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>Invoice will be approved on save</span>
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", marginBottom: "12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px" }}>
-                        <span style={{ fontSize: "16px" }}>🔴</span>
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#dc2626" }}>Approval Required</span>
-                        <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>Variance must be resolved before approval</span>
-                      </div>
-                    );
-                  })()}
-                  <button
-                    onClick={() => handleSaveInvoice(session.id)}
-                    disabled={isSavingInvoice}
-                    style={{ padding: "8px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", opacity: isSavingInvoice ? 0.6 : 1 }}
-                  >{isSavingInvoice ? "Saving..." : "Save Invoice"}</button>
-                </div>
-              )}
-              {isExpanded && (
-                <div style={{ padding: "12px 14px", borderTop: "1px solid #e2e8f0" }}>
-                  {session.invoice_number && (
-                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>
-                      Invoice: <strong>{session.invoice_number}</strong>
-                      {session.invoice_date && <> · {session.invoice_date}</>}
-                      {session.invoice_total > 0 && <> · Total: <strong>${Number(session.invoice_total).toFixed(2)}</strong></>}
-                    </div>
-                  )}
-                  {!items ? (
-                    <p style={{ fontSize: "13px", color: "#64748b" }}>Loading...</p>
-                  ) : items.length === 0 ? (
-                    <p style={{ fontSize: "13px", color: "#64748b" }}>No items in this session.</p>
-                  ) : (
-                    <table border={1} cellPadding={7} style={{ width: "100%", fontSize: "12px" }}>
-                      <thead>
-                        <tr style={{ background: "#f8fafc" }}>
-                          <th style={{ textAlign: "left" }}>Product</th>
-                          <th style={{ textAlign: "left" }}>Barcode</th>
-                          <th style={{ textAlign: "right" }}>Unit Cost</th>
-                          <th style={{ textAlign: "right" }}>Qty</th>
-                          <th style={{ textAlign: "right" }}>Total Cost</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map(item => {
-                          const prod = products.find(p => p.product_id === item.product_id);
-                          const lineTotal = item.total_cost != null ? Number(item.total_cost) : Number(item.unit_cost) * Number(item.quantity_received);
-                          return (
-                          <tr key={item.id}>
-                            <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
-                            <td style={{ fontFamily: "monospace" }}>{prod?.barcode ?? "—"}</td>
-                            <td style={{ textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
-                            <td style={{ textAlign: "right" }}>{item.quantity_received}</td>
-                            <td style={{ textAlign: "right", fontWeight: 500 }}>${lineTotal.toFixed(2)}</td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ background: "#f8fafc", fontWeight: 600 }}>
-                          <td colSpan={3} style={{ textAlign: "right" }}>Total</td>
-                          <td style={{ textAlign: "right" }}>{items.reduce((s, i) => s + Number(i.quantity_received), 0)}</td>
-                          <td style={{ textAlign: "right" }}>${totalValue!.toFixed(2)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  )}
-                </div>
-              )}
-            </div>
-            );
-          })}
-        </div>
-        {historyHasMore && (
-          <div style={{ textAlign: "center", marginTop: "10px" }}>
-            <button
-              onClick={handleLoadMoreHistory}
-              disabled={isLoadingMoreHistory}
-              style={{ padding: "7px 22px", fontSize: "13px", fontWeight: 600, cursor: isLoadingMoreHistory ? "not-allowed" : "pointer", background: "none", color: "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "6px", opacity: isLoadingMoreHistory ? 0.6 : 1 }}
-            >{isLoadingMoreHistory ? "Loading..." : "Load More"}</button>
-          </div>
-        )}
-        </>)}
-      </div>
-      )}
-
-      <div className="section-card">
-        <h3 className="section-card-title">Rapid Receive</h3>
-        <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 10px" }}>Scan barcodes to build a receiving list, then post all at once.</p>
-        <input
-          type="text"
-          autoFocus={activeTab === "inventory"}
-          placeholder="Scan barcode and press Enter"
-          value={rapidReceiveInput}
-          onChange={(e) => setRapidReceiveInput(e.target.value)}
-          onKeyDown={handleRapidReceiveScan}
-          style={{ width: "100%", padding: "10px 14px", fontSize: "15px", border: "2px solid #93c5fd", borderRadius: "8px", marginBottom: "12px", boxSizing: "border-box", outline: "none" }}
-        />
-
-        {rapidReceiveItems.length > 0 && (
-          <div style={{ marginBottom: "12px" }}>
-            <div style={{ fontSize: "12px", fontWeight: 600, color: "#334155", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>
-              Scanned Items ({rapidReceiveItems.reduce((s, i) => s + i.quantity, 0)} total)
-            </div>
-            <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-              <thead>
-                <tr style={{ background: "#f8fafc" }}>
-                  <th style={{ textAlign: "left" }}>Product</th>
-                  <th style={{ textAlign: "left" }}>Barcode</th>
-                  <th style={{ textAlign: "right" }}>Qty</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rapidReceiveItems.map(item => (
-                  <tr key={item.product_id}>
-                    <td>{item.product_name}</td>
-                    <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{item.barcode}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                        <button
-                          onClick={() => setRapidReceiveItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i))}
-                          style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
-                        >-</button>
-                        <span style={{ minWidth: "24px", textAlign: "center", fontWeight: 600 }}>{item.quantity}</span>
-                        <button
-                          onClick={() => setRapidReceiveItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity + 1 } : i))}
-                          style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
-                        >+</button>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <button
-                        onClick={() => setRapidReceiveItems(prev => prev.filter(i => i.product_id !== item.product_id))}
-                        title="Remove"
-                        style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", fontSize: "11px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {rapidReceiveExceptions.length > 0 && (
-          <div style={{ marginBottom: "12px", padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}>
-            <div style={{ fontSize: "12px", fontWeight: 600, color: "#92400e", marginBottom: "4px" }}>Exceptions ({rapidReceiveExceptions.length})</div>
-            {rapidReceiveExceptions.map((ex, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "#92400e", padding: "2px 0" }}>
-                <span><code style={{ background: "#fef3c7", padding: "1px 4px", borderRadius: "3px" }}>{ex.barcode}</code> — {ex.reason}</span>
-                <button
-                  onClick={() => setRapidReceiveExceptions(prev => prev.filter((_, j) => j !== i))}
-                  style={{ padding: "2px 6px", fontSize: "10px", cursor: "pointer", background: "none", border: "1px solid #fde68a", borderRadius: "3px", color: "#92400e" }}
-                >Dismiss</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {rapidReceiveItems.length > 0 && (
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              onClick={handlePostRapidReceive}
-              disabled={isPostingRapidReceive}
-              style={{ flex: 1, padding: "10px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", opacity: isPostingRapidReceive ? 0.6 : 1 }}
-            >{isPostingRapidReceive ? "Posting..." : `Post Receiving (${rapidReceiveItems.reduce((s, i) => s + i.quantity, 0)} items)`}</button>
-            <button
-              onClick={() => { setRapidReceiveItems([]); setRapidReceiveExceptions([]); }}
-              style={{ padding: "10px 16px", fontSize: "14px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px" }}
-            >Clear All</button>
-          </div>
-        )}
-      </div>
-
-      <div className="section-card">
-        <h3 className="section-card-title">Receive Inventory</h3>
-        <form
-          onSubmit={handleReceive}
-          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
-        >
-          <select
-            value={selectedProductId}
-            onChange={(e) => setSelectedProductId(e.target.value)}
-            style={{ flex: "1 1 200px", padding: "8px" }}
-          >
-            <option value="">Select product...</option>
-            {products.map((product) => (
-              <option key={product.product_id} value={product.product_id}>
-                {product.product_name}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min="1"
-            placeholder="Quantity"
-            value={receiveQuantity}
-            onChange={(e) => setReceiveQuantity(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <button type="submit" className="pos-add-btn">
-            Receive
-          </button>
-          <button
-            type="button"
-            onClick={() => setSmartReceiveSimpleOpen(true)}
-            style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#7c3aed", color: "#fff", border: "none", borderRadius: "6px" }}
-          >⭐ Smart Receive</button>
-        </form>
-      </div>
-
-      {canAdjustInventory && <div className="section-card">
-        <h3 className="section-card-title">Adjust Inventory</h3>
-        <form
-          onSubmit={handleAdjust}
-          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
-        >
-          <select
-            value={adjustProductId}
-            onChange={(e) => setAdjustProductId(e.target.value)}
-            style={{ flex: "1 1 200px", padding: "8px" }}
-          >
-            <option value="">Select product...</option>
-            {products.map((product) => (
-              <option key={product.product_id} value={product.product_id}>
-                {product.product_name} (stock: {product.quantity_on_hand})
-              </option>
-            ))}
-          </select>
-          <select
-            value={adjustType}
-            onChange={(e) => setAdjustType(e.target.value)}
-            style={{ flex: "1 1 160px", padding: "8px" }}
-          >
-            <option value="damaged">Damaged (−)</option>
-            <option value="expired">Expired (−)</option>
-            <option value="lost">Lost (−)</option>
-            <option value="found">Found / Extra (+)</option>
-            <option value="correction">Correction (±)</option>
-          </select>
-          <input
-            type="number"
-            placeholder={adjustType === "correction" ? "Qty (±)" : "Quantity"}
-            value={adjustQuantity}
-            onChange={(e) => setAdjustQuantity(e.target.value)}
-            style={{ flex: "1 1 100px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Reason (optional)"
-            value={adjustReason}
-            onChange={(e) => setAdjustReason(e.target.value)}
-            style={{ flex: "1 1 160px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Notes (optional)"
-            value={adjustNotes}
-            onChange={(e) => setAdjustNotes(e.target.value)}
-            style={{ flex: "1 1 160px", padding: "8px" }}
-          />
-          <button type="submit" className="pos-add-btn">
-            Adjust
-          </button>
-        </form>
-        {adjustProductId && (() => {
-          const p = products.find(pr => pr.product_id === adjustProductId);
-          return p ? (
-            <div style={{ marginTop: "8px", fontSize: "13px", color: "#64748b" }}>
-              Current stock: <strong>{p.quantity_on_hand}</strong> &nbsp;|&nbsp; Avg cost: <strong>${p.average_cost.toFixed(2)}</strong>
-            </div>
-          ) : null;
-        })()}
-      </div>}
-
-      {canAddProducts && <div className="section-card">
-        <h3 className="section-card-title">Add Product</h3>
-        <form
-          onSubmit={handleAddProduct}
-          style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}
-        >
-          <input
-            type="text"
-            placeholder="Product Name *"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            style={{ flex: "2 1 200px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="SKU"
-            value={newSku}
-            onChange={(e) => setNewSku(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Barcode"
-            value={newBarcode}
-            onChange={(e) => { setNewBarcode(e.target.value); setBarcodeAutoFill(""); }}
-            onBlur={handleBarcodeLookup}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeLookup(); } }}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="number"
-            placeholder="Cost Price"
-            value={newCostPrice}
-            onChange={(e) => setNewCostPrice(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="number"
-            placeholder="Selling Price *"
-            value={newSellingPrice}
-            onChange={(e) => setNewSellingPrice(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <input
-            type="number"
-            placeholder="Reorder Level"
-            value={newReorderLevel}
-            onChange={(e) => setNewReorderLevel(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <select
-            value={newProductCategory}
-            onChange={(e) => setNewProductCategory(e.target.value)}
-            style={{ flex: "1 1 140px", padding: "8px" }}
-          >
-            <option value="">No Category</option>
-            {categories.filter(c => c.status === "active").map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <input type="number" min="0" placeholder="Overhead %" value={newOverhead} onChange={(e) => setNewOverhead(e.target.value)} step="0.1" style={{ flex: "1 1 100px", padding: "8px" }} />
-          <input type="number" min="0" placeholder="Target Margin %" value={newTargetMargin} onChange={(e) => setNewTargetMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
-          <input type="number" min="0" placeholder="Min Margin %" value={newMinMargin} onChange={(e) => setNewMinMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
-          <input
-            type="number"
-            min="0"
-            placeholder="Initial Stock *"
-            value={newInitialStock}
-            onChange={(e) => setNewInitialStock(e.target.value)}
-            style={{ flex: "1 1 120px", padding: "8px" }}
-          />
-          <button type="submit" className="pos-add-btn">
-            Add Product
-          </button>
-        </form>
-        {barcodeAutoFill && (
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "12px", padding: "8px 14px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "6px", fontSize: "13px" }}>
-            <span style={{ color: "#1d4ed8" }}>{barcodeAutoFill}</span>
-            <button onClick={() => setBarcodeAutoFill("")} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "15px", color: "#64748b" }}>✕</button>
-          </div>
-        )}
-      </div>}
-
-      {canBulkImport && <div className="section-card">
-        <h3 className="section-card-title">Bulk Import Products</h3>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={downloadCsvTemplate} style={{ padding: "8px 16px" }}>
-            Download CSV Template
-          </button>
-          <input
-            type="file"
-            accept=".csv"
-            onChange={handleCsvUpload}
-            style={{ padding: "4px" }}
-          />
-        </div>
-
-        {bulkPreview.length > 0 && (
-          <>
-            <div style={{ overflowX: "auto", marginTop: "16px", marginBottom: "12px" }}>
-              <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Name</th>
-                    <th>Selling Price</th>
-                    <th>SKU</th>
-                    <th>Barcode</th>
-                    <th>Cost Price</th>
-                    <th>Reorder Level</th>
-                    <th>Initial Stock</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bulkPreview.map((row, i) => {
-                    const statusColor: Record<BulkRow['status'], string> = {
-                      valid: '#15803d',
-                      missing_name: '#b91c1c',
-                      missing_price: '#b91c1c',
-                      invalid_price: '#b91c1c',
-                      duplicate_barcode: '#92400e',
-                    };
-                    const statusLabel: Record<BulkRow['status'], string> = {
-                      valid: '✓ Valid',
-                      missing_name: '✗ Missing name',
-                      missing_price: '✗ Missing price',
-                      invalid_price: '✗ Invalid price',
-                      duplicate_barcode: '⚠ Duplicate barcode',
-                    };
-                    return (
-                      <tr key={i} style={{ background: row.status === 'valid' ? undefined : '#fff7f7' }}>
-                        <td style={{ color: statusColor[row.status], fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                          {statusLabel[row.status]}
-                        </td>
-                        <td>{row.name || '—'}</td>
-                        <td>{row.selling_price || '—'}</td>
-                        <td>{row.sku || '—'}</td>
-                        <td>{row.barcode || '—'}</td>
-                        <td>{row.cost_price || '—'}</td>
-                        <td>{row.reorder_level || '—'}</td>
-                        <td>{row.initial_stock || '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-              <span style={{ fontSize: "13px", color: "#666" }}>
-                {bulkPreview.filter(r => r.status === 'valid').length} valid &nbsp;·&nbsp;
-                {bulkPreview.filter(r => r.status !== 'valid').length} will be skipped
-              </span>
-              <button
-                onClick={handleBulkImport}
-                disabled={bulkImporting || bulkPreview.filter(r => r.status === 'valid').length === 0}
-                style={{
-                  padding: "8px 24px",
-                  background: bulkPreview.filter(r => r.status === 'valid').length === 0 ? '#ccc' : '#1d4ed8',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: bulkPreview.filter(r => r.status === 'valid').length === 0 ? 'not-allowed' : 'pointer',
-                  fontWeight: 'bold',
-                }}
-              >
-                {bulkImporting ? 'Importing…' : 'Import Products'}
-              </button>
-            </div>
-          </>
-        )}
-
-        {bulkResults && (
-          <div style={{ marginTop: "16px", padding: "16px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", display: "flex", gap: "32px" }}>
-            <div><span style={{ fontSize: "13px", color: "#666" }}>Imported</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#15803d" }}>{bulkResults.imported}</div></div>
-            <div><span style={{ fontSize: "13px", color: "#666" }}>Skipped</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#92400e" }}>{bulkResults.skipped}</div></div>
-            <div><span style={{ fontSize: "13px", color: "#666" }}>Failed</span><div style={{ fontSize: "24px", fontWeight: "bold", color: "#b91c1c" }}>{bulkResults.failed}</div></div>
-          </div>
-        )}
-      </div>}
-
-      </div>{/* end inventory */}
+      {/* ── STOCK INTEGRITY (Inventory sub-domain) ── */}
+      <StockIntegrityPanel
+        visible={activeTab === 'inventory' && !!businessId && appUnlocked}
+        products={products}
+        onLoadBatches={loadBatches}
+        isLoadingBatches={isLoadingBatches}
+        batches={batches}
+        writeOffBatchId={writeOffBatchId} setWriteOffBatchId={setWriteOffBatchId}
+        writeOffQty={writeOffQty} setWriteOffQty={setWriteOffQty}
+        isWritingOffBatch={isWritingOffBatch}
+        onWriteOffBatch={handleWriteOffBatch}
+        canAdjustInventory={canAdjustInventory}
+        onAdjust={handleAdjust}
+        adjustProductId={adjustProductId} setAdjustProductId={setAdjustProductId}
+        adjustType={adjustType} setAdjustType={setAdjustType}
+        adjustQuantity={adjustQuantity} setAdjustQuantity={setAdjustQuantity}
+        adjustReason={adjustReason} setAdjustReason={setAdjustReason}
+        adjustNotes={adjustNotes} setAdjustNotes={setAdjustNotes}
+        stockCountActive={stockCountActive}
+        onStartCount={handleStartCount}
+        stockCountLines={stockCountLines} setStockCountLines={setStockCountLines}
+        onConfirmCount={handleConfirmCount}
+        stockCountLoading={stockCountLoading}
+        setStockCountActive={setStockCountActive}
+        stockCountHistoryOpen={stockCountHistoryOpen} setStockCountHistoryOpen={setStockCountHistoryOpen}
+        stockCounts={stockCounts}
+        expandedCountId={expandedCountId} setExpandedCountId={setExpandedCountId}
+        countItemsMap={countItemsMap}
+        onLoadCountItems={loadCountItems}
+      />{/* end stock integrity */}
 
       {/* ── DASHBOARD TAB ── */}
-      <div style={{ display: activeTab === 'dashboard' && businessId && appUnlocked ? '' : 'none' }}>
+      <Dashboard
+        visible={activeTab === 'dashboard' && !!businessId && appUnlocked}
+        salesSummary={salesTodaySummary}
+        purchasingSummary={purchasingDashboardSummary}
+        customersSummary={customersDashboardSummary}
+        inventorySummary={inventoryDashboardSummary}
+        lowStockCount={lowStockProducts.length}
+        recentSales={recentSales}
+        drawerSession={drawerSession}
+        employeeMap={employeeMap}
+        onGoToReorderCenter={() => setActiveTab("purchasing")}
+        onOpenPurchasing={() => setActiveTab("purchasing")}
+        onViewInventory={() => setActiveTab("inventory")}
+        onViewEodReport={() => { setActiveTab("employees"); if (!showEod) handleToggleEod(); }}
+      />{/* end dashboard */}
 
-      <div className="page-header">
-        <h2 className="page-title">Dashboard</h2>
-        <p className="page-subtitle">Today's store performance and operating status</p>
-      </div>
-
-      {(() => {
-        const { revenueToday, txnCount, avgSale, openPoCount, activeCustomerCount, pointsOutstanding,
-                yesterdaySalesCount, yesterdayRevenue, yesterdayProfit, yesterdayCash,
-                topYesterdayId, topYesterdayName, topYesterdayQty,
-                buyTodayCost, receivablePOs, outOfStockCount } = dashboardData;
-        const lowStockCount = lowStockProducts.length;
-
-        const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
-        const pCardStyle: React.CSSProperties = { borderRadius: "10px", padding: "16px 18px", background: "#fff", display: "flex", flexDirection: "column", gap: "6px" };
-        const pCardBtn: React.CSSProperties = { marginTop: "10px", padding: "7px 0", borderRadius: "6px", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "13px", width: "100%" };
-
-        return (
-          <>
-            {/* ── Today's Priorities ── */}
-            <div style={{ ...sLabel, marginBottom: "10px" }}>Today's Priorities</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "12px", marginBottom: "28px" }}>
-
-              {/* 1. Buy Today */}
-              <div style={{ ...pCardStyle, border: lowStockCount > 0 ? "1px solid #fca5a5" : "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: lowStockCount > 0 ? "#dc2626" : "#94a3b8" }}>Buy Today</div>
-                <div style={{ fontSize: "22px", fontWeight: 700, color: lowStockCount > 0 ? "#0f172a" : "#94a3b8" }}>{lowStockCount} item{lowStockCount !== 1 ? "s" : ""}</div>
-                <div style={{ fontSize: "12px", color: "#64748b" }}>
-                  {lowStockCount > 0
-                    ? (buyTodayCost > 0 ? `Est. $${buyTodayCost.toFixed(2)}` : "Cost data unavailable")
-                    : "All products stocked"}
-                </div>
-                <button
-                  onClick={() => setActiveTab("purchasing")}
-                  disabled={lowStockCount === 0}
-                  style={{ ...pCardBtn, background: lowStockCount > 0 ? "#1d4ed8" : "#e2e8f0", color: lowStockCount > 0 ? "#fff" : "#94a3b8", cursor: lowStockCount > 0 ? "pointer" : "not-allowed" }}
-                >Reorder Center</button>
-              </div>
-
-              {/* 2. Receive Today */}
-              <div style={{ ...pCardStyle, border: receivablePOs.length > 0 ? "1px solid #fed7aa" : "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: receivablePOs.length > 0 ? "#ea580c" : "#94a3b8" }}>Receive Today</div>
-                <div style={{ fontSize: "22px", fontWeight: 700, color: receivablePOs.length > 0 ? "#0f172a" : "#94a3b8" }}>{receivablePOs.length} PO{receivablePOs.length !== 1 ? "s" : ""}</div>
-                <div style={{ fontSize: "12px", color: "#64748b" }}>
-                  {receivablePOs.length > 0 ? "waiting to be received" : "No orders pending"}
-                </div>
-                <button
-                  onClick={() => setActiveTab("purchasing")}
-                  disabled={receivablePOs.length === 0}
-                  style={{ ...pCardBtn, background: receivablePOs.length > 0 ? "#ea580c" : "#e2e8f0", color: receivablePOs.length > 0 ? "#fff" : "#94a3b8", cursor: receivablePOs.length > 0 ? "pointer" : "not-allowed" }}
-                >Open Purchasing</button>
-              </div>
-
-              {/* 3. Inventory Alerts */}
-              <div style={{ ...pCardStyle, border: outOfStockCount > 0 ? "1px solid #fca5a5" : lowStockCount > 0 ? "1px solid #fde68a" : "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: outOfStockCount > 0 ? "#dc2626" : lowStockCount > 0 ? "#b45309" : "#94a3b8" }}>Inventory Alerts</div>
-                <div style={{ fontSize: "22px", fontWeight: 700, color: outOfStockCount > 0 ? "#dc2626" : "#0f172a" }}>{outOfStockCount} out of stock</div>
-                <div style={{ fontSize: "12px", color: "#64748b" }}>{lowStockCount} total below reorder level</div>
-                <button
-                  onClick={() => setActiveTab("inventory")}
-                  style={{ ...pCardBtn, background: outOfStockCount > 0 ? "#dc2626" : lowStockCount > 0 ? "#b45309" : "#64748b", color: "#fff" }}
-                >View Inventory</button>
-              </div>
-
-              {/* 4. Yesterday's Summary */}
-              <div style={{ ...pCardStyle, border: "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Yesterday's Summary</div>
-                {yesterdaySalesCount === 0 ? (
-                  <div style={{ fontSize: "13px", color: "#94a3b8", flex: 1 }}>No sales recorded</div>
-                ) : (
-                  <>
-                    <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>${yesterdayRevenue.toFixed(2)}</div>
-                    <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7 }}>
-                      <div>Profit: <strong>{yesterdayProfit !== null ? `$${yesterdayProfit.toFixed(2)}` : "—"}</strong></div>
-                      <div>Cash: <strong>${yesterdayCash.toFixed(2)}</strong></div>
-                      {topYesterdayId && <div>Top: <strong>{topYesterdayName}</strong> ({topYesterdayQty})</div>}
-                    </div>
-                  </>
-                )}
-                <button
-                  onClick={() => { setActiveTab("pos"); setShowEod(true); }}
-                  style={{ ...pCardBtn, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}
-                >View EOD Report</button>
-              </div>
-
-            </div>
-
-            {/* ── Today's Operations ── */}
-            <div style={sLabel}>Today's Operations</div>
-            <div className="dash-card-row">
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>$</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Revenue Today</div>
-                  <div className="dash-card-value">${revenueToday.toFixed(2)}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>&#x1D4E1;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Transactions</div>
-                  <div className="dash-card-value">{txnCount}</div>
-                  <div className="dash-card-helper">{txnCount === 1 ? "sale" : "sales"} today</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#eef2ff", color: "#4f46e5" }}>&#x2197;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Average Sale</div>
-                  <div className="dash-card-value">{txnCount > 0 ? `$${avgSale.toFixed(2)}` : "—"}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: lowStockCount > 0 ? "#fef2f2" : "#f0fdf4", color: lowStockCount > 0 ? "#dc2626" : "#16a34a" }}>&#x26A0;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Low Stock Items</div>
-                  <div className="dash-card-value" style={lowStockCount > 0 ? { color: "#dc2626" } : undefined}>{lowStockCount}</div>
-                  <div className="dash-card-helper">{lowStockCount > 0 ? "need reorder" : "all stocked"}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Business Status ── */}
-            <div style={sLabel}>Business Status</div>
-            <div className="dash-card-row">
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: drawerSession ? "#f0fdf4" : "#f1f5f9", color: drawerSession ? "#16a34a" : "#64748b" }}>&#x1F4B0;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Cash Drawer</div>
-                  <div className="dash-card-value" style={{ color: drawerSession ? "#15803d" : "#475569" }}>{drawerSession ? "OPEN" : "CLOSED"}</div>
-                  <div className="dash-card-helper">
-                    {drawerSession ? `Since ${new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
-                  </div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: openPoCount > 0 ? "#fff7ed" : "#f1f5f9", color: openPoCount > 0 ? "#ea580c" : "#64748b" }}>&#x1F4C4;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Open Purchase Orders</div>
-                  <div className="dash-card-value">{openPoCount}</div>
-                  <div className="dash-card-helper">{openPoCount > 0 ? "pending" : "none pending"}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#f0fdfa", color: "#0d9488" }}>&#x1F465;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Active Customers</div>
-                  <div className="dash-card-value">{activeCustomerCount}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>&#x2605;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Loyalty Points</div>
-                  <div className="dash-card-value">{pointsOutstanding.toLocaleString()}</div>
-                  <div className="dash-card-helper">outstanding</div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Recent Sales ── */}
-            <div style={sLabel}>Recent Sales</div>
-            {recentSales.length === 0 ? (
-              <p style={{ color: "#94a3b8", fontSize: "14px", margin: "0" }}>No completed sales yet.</p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Sale #</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Total</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Cashier</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentSales.map((s, i) => {
-                      const cashierName = s.cashier_id
-                        ? (employeeMap[s.cashier_id]?.name ?? s.cashier_id.slice(0, 8))
-                        : "—";
-                      return (
-                        <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                          <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>{s.id.slice(0, 8)}…</td>
-                          <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>${Number(s.total).toFixed(2)}</td>
-                          <td style={{ padding: "10px 14px", color: "#64748b" }}>{cashierName}</td>
-                          <td style={{ padding: "10px 14px", color: "#94a3b8" }}>{new Date(s.created_at).toLocaleString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        );
-      })()}
-
-      </div>{/* end dashboard */}
-
-      {/* ── INVENTORY TAB (2) ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <h2 style={{ marginTop: "40px" }}>Products & Stock</h2>
-
-      {/* ── Inventory Summary Cards ── */}
-      {(() => {
-        const totalProducts = products.length;
-        const lowStockItems = lowStockProducts.length;
-        const inventoryValue = products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
-        const activeSupplierCount = suppliers.filter(s => s.status === 'active').length;
-        return (
-          <div className="dash-card-row" style={{ marginBottom: "24px" }}>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>&#x1F4E6;</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Total Products</div>
-                <div className="dash-card-value">{totalProducts}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: lowStockItems > 0 ? "#fef2f2" : "#f0fdf4", color: lowStockItems > 0 ? "#dc2626" : "#16a34a" }}>&#x26A0;</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Low Stock Items</div>
-                <div className="dash-card-value" style={lowStockItems > 0 ? { color: "#dc2626" } : undefined}>{lowStockItems}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>$</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Inventory Value</div>
-                <div className="dash-card-value">${inventoryValue.toFixed(2)}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>&#x1F465;</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Active Suppliers</div>
-                <div className="dash-card-value">{activeSupplierCount}</div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Needs Ordering Today ── */}
-      {(() => {
-        if (lowStockProducts.length === 0) return null;
-
-        const allIds = lowStockProducts.map(p => p.product_id);
-        const allSelected = allIds.length > 0 && allIds.every(id => needsOrderingSelected.has(id));
-        const selectedCount = allIds.filter(id => needsOrderingSelected.has(id)).length;
-
-        const toggleAll = () => {
-          if (allSelected) {
-            setNeedsOrderingSelected(new Set());
-          } else {
-            setNeedsOrderingSelected(new Set(allIds));
-          }
-        };
-
-        const toggleOne = (id: string) => {
-          setNeedsOrderingSelected(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id); else next.add(id);
-            return next;
-          });
-        };
-
-        const getSuggestedQty = (p: typeof lowStockProducts[0]) =>
-          needsOrderingQtys[p.product_id] ?? Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
-
-        const getEstimatedCost = (p: typeof lowStockProducts[0]) =>
-          getSuggestedQty(p) * (p.cost_price ?? p.average_cost ?? 0);
-
-        const handleCreatePO = async () => {
-          const selectedProducts = lowStockProducts.filter(p => needsOrderingSelected.has(p.product_id));
-          if (selectedProducts.length === 0) return;
-
-          const pad = (n: number) => String(n).padStart(2, "0");
-          const now = new Date();
-
-          const withSupplier = selectedProducts.filter(p => !!p.supplier_id);
-          const skippedCount = selectedProducts.length - withSupplier.length;
-
-          const bySupplier: Record<string, typeof withSupplier> = {};
-          for (const p of withSupplier) {
-            const sid = p.supplier_id!;
-            if (!bySupplier[sid]) bySupplier[sid] = [];
-            bySupplier[sid].push(p);
-          }
-
-          let poCount = 0;
-          let itemCount = 0;
-          let firstPoId = "";
-
-          for (const [supplierId, prods] of Object.entries(bySupplier)) {
-            const ts = new Date(now.getTime() + poCount * 1000);
-            const poNumber = `PO-${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
-            const items = prods.map(p => {
-              const qty = getSuggestedQty(p);
-              const unitCost = p.cost_price ?? p.average_cost ?? 0;
-              return { product_id: p.product_id, quantity: qty, unit_cost: unitCost, line_total: qty * unitCost };
-            });
-            const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
-            const notes = items.length === 1
-              ? `Reorder: ${prods[0].product_name}`
-              : `Reorder: ${items.length} products`;
-
-            const { data: po, error: poErr } = await supabase
-              .from("purchase_orders")
-              .insert({ business_id: businessId, supplier_id: supplierId, po_number: poNumber, status: "draft", subtotal, notes })
-              .select("id")
-              .single();
-
-            if (poErr || !po) { console.error(poErr); setMessage({ text: "Failed to create purchase order", type: "error" }); return; }
-
-            if (!firstPoId) firstPoId = po.id;
-
-            const CHUNK = 30;
-            const rows = items.map(i => ({ business_id: businessId, purchase_order_id: po.id, product_id: i.product_id, quantity: i.quantity, unit_cost: i.unit_cost, line_total: i.line_total }));
-            let chunkInserted = 0;
-            for (let ci = 0; ci < rows.length; ci += CHUNK) {
-              const { error: chunkErr } = await supabase.from("purchase_order_items").insert(rows.slice(ci, ci + CHUNK));
-              if (chunkErr) { console.error(chunkErr); break; }
-              chunkInserted += Math.min(CHUNK, rows.length - ci);
-            }
-
-            if (chunkInserted === 0) {
-              await supabase.from("purchase_orders").delete().eq("id", po.id);
-              continue;
-            }
-
-            poCount++;
-            itemCount += chunkInserted;
-          }
-
-          setNeedsOrderingSelected(new Set());
-          setNeedsOrderingQtys({});
-          await loadPurchaseOrders();
-          await loadAllPoItems();
-          if (firstPoId) setSelectedPoId(firstPoId);
-          setActiveTab("purchasing");
-
-          const msg = [
-            `Created ${poCount} draft Purchase Order${poCount !== 1 ? "s" : ""} for ${itemCount} product${itemCount !== 1 ? "s" : ""}.`,
-            skippedCount > 0 ? ` ${skippedCount} product${skippedCount !== 1 ? "s were" : " was"} skipped because no supplier is assigned.` : "",
-          ].join("");
-          setMessage({ text: msg, type: "success" });
-        };
-
-        return (
-          <div style={{ marginBottom: "24px", border: "1px solid #fecaca", borderRadius: "10px", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-            {/* Header */}
-            <div style={{ padding: "12px 16px", background: "#fef2f2", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #fecaca" }}>
-              <strong style={{ color: "#b91c1c", fontSize: "15px" }}>🔴 Needs Ordering Today ({lowStockProducts.length})</strong>
-            </div>
-
-            {/* Table */}
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#fff7f7", borderBottom: "1px solid #fecaca" }}>
-                    <th style={{ padding: "8px 10px", textAlign: "center", width: "36px" }}>
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={toggleAll}
-                        style={{ cursor: "pointer", width: "15px", height: "15px" }}
-                      />
-                    </th>
-                    <th style={{ padding: "8px 10px", textAlign: "left" }}>Product</th>
-                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Current Stock</th>
-                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Reorder Level</th>
-                    <th style={{ padding: "8px 10px", textAlign: "right", width: "110px" }}>Suggested Order</th>
-                    <th style={{ padding: "8px 10px", textAlign: "left" }}>Supplier</th>
-                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Estimated Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lowStockProducts.map(p => {
-                    const isSelected = needsOrderingSelected.has(p.product_id);
-                    const suggestedQty = getSuggestedQty(p);
-                    const estimatedCost = getEstimatedCost(p);
-                    const supplierName = (p.supplier_id ? supplierMap[p.supplier_id]?.name : null) ?? "No supplier";
-                    return (
-                      <tr
-                        key={p.product_id}
-                        style={{ borderBottom: "1px solid #f3f4f6", background: isSelected ? "#fff7f7" : "#fff", cursor: "pointer" }}
-                        onClick={() => toggleOne(p.product_id)}
-                      >
-                        <td style={{ padding: "8px 10px", textAlign: "center" }} onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleOne(p.product_id)}
-                            style={{ cursor: "pointer", width: "15px", height: "15px" }}
-                          />
-                        </td>
-                        <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a" }}>{p.product_name}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: p.quantity_on_hand === 0 ? "#dc2626" : "#b45309" }}>{p.quantity_on_hand}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: "#64748b" }}>{p.reorder_level}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right" }} onClick={e => e.stopPropagation()}>
-                          <input
-                            type="number"
-                            min={1}
-                            value={suggestedQty}
-                            onChange={e => {
-                              const val = Math.max(1, Number(e.target.value) || 1);
-                              setNeedsOrderingQtys(prev => ({ ...prev, [p.product_id]: val }));
-                            }}
-                            style={{ width: "72px", padding: "4px 6px", fontSize: "13px", border: "1px solid #e2e8f0", borderRadius: "4px", textAlign: "right" }}
-                          />
-                        </td>
-                        <td style={{ padding: "8px 10px", color: p.supplier_id ? "#0f172a" : "#94a3b8", fontStyle: p.supplier_id ? "normal" : "italic" }}>{supplierName}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#15803d" }}>
-                          {estimatedCost > 0 ? `$${estimatedCost.toFixed(2)}` : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: "12px 16px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "13px", color: "#475569", fontWeight: 500 }}>
-                Selected: <strong style={{ color: "#0f172a" }}>{selectedCount}</strong> product{selectedCount !== 1 ? "s" : ""}
-              </span>
-              <button
-                onClick={handleCreatePO}
-                disabled={selectedCount === 0}
-                style={{
-                  padding: "9px 22px",
-                  fontSize: "14px",
-                  fontWeight: 700,
-                  borderRadius: "7px",
-                  border: "none",
-                  cursor: selectedCount === 0 ? "not-allowed" : "pointer",
-                  background: selectedCount === 0 ? "#e2e8f0" : "#1d4ed8",
-                  color: selectedCount === 0 ? "#94a3b8" : "#fff",
-                  transition: "background 0.15s",
-                }}
-              >
-                Create Purchase Order
-              </button>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Categories ── */}
-      <div style={{ marginBottom: "24px" }}>
-        <h3 style={{ marginBottom: "8px" }}>Categories</h3>
-        {canManageCategories && <form onSubmit={handleAddCategory} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
-          <input type="text" placeholder="Category name *" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} required style={{ flex: "2 1 160px", padding: "7px" }} />
-          <input type="text" placeholder="Description" value={newCatDesc} onChange={(e) => setNewCatDesc(e.target.value)} style={{ flex: "2 1 200px", padding: "7px" }} />
-          <button type="submit" style={{ padding: "7px 16px" }}>Add Category</button>
-        </form>}
-        {categories.length > 0 && (
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {categories.map(cat => {
-              const count = products.filter(p => p.category_id === cat.id).length;
-              const isEditing = editingCatId === cat.id;
-              return isEditing ? (
-                <form key={cat.id} onSubmit={handleEditCategory} style={{ display: "flex", gap: "6px", alignItems: "center", border: "1px solid #93c5fd", borderRadius: "6px", padding: "4px 8px", background: "#eff6ff" }}>
-                  <input type="text" value={editCatName} onChange={(e) => setEditCatName(e.target.value)} required style={{ width: "120px", padding: "4px", fontSize: "13px" }} />
-                  <input type="text" value={editCatDesc} onChange={(e) => setEditCatDesc(e.target.value)} placeholder="Desc" style={{ width: "120px", padding: "4px", fontSize: "13px" }} />
-                  <button type="submit" style={{ padding: "2px 8px", fontSize: "12px" }}>Save</button>
-                  <button type="button" onClick={() => setEditingCatId(null)} style={{ padding: "2px 8px", fontSize: "12px" }}>Cancel</button>
-                </form>
-              ) : (
-                <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: "6px", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", background: cat.status === "inactive" ? "#f5f5f5" : "#fff", fontSize: "13px", opacity: cat.status === "inactive" ? 0.7 : 1 }}>
-                  <span style={{ fontWeight: 500 }}>{cat.name}</span>
-                  {cat.description && <span style={{ color: "#94a3b8", fontSize: "11px" }} title={cat.description}>— {cat.description.length > 20 ? cat.description.slice(0, 20) + "…" : cat.description}</span>}
-                  <span style={{ color: "#94a3b8", fontSize: "11px" }}>({count})</span>
-                  {cat.status === "inactive" && <span style={{ color: "#b45309", fontSize: "10px", fontWeight: 600 }}>INACTIVE</span>}
-                  {canManageCategories && <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px" }}>Edit</button>}
-                  {canManageCategories && <button onClick={() => handleToggleCategoryStatus(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #ccc", borderRadius: "3px", color: cat.status === "active" ? "#b45309" : "#15803d" }}>{cat.status === "active" ? "Deactivate" : "Activate"}</button>}
-                  {canManageCategories && count === 0 && <button onClick={() => handleDeleteCategory(cat)} style={{ padding: "1px 6px", fontSize: "11px", cursor: "pointer", background: "none", border: "1px solid #fca5a5", borderRadius: "3px", color: "#dc2626" }}>Del</button>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <button
-        onClick={() => setProductsTableOpen(o => !o)}
-        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{productsTableOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Products & Stock</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.length} products)</span>
-      </button>
-      {productsTableOpen && <>
-      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-        <input
-          ref={productSearchRef}
-          type="text"
-          placeholder="Search by product, SKU, or barcode…"
-          value={productSearch}
-          onChange={(e) => setProductSearch(e.target.value)}
-          style={{ flex: 1, padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
-        />
-        <button
-          type="button"
-          onClick={() => productSearchRef.current?.focus()}
-          style={{ padding: "8px 14px", border: "1px solid #d1d5db", borderRadius: "6px", background: "#f9fafb", cursor: "pointer", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap" }}
-        >Scan</button>
-      </div>
-      {/* ── Category Filter ── */}
-      {categories.length > 0 && (
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-          {categoryChips.map(chip => {
-            const active = categoryFilter === chip.key;
-            return (
-              <button
-                key={chip.key}
-                onClick={() => setCategoryFilter(chip.key)}
-                style={{
-                  padding: "6px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "13px",
-                  border: active ? "2px solid #1d4ed8" : "1px solid #d1d5db",
-                  background: active ? "#dbeafe" : "#f9fafb",
-                  color: active ? "#1d4ed8" : "#374151",
-                  fontWeight: active ? 600 : 400,
-                }}
-              >{chip.label} ({chip.count})</button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Desktop table / Mobile cards ── */}
-      <div className="inv-table-wrap">
-        <table className="inv-table">
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left" }}>Product</th>
-              <th style={{ textAlign: "left" }}>Category</th>
-              <th style={{ textAlign: "left" }}>SKU</th>
-              <th style={{ textAlign: "right" }}>Price</th>
-              <th style={{ textAlign: "right" }}>Stock</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {(() => {
-              if (filteredProducts.length === 0) return (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
-              );
-              return filteredProducts.map((product) => {
-              const isLowStock = product.status === 'active' && product.reorder_level !== null && product.quantity_on_hand < product.reorder_level;
-              const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
-              const inactive = product.status !== "active";
-              const isEditing = editingProductId === product.product_id;
-              return (
-                <React.Fragment key={product.product_id}>
-                  <tr className={inactive ? "inv-row-inactive" : ""}>
-                    <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
-                    <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{(product.category_id ? categoryMap[product.category_id]?.name : null) ?? "—"}</td>
-                    <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
-                    <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
-                    <td data-label="Stock" style={{ textAlign: "right" }}>
-                      <span style={{ fontWeight: 500 }}>{product.quantity_on_hand}</span>
-                      {!inactive && isOutOfStock && (
-                        <span className="inv-badge inv-badge-danger" style={{ marginLeft: "8px" }}>Out of Stock</span>
-                      )}
-                      {!inactive && isLowStock && !isOutOfStock && (
-                        <span className="inv-badge inv-badge-warning" style={{ marginLeft: "8px" }}>Low Stock</span>
-                      )}
-                    </td>
-                    <td data-label="Status" style={{ textAlign: "center" }}>
-                      <span className={`inv-badge ${inactive ? "inv-badge-muted" : "inv-badge-success"}`}>{product.status}</span>
-                    </td>
-                    <td data-label="Actions" style={{ whiteSpace: "nowrap" }}>
-                      {canEditProducts && <button
-                        onClick={() => {
-                          if (isEditing) { setEditingProductId(null); return; }
-                          setEditingProductId(product.product_id);
-                          setEditProdName(product.product_name);
-                          setEditProdSku(product.sku ?? "");
-                          setEditProdBarcode(product.barcode ?? "");
-                          setEditProdPrice(product.selling_price.toString());
-                          setEditProdReorder(product.reorder_level?.toString() ?? "");
-                          setEditProdOverhead(product.estimated_overhead_pct?.toString() ?? "0");
-                          setEditProdTargetMargin(product.target_margin_percent?.toString() ?? "");
-                          setEditProdMinMargin(product.minimum_margin_percent?.toString() ?? "");
-                          setEditProdCategory(product.category_id ?? "");
-                        }}
-                        className="sh-btn sh-btn-print"
-                      >{isEditing ? "Cancel" : "Edit"}</button>}
-                      {canDeactivateProducts && <button
-                        onClick={() => handleToggleProductStatus(product)}
-                        className={`sh-btn ${inactive ? "sh-btn-return" : "sh-btn-void"}`}
-                        style={{ marginLeft: "6px" }}
-                      >{inactive ? "Activate" : "Deactivate"}</button>}
-                    </td>
-                  </tr>
-                  {canEditProducts && isEditing && (
-                    <tr className="inv-edit-row">
-                      <td colSpan={7} style={{ background: "#f9fafb", padding: "16px" }}>
-                        <form onSubmit={(e) => handleEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-                          <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Product — {product.product_name}</strong>
-                          <input
-                            type="text"
-                            placeholder="Product name *"
-                            value={editProdName}
-                            onChange={(e) => setEditProdName(e.target.value)}
-                            required
-                            style={{ flex: "2 1 160px", padding: "7px" }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="SKU"
-                            value={editProdSku}
-                            onChange={(e) => setEditProdSku(e.target.value)}
-                            style={{ flex: "1 1 100px", padding: "7px" }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Barcode"
-                            value={editProdBarcode}
-                            onChange={(e) => setEditProdBarcode(e.target.value)}
-                            style={{ flex: "1 1 110px", padding: "7px" }}
-                          />
-                          <input
-                            type="number"
-                            placeholder="Selling price *"
-                            value={editProdPrice}
-                            onChange={(e) => setEditProdPrice(e.target.value)}
-                            required
-                            min="0"
-                            step="0.01"
-                            style={{ flex: "1 1 110px", padding: "7px" }}
-                          />
-                          <input
-                            type="number"
-                            placeholder="Reorder level"
-                            value={editProdReorder}
-                            onChange={(e) => setEditProdReorder(e.target.value)}
-                            min="0"
-                            style={{ flex: "1 1 110px", padding: "7px" }}
-                          />
-                          <select
-                            value={editProdCategory}
-                            onChange={(e) => setEditProdCategory(e.target.value)}
-                            style={{ flex: "1 1 140px", padding: "7px" }}
-                          >
-                            <option value="">No Category</option>
-                            {categories.filter(c => c.status === "active").map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                          <div style={{ width: "100%", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                            <input type="number" placeholder="Overhead %" value={editProdOverhead} onChange={(e) => setEditProdOverhead(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 100px", padding: "7px" }} />
-                            <input type="number" placeholder="Target Margin %" value={editProdTargetMargin} onChange={(e) => setEditProdTargetMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
-                            <input type="number" placeholder="Min Margin %" value={editProdMinMargin} onChange={(e) => setEditProdMinMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
-                          </div>
-                          {(() => {
-                            const avgCost = product.average_cost;
-                            const oh = Number(editProdOverhead) || 0;
-                            const tm = Number(editProdTargetMargin) || 0;
-                            const mm = Number(editProdMinMargin) || 0;
-                            const breakEven = avgCost * (1 + oh / 100);
-                            const minSafe = mm > 0 ? breakEven * (1 + mm / 100) : null;
-                            const target = tm > 0 ? breakEven * (1 + tm / 100) : null;
-                            return (
-                              <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
-                                <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${avgCost.toFixed(2)}</strong></span>
-                                <span>Break-even: <strong style={{ color: "#64748b" }}>${breakEven.toFixed(2)}</strong></span>
-                                {minSafe !== null && <span>Min Safe: <strong style={{ color: "#b45309" }}>${minSafe.toFixed(2)}</strong></span>}
-                                {target !== null && <span>Target: <strong style={{ color: "#15803d" }}>${target.toFixed(2)}</strong></span>}
-                                <span>Listed: <strong style={{ color: "#1d4ed8" }}>${product.selling_price.toFixed(2)}</strong></span>
-                              </div>
-                            );
-                          })()}
-                          <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
-                          <button type="button" onClick={() => setEditingProductId(null)} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
-                        </form>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            });
-            })()}
-          </tbody>
-        </table>
-      </div>
-
-      </>}
-
-      </div>{/* end inventory */}
 
       {/* ── PURCHASING TAB ── */}
-      <div style={{ display: activeTab === 'purchasing' && businessId && appUnlocked ? '' : 'none' }}>
+      <PurchasingTab
+        visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
+        suppliers={suppliers}
+        products={products}
+        reorderSuppliers={reorderSuppliers} setReorderSuppliers={setReorderSuppliers}
+        reorderFilter={reorderFilter} setReorderFilter={setReorderFilter}
+        reorderSelected={reorderSelected} setReorderSelected={setReorderSelected}
+        reorderQtys={reorderQtys} setReorderQtys={setReorderQtys}
+        aiReorderRecs={aiReorderRecs}
+        collapsedSuppliers={collapsedSuppliers} setCollapsedSuppliers={setCollapsedSuppliers}
+        bulkSupplierId={bulkSupplierId} setBulkSupplierId={setBulkSupplierId}
+        onBulkAssignSupplier={handleBulkAssignSupplier}
+        onBatchReorderPO={handleBatchReorderPO}
+      />{/* end purchasing */}
 
-      <div className="page-header">
-        <h2 className="page-title">Purchasing</h2>
-        <p className="page-subtitle">Manage suppliers, purchase orders, receiving, and reorder planning</p>
-      </div>
+      {/* ── SUPPLIER MANAGEMENT (Purchasing sub-domain) ── */}
+      <SupplierManagementPanel
+        visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
+        suppliers={suppliers}
+        supName={supName} setSupName={setSupName}
+        supContact={supContact} setSupContact={setSupContact}
+        supPhone={supPhone} setSupPhone={setSupPhone}
+        supEmail={supEmail} setSupEmail={setSupEmail}
+        supNotes={supNotes} setSupNotes={setSupNotes}
+        onAddSupplier={handleAddSupplier}
+        supplierListOpen={supplierListOpen} setSupplierListOpen={setSupplierListOpen}
+        editingSupplierId={editingSupplierId}
+        expandedCustomerId={expandedCustomerId} setExpandedCustomerId={setExpandedCustomerId}
+        supplierPOMap={supplierPOMap}
+        products={products}
+        poItemsByPoId={poItemsByPoId}
+        fmtPhone={fmtPhone}
+        onStartEditSupplier={handleStartEditSupplier}
+        onCancelEditSupplier={handleCancelEditSupplier}
+        onToggleSupplierStatus={handleToggleSupplierStatus}
+        onDeleteSupplier={handleDeleteSupplier}
+        statementSupplierId={statementSupplierId} setStatementSupplierId={setStatementSupplierId}
+        onLoadSupplierStatement={loadSupplierStatement}
+        editSupName={editSupName} setEditSupName={setEditSupName}
+        editSupContact={editSupContact} setEditSupContact={setEditSupContact}
+        editSupPhone={editSupPhone} setEditSupPhone={setEditSupPhone}
+        editSupEmail={editSupEmail} setEditSupEmail={setEditSupEmail}
+        editSupNotes={editSupNotes} setEditSupNotes={setEditSupNotes}
+        onSaveSupplier={handleSaveSupplier}
+        isLoadingStatement={isLoadingStatement}
+        supplierStatement={supplierStatement}
+        getPrefQty={getPrefQty}
+        savePrefQty={savePrefQty}
+        onCreateCatalogPO={handleCreateCatalogPO}
+      />{/* end supplier management */}
 
-      <h2 style={{ marginTop: "40px" }}>Suppliers</h2>
-
-      <form
-        onSubmit={handleAddSupplier}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "16px",
-        }}
-      >
-        <input
-          type="text"
-          placeholder="Supplier Name *"
-          value={supName}
-          onChange={(e) => setSupName(e.target.value)}
-          style={{ flex: "2 1 200px", padding: "8px" }}
-        />
-        <input
-          type="text"
-          placeholder="Contact Person"
-          value={supContact}
-          onChange={(e) => setSupContact(e.target.value)}
-          style={{ flex: "1 1 160px", padding: "8px" }}
-        />
-        <input
-          type="text"
-          placeholder="Phone"
-          value={supPhone}
-          onChange={(e) => setSupPhone(e.target.value)}
-          style={{ flex: "1 1 130px", padding: "8px" }}
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          value={supEmail}
-          onChange={(e) => setSupEmail(e.target.value)}
-          style={{ flex: "1 1 180px", padding: "8px" }}
-        />
-        <input
-          type="text"
-          placeholder="Notes"
-          value={supNotes}
-          onChange={(e) => setSupNotes(e.target.value)}
-          style={{ flex: "2 1 200px", padding: "8px" }}
-        />
-        <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-          Add Supplier
-        </button>
-      </form>
-
-      <button
-        onClick={() => setSupplierListOpen(!(supplierListOpen ?? (suppliers.length < 10)))}
-        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(supplierListOpen ?? (suppliers.length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Suppliers</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({suppliers.length} suppliers)</span>
-      </button>
-      <div style={{ display: (supplierListOpen ?? (suppliers.length < 10)) ? '' : 'none', marginBottom: "40px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-          <thead>
-            <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
-              <th style={{ width: "30px", padding: "10px 8px" }}></th>
-              <th style={{ textAlign: "left", padding: "10px 8px" }}>Supplier</th>
-              <th style={{ textAlign: "right", padding: "10px 8px" }}>POs</th>
-              <th style={{ textAlign: "right", padding: "10px 8px" }}>Total Spend</th>
-              <th style={{ textAlign: "left", padding: "10px 8px" }}>Last Order</th>
-              <th style={{ padding: "10px 8px" }}>Performance</th>
-              <th style={{ padding: "10px 8px" }}>Status</th>
-              <th style={{ padding: "10px 8px" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {suppliers.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding: "16px", color: "#64748b" }}>No suppliers found</td></tr>
-            ) : (
-              suppliers.map((s) => {
-                const inactive = s.status !== "active";
-                const isEditing = editingSupplierId === s.id;
-                const isExpanded = expandedCustomerId === `sup-${s.id}`;
-                const pos = supplierPOMap[s.id] ?? [];
-                const received = pos.filter(po => po.status === "received");
-                const nonCancelled = pos.filter(po => po.status !== "cancelled");
-                const totalSpend = nonCancelled.reduce((sum, po) => sum + Number(po.subtotal), 0);
-                const receivedRate = pos.length > 0 ? Math.round((received.length / pos.length) * 100) : 0;
-                const lastPO = pos.length > 0 ? new Date(Math.max(...pos.map(po => new Date(po.created_at).getTime()))) : null;
-                const health = pos.length === 0 ? "none" : receivedRate >= 60 ? "good" : "attention";
-                const healthBg = health === "good" ? "#dcfce7" : health === "attention" ? "#fef3c7" : "#f1f5f9";
-                const healthColor = health === "good" ? "#15803d" : health === "attention" ? "#92400e" : "#94a3b8";
-                const healthLabel = health === "good" ? "Good" : health === "attention" ? "Attention" : "No Activity";
-                return (
-                  <React.Fragment key={s.id}>
-                    <tr style={{ borderBottom: "1px solid #f1f5f9", ...(inactive ? { backgroundColor: "#f9fafb", color: "#94a3b8" } : {}) }}>
-                      <td style={{ padding: "10px 8px", cursor: "pointer", textAlign: "center" }} onClick={() => setExpandedCustomerId(isExpanded ? null : `sup-${s.id}`)}>
-                        {isExpanded ? "▾" : "▸"}
-                      </td>
-                      <td style={{ padding: "10px 8px", fontWeight: 600 }}>{s.name}</td>
-                      <td style={{ padding: "10px 8px", textAlign: "right" }}>{pos.length}</td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: 500 }}>${totalSpend.toFixed(2)}</td>
-                      <td style={{ padding: "10px 8px", fontSize: "13px", color: "#64748b" }}>{lastPO ? lastPO.toLocaleDateString() : "—"}</td>
-                      <td style={{ padding: "10px 8px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: healthBg, color: healthColor }}>{healthLabel}</span>
-                      </td>
-                      <td style={{ padding: "10px 8px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "12px", background: inactive ? "#e5e7eb" : "#dcfce7", color: inactive ? "#6b7280" : "#15803d" }}>{s.status}</span>
-                      </td>
-                      <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>
-                        <button onClick={() => isEditing ? handleCancelEditSupplier() : handleStartEditSupplier(s)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", background: isEditing ? "#f3f4f6" : undefined }}>{isEditing ? "Cancel" : "Edit"}</button>
-                        <button onClick={() => handleToggleSupplierStatus(s)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", color: inactive ? "#15803d" : "#b45309" }}>{inactive ? "Activate" : "Deactivate"}</button>
-                        <button onClick={() => handleDeleteSupplier(s.id, s.name)} style={{ padding: "3px 10px", marginRight: "4px", cursor: "pointer", color: "#b91c1c" }}>Delete</button>
-                        <button
-                          onClick={async () => {
-                            if (statementSupplierId === s.id) { setStatementSupplierId(null); return; }
-                            setStatementSupplierId(s.id);
-                            await loadSupplierStatement(s.id);
-                          }}
-                          style={{ padding: "3px 10px", cursor: "pointer", background: statementSupplierId === s.id ? "#1d4ed8" : "none", color: statementSupplierId === s.id ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "4px" }}
-                        >Statement</button>
-                      </td>
-                    </tr>
-                    {isExpanded && !isEditing && (() => {
-                      const supProducts = products.filter(p => p.supplier_id === s.id);
-                      const catalogValue = supProducts.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
-
-                      const poIds = new Set(pos.map(p => p.id));
-                      const supPoItems = Array.from(poIds).flatMap(id => poItemsByPoId.get(id) ?? []);
-                      const nonCancelledPos = pos.filter(po => po.status !== "cancelled");
-                      const totalSpendAll = nonCancelledPos.reduce((sum, po) => sum + Number(po.subtotal), 0);
-                      const avgOrderValue = nonCancelledPos.length > 0 ? totalSpendAll / nonCancelledPos.length : 0;
-                      const draftCount = pos.filter(po => po.status === "draft").length;
-                      const orderedCount = pos.filter(po => po.status === "ordered").length;
-                      const partialCount = pos.filter(po => po.status === "partially_received").length;
-                      const receivedCount = pos.filter(po => po.status === "received").length;
-                      const cancelledCount = pos.filter(po => po.status === "cancelled").length;
-                      const totalOrderedQty = supPoItems.reduce((sum, i) => sum + i.quantity, 0);
-                      const totalReceivedQty = supPoItems.reduce((sum, i) => sum + (i.quantity_received ?? 0), 0);
-                      const totalRemainingQty = totalOrderedQty - totalReceivedQty;
-
-                      return (
-                      <tr>
-                        <td colSpan={8} style={{ background: "#f8fafc", padding: "16px", borderBottom: "1px solid #e2e8f0" }}>
-                          {/* Contact info */}
-                          <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", marginBottom: "12px", fontSize: "13px" }}>
-                            <div><span style={{ color: "#94a3b8" }}>Contact:</span> <strong>{s.contact_name || "—"}</strong></div>
-                            <div><span style={{ color: "#94a3b8" }}>Phone:</span> <strong>{s.phone ? fmtPhone(s.phone) : "—"}</strong></div>
-                            <div><span style={{ color: "#94a3b8" }}>Email:</span> <strong>{s.email || "—"}</strong></div>
-                          </div>
-                          {/* Performance Metrics */}
-                          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
-                            {[
-                              { label: "Total Spend", value: `$${totalSpendAll.toFixed(2)}`, color: "#1d4ed8" },
-                              { label: "Avg Order Value", value: `$${avgOrderValue.toFixed(2)}` },
-                              { label: "Total POs", value: pos.length },
-                              { label: "Products Supplied", value: supProducts.length },
-                              { label: "Last Order", value: lastPO ? lastPO.toLocaleDateString() : "—" },
-                              { label: "Inventory Value", value: `$${catalogValue.toFixed(2)}` },
-                            ].map(card => (
-                              <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 12px", minWidth: "110px", flex: 1, background: "#fff" }}>
-                                <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em" }}>{card.label}</div>
-                                <div style={{ fontSize: "17px", fontWeight: 700, color: (card as any).color ?? "#0f172a" }}>{card.value}</div>
-                              </div>
-                            ))}
-                          </div>
-                          {/* Quantity & Status Metrics */}
-                          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
-                            {[
-                              { label: "Ordered Qty", value: totalOrderedQty },
-                              { label: "Received Qty", value: totalReceivedQty, color: "#15803d" },
-                              { label: "Remaining Qty", value: totalRemainingQty, color: totalRemainingQty > 0 ? "#b45309" : "#15803d" },
-                              { label: "Draft", value: draftCount },
-                              { label: "Ordered", value: orderedCount },
-                              { label: "Partial", value: partialCount, color: partialCount > 0 ? "#a16207" : undefined },
-                              { label: "Received", value: receivedCount, color: "#15803d" },
-                              { label: "Cancelled", value: cancelledCount, color: cancelledCount > 0 ? "#6b7280" : undefined },
-                            ].map(card => (
-                              <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "6px 10px", minWidth: "80px", background: "#fff" }}>
-                                <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em" }}>{card.label}</div>
-                                <div style={{ fontSize: "16px", fontWeight: 700, color: (card as any).color ?? "#0f172a" }}>{card.value}</div>
-                              </div>
-                            ))}
-                          </div>
-                          {s.notes && <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}><strong>Notes:</strong> {s.notes}</div>}
-
-                          {/* PO Breakdown Table */}
-                          {pos.length > 0 && (
-                            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px", marginBottom: "16px" }}>
-                              <strong style={{ fontSize: "14px", display: "block", marginBottom: "8px" }}>Purchase Order Breakdown</strong>
-                              <div style={{ overflowX: "auto" }}>
-                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                                  <thead>
-                                    <tr style={{ borderBottom: "1px solid #e2e8f0", background: "#f1f5f9" }}>
-                                      <th style={{ textAlign: "left", padding: "6px 8px" }}>PO Number</th>
-                                      <th style={{ padding: "6px 8px" }}>Status</th>
-                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Ordered</th>
-                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Received</th>
-                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Remaining</th>
-                                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Subtotal</th>
-                                      <th style={{ textAlign: "left", padding: "6px 8px" }}>Date</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {[...pos].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((po, i) => {
-                                      const poItemsForPo = poItemsByPoId.get(po.id) ?? [];
-                                      const ordQty = poItemsForPo.reduce((sum, item) => sum + item.quantity, 0);
-                                      const rcvQty = poItemsForPo.reduce((sum, item) => sum + (item.quantity_received ?? 0), 0);
-                                      const remQty = ordQty - rcvQty;
-                                      const stBg = po.status === "received" ? "#dcfce7" : po.status === "partially_received" ? "#fef9c3" : po.status === "ordered" ? "#dbeafe" : po.status === "cancelled" ? "#e5e7eb" : "#f1f5f9";
-                                      const stColor = po.status === "received" ? "#15803d" : po.status === "partially_received" ? "#a16207" : po.status === "ordered" ? "#1e40af" : po.status === "cancelled" ? "#6b7280" : "#475569";
-                                      const stLabel = po.status === "partially_received" ? "partial" : po.status === "ordered" ? "awaiting" : po.status;
-                                      return (
-                                        <tr key={po.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa", color: po.status === "cancelled" ? "#9ca3af" : undefined }}>
-                                          <td style={{ padding: "6px 8px", fontWeight: 500 }}>{po.po_number}</td>
-                                          <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: stBg, color: stColor }}>{stLabel}</span>
-                                          </td>
-                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>{ordQty}</td>
-                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>{rcvQty}</td>
-                                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: remQty > 0 ? "bold" : "normal", color: remQty > 0 ? "#b45309" : "#15803d" }}>{remQty}</td>
-                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>${Number(po.subtotal).toFixed(2)}</td>
-                                          <td style={{ padding: "6px 8px", fontSize: "12px", color: "#64748b" }}>{new Date(po.created_at).toLocaleDateString()}</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr style={{ borderTop: "2px solid #e2e8f0", fontWeight: "bold", background: "#f9fafb" }}>
-                                      <td style={{ padding: "6px 8px" }}>Total ({pos.length} POs)</td>
-                                      <td></td>
-                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>{totalOrderedQty}</td>
-                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>{totalReceivedQty}</td>
-                                      <td style={{ padding: "6px 8px", textAlign: "right", color: totalRemainingQty > 0 ? "#b45309" : "#15803d" }}>{totalRemainingQty}</td>
-                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>${nonCancelledPos.reduce((sum, po) => sum + Number(po.subtotal), 0).toFixed(2)}</td>
-                                      <td></td>
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Product Catalog */}
-                          <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                              <strong style={{ fontSize: "14px" }}>Product Catalog ({supProducts.length})</strong>
-                              {supProducts.length > 0 && (
-                                <button
-                                  onClick={() => handleCreateCatalogPO(s.id)}
-                                  style={{ padding: "6px 16px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#15803d", color: "#fff", fontWeight: 600, fontSize: "13px" }}
-                                >Create PO From Catalog</button>
-                              )}
-                            </div>
-                            {supProducts.length === 0 ? (
-                              <div style={{ fontSize: "13px", color: "#94a3b8", padding: "8px 0" }}>No products assigned to this supplier yet. Use the Reorder Center to assign products.</div>
-                            ) : (
-                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                                <thead>
-                                  <tr style={{ borderBottom: "1px solid #e2e8f0", background: "#f1f5f9" }}>
-                                    <th style={{ textAlign: "left", padding: "6px 8px" }}>Product</th>
-                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Stock</th>
-                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Reorder Level</th>
-                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Last Cost</th>
-                                    <th style={{ textAlign: "right", padding: "6px 8px" }}>Pref. Order Qty</th>
-                                    <th style={{ padding: "6px 8px" }}>Status</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {supProducts.map((p, i) => {
-                                    const defaultQty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
-                                    const prefQty = getPrefQty(p.product_id);
-                                    const isLow = p.reorder_level !== null && p.quantity_on_hand < p.reorder_level;
-                                    return (
-                                      <tr key={p.product_id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                                        <td style={{ padding: "6px 8px" }}>{p.product_name}</td>
-                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
-                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
-                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>${p.average_cost.toFixed(2)}</td>
-                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                                          <input
-                                            type="number" min="1"
-                                            value={prefQty ?? defaultQty}
-                                            onChange={(e) => savePrefQty(p.product_id, Math.max(1, Number(e.target.value) || 1))}
-                                            style={{ width: "60px", padding: "3px", textAlign: "right", fontSize: "12px" }}
-                                          />
-                                        </td>
-                                        <td style={{ padding: "6px 8px" }}>
-                                          {isLow ? (
-                                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "10px", background: "#fef2f2", color: "#dc2626" }}>Low Stock</span>
-                                          ) : (
-                                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "10px", background: "#dcfce7", color: "#15803d" }}>OK</span>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      );
-                    })()}
-                    {isEditing && (
-                      <tr>
-                        <td colSpan={8} style={{ background: "#f0f4ff", padding: "16px", border: "1px solid #c7d2fe" }}>
-                          <strong style={{ color: "#3730a3", display: "block", marginBottom: "10px" }}>Edit Supplier — {s.name}</strong>
-                          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                            <input type="text" placeholder="Supplier Name *" value={editSupName} onChange={(e) => setEditSupName(e.target.value)} style={{ flex: "2 1 180px", padding: "7px 10px" }} />
-                            <input type="text" placeholder="Contact Person" value={editSupContact} onChange={(e) => setEditSupContact(e.target.value)} style={{ flex: "1 1 150px", padding: "7px 10px" }} />
-                            <input type="text" placeholder="Phone" value={editSupPhone} onChange={(e) => setEditSupPhone(e.target.value)} style={{ flex: "1 1 120px", padding: "7px 10px" }} />
-                            <input type="email" placeholder="Email" value={editSupEmail} onChange={(e) => setEditSupEmail(e.target.value)} style={{ flex: "1 1 170px", padding: "7px 10px" }} />
-                            <input type="text" placeholder="Notes" value={editSupNotes} onChange={(e) => setEditSupNotes(e.target.value)} style={{ flex: "2 1 180px", padding: "7px 10px" }} />
-                            <button onClick={handleSaveSupplier} disabled={!editSupName.trim()} style={{ padding: "7px 18px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>Save</button>
-                            <button onClick={handleCancelEditSupplier} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    {statementSupplierId === s.id && (
-                      <tr>
-                        <td colSpan={8} style={{ padding: "0", borderTop: "2px solid #e2e8f0" }}>
-                          <div style={{ padding: "16px 20px", background: "#f8fafc" }}>
-                            <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "12px", color: "#0f172a" }}>Supplier Statement — {s.name}</div>
-                            {isLoadingStatement ? (
-                              <p style={{ fontSize: "13px", color: "#64748b" }}>Loading...</p>
-                            ) : supplierStatement.length === 0 ? (
-                              <p style={{ fontSize: "13px", color: "#64748b" }}>No invoiced receiving sessions found for this supplier.</p>
-                            ) : (() => {
-                              const totalInvoiced = supplierStatement.reduce((sum, r) => sum + r.invoice_total, 0);
-                              const totalPaid = supplierStatement.reduce((sum, r) => sum + r.paid, 0);
-                              const totalOutstanding = Math.round((totalInvoiced - totalPaid) * 100) / 100;
-                              return (
-                              <>
-                                <div style={{ display: "flex", gap: "16px", marginBottom: "14px", flexWrap: "wrap" }}>
-                                  <div style={{ padding: "10px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", minWidth: "140px" }}>
-                                    <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Total Invoiced</div>
-                                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>${totalInvoiced.toFixed(2)}</div>
-                                  </div>
-                                  <div style={{ padding: "10px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", minWidth: "140px" }}>
-                                    <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Total Paid</div>
-                                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#15803d" }}>${totalPaid.toFixed(2)}</div>
-                                  </div>
-                                  <div style={{ padding: "10px 16px", background: totalOutstanding > 0 ? "#fef2f2" : "#f0fdf4", border: `1px solid ${totalOutstanding > 0 ? "#fecaca" : "#86efac"}`, borderRadius: "8px", minWidth: "140px" }}>
-                                    <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Outstanding</div>
-                                    <div style={{ fontSize: "18px", fontWeight: 700, color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</div>
-                                  </div>
-                                </div>
-                                <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-                                  <thead>
-                                    <tr style={{ background: "#f1f5f9" }}>
-                                      <th style={{ textAlign: "left" }}>Invoice #</th>
-                                      <th style={{ textAlign: "left" }}>Invoice Date</th>
-                                      <th style={{ textAlign: "right" }}>Invoice Total</th>
-                                      <th style={{ textAlign: "right" }}>Paid</th>
-                                      <th style={{ textAlign: "right" }}>Remaining</th>
-                                      <th style={{ textAlign: "center" }}>Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {supplierStatement.map(row => {
-                                      const remaining = Math.round((row.invoice_total - row.paid) * 100) / 100;
-                                      const paidStatus = remaining <= 0 ? "paid" : row.paid > 0 ? "partial" : "outstanding";
-                                      const statusBg = paidStatus === "paid" ? "#dcfce7" : paidStatus === "partial" ? "#fef9c3" : "#fef2f2";
-                                      const statusColor = paidStatus === "paid" ? "#15803d" : paidStatus === "partial" ? "#a16207" : "#dc2626";
-                                      const statusLabel = paidStatus === "paid" ? "Paid" : paidStatus === "partial" ? "Partially Paid" : "Outstanding";
-                                      return (
-                                      <tr key={row.session_id}>
-                                        <td style={{ fontWeight: 600 }}>
-                                          {row.invoice_number}
-                                        </td>
-                                        <td style={{ color: "#64748b" }}>{row.invoice_date ?? "—"}</td>
-                                        <td style={{ textAlign: "right" }}>${row.invoice_total.toFixed(2)}</td>
-                                        <td style={{ textAlign: "right", color: "#15803d" }}>${row.paid.toFixed(2)}</td>
-                                        <td style={{ textAlign: "right", fontWeight: 600, color: remaining > 0 ? "#dc2626" : "#15803d" }}>${remaining.toFixed(2)}</td>
-                                        <td style={{ textAlign: "center" }}>
-                                          <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: statusBg, color: statusColor }}>{statusLabel}</span>
-                                        </td>
-                                      </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr style={{ background: "#f1f5f9", fontWeight: 700 }}>
-                                      <td colSpan={2}>Total</td>
-                                      <td style={{ textAlign: "right" }}>${totalInvoiced.toFixed(2)}</td>
-                                      <td style={{ textAlign: "right", color: "#15803d" }}>${totalPaid.toFixed(2)}</td>
-                                      <td style={{ textAlign: "right", color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</td>
-                                      <td />
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                              </>
-                              );
-                            })()}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <h2 style={{ marginTop: "40px" }}>Smart Purchase Planning</h2>
-
-      {(() => {
-        const lowStock = products.filter((p) => p.reorder_level !== null && p.quantity_on_hand < p.reorder_level && p.status === "active");
-        if (lowStock.length === 0) {
-          return <p style={{ color: "#16a34a" }}>All products are sufficiently stocked.</p>;
-        }
-        const missingSup = lowStock.filter(p => !p.supplier_id && !reorderSuppliers[p.product_id]);
-        const readyToOrder = lowStock.filter(p => p.supplier_id || reorderSuppliers[p.product_id]);
-        const filtered = reorderFilter === "missing" ? missingSup : reorderFilter === "ready" ? readyToOrder : lowStock;
-        const selectedCount = lowStock.filter(p => reorderSelected.has(p.product_id)).length;
-        const estValue = lowStock.filter(p => reorderSelected.has(p.product_id)).reduce((sum, p) => {
-          const qty = Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand)));
-          return sum + qty * (p.average_cost || 0);
-        }, 0);
-        const involvedSuppliers = new Set(lowStock.map(p => reorderSuppliers[p.product_id] || p.supplier_id).filter(Boolean));
-        const aiApplyCount = reorderFilter !== "missing"
-          ? Array.from(reorderSelected).filter(pid => aiReorderRecs[pid]?.hasData).length
-          : 0;
-
-        const grouped: Record<string, typeof lowStock> = {};
-        for (const p of filtered) {
-          const sid = reorderSuppliers[p.product_id] || p.supplier_id || "__unassigned__";
-          if (!grouped[sid]) grouped[sid] = [];
-          grouped[sid].push(p);
-        }
-        const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
-
-        return (
-          <>
-          {/* Summary cards */}
-          <div className="dash-card-row" style={{ marginBottom: "16px" }}>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#fef2f2", color: "#dc2626" }}>!</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Need Reorder</div>
-                <div className="dash-card-value">{lowStock.length}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>S</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Suppliers Involved</div>
-                <div className="dash-card-value">{involvedSuppliers.size}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>&#x2713;</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Selected</div>
-                <div className="dash-card-value">{selectedCount}</div>
-              </div>
-            </div>
-            <div className="dash-card">
-              <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>$</div>
-              <div className="dash-card-body">
-                <div className="dash-card-label">Est. PO Value</div>
-                <div className="dash-card-value">${estValue.toFixed(2)}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Missing supplier alert */}
-          {missingSup.length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "10px 16px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", marginBottom: "12px" }}>
-              <div style={{ fontSize: "14px", color: "#92400e" }}>
-                <strong>{missingSup.length}</strong> product{missingSup.length !== 1 ? "s" : ""} need supplier assignment
-              </div>
-              <button
-                onClick={() => setReorderFilter("missing")}
-                style={{ padding: "5px 14px", fontSize: "13px", cursor: "pointer", borderRadius: "5px", border: "1px solid #f59e0b", background: "#fef3c7", color: "#92400e", fontWeight: 600 }}
-              >Review Missing Suppliers</button>
-            </div>
-          )}
-
-          {/* Filter chips */}
-          <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
-            {([
-              { key: "all" as const, label: "All", count: lowStock.length },
-              { key: "missing" as const, label: "Missing Supplier", count: missingSup.length },
-              { key: "ready" as const, label: "Ready to Reorder", count: readyToOrder.length },
-            ]).map(chip => {
-              const active = reorderFilter === chip.key;
-              return (
-                <button
-                  key={chip.key}
-                  onClick={() => { setReorderFilter(chip.key); setReorderSelected(new Set()); }}
-                  style={{
-                    padding: "6px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "13px",
-                    border: active ? "2px solid #1d4ed8" : "1px solid #d1d5db",
-                    background: active ? "#dbeafe" : "#f9fafb",
-                    color: active ? "#1d4ed8" : "#374151",
-                    fontWeight: active ? 600 : 400,
-                  }}
-                >{chip.label} ({chip.count})</button>
-              );
-            })}
-            {selectedCount > 0 && (
-              <span style={{ fontSize: "13px", color: "#64748b", marginLeft: "8px" }}>{selectedCount} selected</span>
-            )}
-          </div>
-
-          {/* Bulk actions */}
-          {selectedCount > 0 && (
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", padding: "10px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
-              <button
-                onClick={() => setReorderSelected(new Set())}
-                style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "1px solid #d1d5db", background: "#fff", color: "#374151", fontSize: "13px" }}
-              >Clear Selection</button>
-              <select
-                value={bulkSupplierId}
-                onChange={(e) => setBulkSupplierId(e.target.value)}
-                style={{ padding: "6px 8px", fontSize: "13px", borderRadius: "5px", border: "1px solid #d1d5db" }}
-              >
-                <option value="">Assign supplier…</option>
-                {suppliers.filter(s => s.status === "active").map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              {bulkSupplierId && (
-                <button
-                  onClick={handleBulkAssignSupplier}
-                  style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "none", background: "#15803d", color: "#fff", fontWeight: 600, fontSize: "13px" }}
-                >Assign to Selected ({selectedCount})</button>
-              )}
-              {aiApplyCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updates: Record<string, string> = {};
-                    for (const pid of Array.from(reorderSelected)) {
-                      const r = aiReorderRecs[pid];
-                      if (r?.hasData) updates[pid] = String(r.qty);
-                    }
-                    setReorderQtys(prev => ({ ...prev, ...updates }));
-                  }}
-                  style={{ padding: "6px 14px", cursor: "pointer", borderRadius: "5px", border: "1px solid #7c3aed", background: "#faf5ff", color: "#7c3aed", fontWeight: 600, fontSize: "13px" }}
-                >✦ Apply AI Qty ({aiApplyCount})</button>
-              )}
-              {reorderFilter !== "missing" && (
-                <button
-                  onClick={() => handleBatchReorderPO()}
-                  style={{ padding: "8px 22px", cursor: "pointer", borderRadius: "6px", border: "none", background: "#15803d", color: "#fff", fontWeight: 700, fontSize: "14px" }}
-                >Create Draft PO ({selectedCount})</button>
-              )}
-            </div>
-          )}
-
-          {/* Grouped by supplier */}
-          {Object.entries(grouped)
-            .sort(([aSid, aItems], [bSid, bItems]) => {
-              if (aSid === "__unassigned__") return 1;
-              if (bSid === "__unassigned__") return -1;
-              const aVal = aItems.reduce((s, p) => s + Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand))) * (p.average_cost || 0), 0);
-              const bVal = bItems.reduce((s, p) => s + Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand))) * (p.average_cost || 0), 0);
-              return bVal - aVal;
-            })
-            .map(([sid, items]) => {
-            const supName = sid === "__unassigned__" ? "No Supplier Assigned" : (supplierMap[sid] ?? "Unknown");
-            const isCollapsed = collapsedSuppliers.has(sid);
-            const groupValue = items.reduce((sum, p) => {
-              const qty = Math.max(0, Number(reorderQtys[p.product_id] ?? ((p.reorder_level ?? 0) - p.quantity_on_hand)));
-              return sum + qty * (p.average_cost || 0);
-            }, 0);
-            const groupSelected = items.filter(p => reorderSelected.has(p.product_id)).length;
-            const allGroupSelected = items.every(p => reorderSelected.has(p.product_id));
-            const groupAiCount = items.filter(p => aiReorderRecs[p.product_id]?.hasData).length;
-            return (
-              <div key={sid} style={{ marginBottom: "16px", border: "1px solid #e2e8f0", borderRadius: "6px", overflow: "hidden" }}>
-                <div
-                  onClick={() => setCollapsedSuppliers(prev => { const n = new Set(prev); if (n.has(sid)) n.delete(sid); else n.add(sid); return n; })}
-                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", background: "#f8fafc", cursor: "pointer", userSelect: "none" }}
-                >
-                  <span style={{ fontSize: "14px", color: "#64748b" }}>{isCollapsed ? "▸" : "▾"}</span>
-                  <strong style={{ fontSize: "15px", color: sid === "__unassigned__" ? "#b45309" : "#0f172a" }}>{supName}</strong>
-                  <span style={{ fontSize: "13px", color: "#64748b" }}>{items.length} product{items.length !== 1 ? "s" : ""}</span>
-                  <span style={{ fontSize: "13px", color: "#64748b" }}>Est. ${groupValue.toFixed(2)}</span>
-                  {groupSelected > 0 && <span style={{ fontSize: "12px", color: "#1d4ed8", fontWeight: 600 }}>{groupSelected} selected</span>}
-                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }} onClick={(e) => e.stopPropagation()}>
-                    {sid !== "__unassigned__" && (
-                      <>
-                        {groupAiCount > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updates: Record<string, string> = {};
-                              for (const p of items) { const r = aiReorderRecs[p.product_id]; if (r?.hasData) updates[p.product_id] = String(r.qty); }
-                              setReorderQtys(prev => ({ ...prev, ...updates }));
-                            }}
-                            style={{ fontSize: "12px", padding: "3px 10px", cursor: "pointer", borderRadius: "4px", border: "1px solid #7c3aed", background: "#faf5ff", color: "#7c3aed", fontWeight: 600 }}
-                          >✦ AI Qty</button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleBatchReorderPO(new Set(items.map(p => p.product_id)))}
-                          style={{ fontSize: "12px", padding: "3px 10px", cursor: "pointer", borderRadius: "4px", border: "none", background: "#15803d", color: "#fff", fontWeight: 700 }}
-                        >Create PO →</button>
-                      </>
-                    )}
-                    <input
-                      type="checkbox"
-                      checked={allGroupSelected}
-                      onChange={() => {
-                        setReorderSelected(prev => {
-                          const next = new Set(prev);
-                          if (allGroupSelected) { items.forEach(p => next.delete(p.product_id)); } else { items.forEach(p => next.add(p.product_id)); }
-                          return next;
-                        });
-                      }}
-                      style={{ cursor: "pointer" }}
-                    />
-                  </div>
-                </div>
-                {!isCollapsed && (
-                  <table border={0} cellPadding={8} style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                    <thead>
-                      <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #e2e8f0" }}>
-                        <th style={{ width: "36px", padding: "6px 8px" }}></th>
-                        <th style={{ textAlign: "left", padding: "6px 8px" }}>Product</th>
-                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Stock</th>
-                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Reorder</th>
-                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Shortage</th>
-                        <th style={{ textAlign: "right", padding: "6px 8px", color: "#7c3aed" }} title="Units sold in last 7 days (completed sales)">7d Sales</th>
-                        <th style={{ textAlign: "right", padding: "6px 8px", color: "#7c3aed" }} title="AI-recommended order quantity based on 7/30-day sales velocity">AI Rec.</th>
-                        <th style={{ padding: "6px 8px" }}>Supplier</th>
-                        <th style={{ textAlign: "right", padding: "6px 8px" }}>Order Qty</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((p, i) => {
-                        const checked = reorderSelected.has(p.product_id);
-                        const savedSupplier = p.supplier_id || "";
-                        return (
-                          <tr key={p.product_id} style={{ borderBottom: "1px solid #f1f5f9", background: checked ? "#eff6ff" : i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                            <td style={{ padding: "6px 8px" }}>
-                              <input type="checkbox" checked={checked} onChange={() => { setReorderSelected(prev => { const n = new Set(prev); if (n.has(p.product_id)) n.delete(p.product_id); else n.add(p.product_id); return n; }); }} style={{ cursor: "pointer" }} />
-                            </td>
-                            <td style={{ padding: "6px 8px" }}>{p.product_name}{p.quantity_on_hand === 0 && <span style={{ marginLeft: 4, fontSize: 10, color: "#dc2626", fontWeight: 700, background: "#fee2e2", borderRadius: 3, padding: "1px 4px" }}>OUT</span>}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{(p.reorder_level ?? 0) - p.quantity_on_hand}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", color: "#64748b", fontSize: "12px" }}>
-                              {(() => { const r = aiReorderRecs[p.product_id]; return r ? (r.sold7 > 0 ? r.sold7 : <span style={{ color: "#cbd5e1" }}>0</span>) : <span style={{ color: "#cbd5e1" }}>—</span>; })()}
-                            </td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                              {(() => {
-                                const r = aiReorderRecs[p.product_id];
-                                if (!r?.hasData) return <span style={{ color: "#cbd5e1", fontSize: "11px" }}>—</span>;
-                                return (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                    <span style={{ color: "#7c3aed", fontWeight: 600, fontSize: "13px" }}>{r.qty}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => setReorderQtys(prev => ({ ...prev, [p.product_id]: String(r.qty) }))}
-                                      title="Apply AI recommendation to Order Qty"
-                                      style={{ fontSize: "10px", cursor: "pointer", background: "#7c3aed", color: "#fff", border: "none", borderRadius: "3px", padding: "1px 5px", lineHeight: 1.4 }}
-                                    >↑</button>
-                                  </span>
-                                );
-                              })()}
-                            </td>
-                            <td style={{ padding: "6px 8px" }}>
-                              <select
-                                value={reorderSuppliers[p.product_id] ?? savedSupplier}
-                                onChange={(e) => setReorderSuppliers((prev) => ({ ...prev, [p.product_id]: e.target.value }))}
-                                style={{ padding: "3px", width: "100%", fontSize: "12px" }}
-                              >
-                                <option value="">Select…</option>
-                                {suppliers.filter(s => s.status === "active").map((s) => (
-                                  <option key={s.id} value={s.id}>{s.name}</option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                              <input
-                                type="number" min="1"
-                                value={reorderQtys[p.product_id] ?? String(Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand))}
-                                onChange={(e) => setReorderQtys((prev) => ({ ...prev, [p.product_id]: e.target.value }))}
-                                style={{ width: "60px", padding: "3px", textAlign: "right" }}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            );
-          })}
-          </>
-        );
-      })()}
-
-
-      </div>{/* end purchasing */}
+      {/* ── PURCHASE ORDER LIFECYCLE (Purchasing sub-domain) ── */}
+      <PurchaseOrderLifecyclePanel
+        visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
+        suppliers={suppliers}
+        products={products}
+        poSupplierId={poSupplierId} setPoSupplierId={setPoSupplierId}
+        poNotes={poNotes} setPoNotes={setPoNotes}
+        onCreatePO={handleCreatePO}
+        poListOpen={poListOpen} setPoListOpen={setPoListOpen}
+        purchaseOrders={purchaseOrders}
+        poStatusFilter={poStatusFilter} setPoStatusFilter={setPoStatusFilter}
+        showAllPOs={showAllPOs} setShowAllPOs={setShowAllPOs}
+        selectedPoId={selectedPoId}
+        poMoreOpen={poMoreOpen} setPoMoreOpen={setPoMoreOpen}
+        onSelectPO={handleSelectPO}
+        onMarkOrdered={handleMarkOrdered}
+        receivingPoId={receivingPoId}
+        onOpenReceive={handleOpenReceive}
+        onDeletePO={handleDeletePO}
+        onPrintPO={handlePrintPO}
+        onEmailPO={handleEmailPO}
+        setSignPoId={setSignPoId}
+        setSignRole={setSignRole}
+        onCancelPO={handleCancelPO}
+        poItems={poItems}
+        itemProductId={itemProductId} setItemProductId={setItemProductId}
+        itemQuantity={itemQuantity} setItemQuantity={setItemQuantity}
+        itemUnitCost={itemUnitCost} setItemUnitCost={setItemUnitCost}
+        onAddPOItem={handleAddPOItem}
+        onRemovePOItem={handleRemovePOItem}
+        receivingItems={receivingItems}
+        receiveQtys={receiveQtys} setReceiveQtys={setReceiveQtys}
+        receiveDamagedQtys={receiveDamagedQtys} setReceiveDamagedQtys={setReceiveDamagedQtys}
+        receiveExpiredQtys={receiveExpiredQtys} setReceiveExpiredQtys={setReceiveExpiredQtys}
+        receiveRejectedQtys={receiveRejectedQtys} setReceiveRejectedQtys={setReceiveRejectedQtys}
+        receiveUnitCosts={receiveUnitCosts} setReceiveUnitCosts={setReceiveUnitCosts}
+        receiveLineNotes={receiveLineNotes} setReceiveLineNotes={setReceiveLineNotes}
+        onConfirmReceive={handleConfirmReceive}
+        isConfirmingReceive={isConfirmingReceive}
+      />{/* end purchase order lifecycle */}
 
       {/* ── CUSTOMERS TAB ── */}
-      <div style={{ display: activeTab === 'customers' && businessId && appUnlocked ? '' : 'none' }}>
+      <CustomersTab
+        visible={activeTab === 'customers' && !!businessId && appUnlocked}
+        customers={customers}
+        sales={sales}
+        saleItems={saleItems}
+        allPayments={allPayments}
+        allReturnItems={allReturnItems}
+        products={products}
+        loyaltyTransactions={loyaltyTransactions}
+        newCusName={newCusName}
+        setNewCusName={setNewCusName}
+        newCusPhone={newCusPhone}
+        setNewCusPhone={setNewCusPhone}
+        newCusEmail={newCusEmail}
+        setNewCusEmail={setNewCusEmail}
+        onAddCustomer={handleAddCustomer}
+        customerListOpen={customerListOpen}
+        setCustomerListOpen={setCustomerListOpen}
+        expandedCustomerId={expandedCustomerId}
+        setExpandedCustomerId={setExpandedCustomerId}
+        editingCustomerId={editingCustomerId}
+        setEditingCustomerId={setEditingCustomerId}
+        editCusName={editCusName}
+        setEditCusName={setEditCusName}
+        editCusPhone={editCusPhone}
+        setEditCusPhone={setEditCusPhone}
+        editCusEmail={editCusEmail}
+        setEditCusEmail={setEditCusEmail}
+        onEditCustomer={handleEditCustomer}
+        onToggleCustomerStatus={handleToggleCustomerStatus}
+        onPrintReceipt={handlePrintReceipt}
+      />{/* end customers */}
 
-      <div className="page-header">
-        <h2 className="page-title">Customers</h2>
-        <p className="page-subtitle">Manage customer profiles, purchase history, and loyalty points</p>
-      </div>
 
-      <h3 style={{ marginBottom: "8px" }}>Add Customer</h3>
-      <form
-        onSubmit={handleAddCustomer}
-        style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "24px" }}
-      >
-        <input
-          type="text"
-          placeholder="Name *"
-          value={newCusName}
-          onChange={(e) => setNewCusName(e.target.value)}
-          style={{ flex: "1 1 150px", padding: "8px" }}
-        />
-        <input
-          type="text"
-          placeholder="Phone *"
-          value={newCusPhone}
-          onChange={(e) => setNewCusPhone(e.target.value)}
-          style={{ flex: "1 1 140px", padding: "8px" }}
-        />
-        <input
-          type="email"
-          placeholder="Email (optional)"
-          value={newCusEmail}
-          onChange={(e) => setNewCusEmail(e.target.value)}
-          style={{ flex: "1 1 180px", padding: "8px" }}
-        />
-        <button type="submit" style={{ padding: "8px 20px" }}>Add Customer</button>
-      </form>
-
-      {/* Customer Insights */}
-      <h3 style={{ marginTop: "24px", marginBottom: "8px" }}>Customer Insights</h3>
-      <p style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>Based on most recent 20 sales</p>
-      {(() => {
-        const completedSales = sales.filter(s => s.status === "completed");
-        const totalVisits = completedSales.length;
-        const storeAvg = totalVisits > 0
-          ? completedSales.reduce((sum, s) => sum + Number(s.total), 0) / totalVisits
-          : 0;
-        const repeatCount = customers.filter(c =>
-          completedSales.filter(s => s.customer_id === c.id).length >= 2
-        ).length;
-
-        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
-
-        const top5 = customers
-          .map(c => {
-            const custSales = completedSales.filter(s => s.customer_id === c.id);
-            const totalSpend = custSales.reduce((sum, s) => sum + Number(s.total), 0);
-            const visits = custSales.length;
-            const avgPerVisit = visits > 0 ? totalSpend / visits : 0;
-            const custSaleIds = new Set(custSales.map(s => s.id));
-            const itemQtys: Record<string, number> = {};
-            saleItems
-              .filter(si => custSaleIds.has(si.sale_id))
-              .forEach(si => { itemQtys[si.product_id] = (itemQtys[si.product_id] ?? 0) + si.quantity; });
-            const favProductId = Object.entries(itemQtys).sort((a, b) => b[1] - a[1])[0]?.[0];
-            const favProduct = favProductId ? (productMap[favProductId] ?? "—") : "—";
-            return { id: c.id, name: c.name, visits, totalSpend, avgPerVisit, favProduct };
-          })
-          .filter(r => r.totalSpend > 0)
-          .sort((a, b) => b.totalSpend - a.totalSpend)
-          .slice(0, 5);
-
-        return (
-          <>
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
-              {[
-                { label: "Total Customers", value: customers.length },
-                { label: "Store Avg Spend / Visit", value: `$${storeAvg.toFixed(2)}` },
-                { label: "Repeat Customers", value: repeatCount },
-                { label: "Total Points Outstanding", value: loyaltyTransactions.reduce((s, lt) => s + lt.points, 0) },
-              ].map(card => (
-                <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "16px", minWidth: "160px", flex: 1 }}>
-                  <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
-                  <div style={{ fontSize: "24px", fontWeight: "bold" }}>{card.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <h4 style={{ marginBottom: "8px" }}>Top 5 Customers by Spend</h4>
-            <div style={{ overflowX: "auto", marginBottom: "24px" }}>
-              <table border={1} cellPadding={10} style={{ width: "100%" }}>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Visits</th>
-                    <th>Total Spend</th>
-                    <th>Avg / Visit</th>
-                    <th>Favorite Product</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {top5.length === 0 ? (
-                    <tr><td colSpan={6}>No customer sales data yet</td></tr>
-                  ) : (
-                    top5.map((row, i) => (
-                      <tr key={row.id}>
-                        <td>{i + 1}</td>
-                        <td>{row.name}</td>
-                        <td>{row.visits}</td>
-                        <td>${row.totalSpend.toFixed(2)}</td>
-                        <td>${row.avgPerVisit.toFixed(2)}</td>
-                        <td>{row.favProduct}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </>
-        );
-      })()}
-
-      <button
-        onClick={() => setCustomerListOpen(!(customerListOpen ?? (customers.length < 10)))}
-        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(customerListOpen ?? (customers.length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Customers</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({customers.length} customers)</span>
-      </button>
-      <p style={{ fontSize: "12px", color: "#888", marginBottom: "8px" }}>Click a row to see purchase history</p>
-      <div style={{ display: (customerListOpen ?? (customers.length < 10)) ? '' : 'none' }}>
-      {(() => {
-        const rows = customers.map((c) => {
-          const custSales = sales.filter(s => s.customer_id === c.id && s.status === "completed");
-          const totalSpend = custSales.reduce((sum, s) => sum + Number(s.total), 0);
-          const lastVisit = custSales.length > 0
-            ? new Date(Math.max(...custSales.map(s => new Date(s.created_at).getTime())))
-            : null;
-          const pointsBalance = loyaltyTransactions
-            .filter(lt => lt.customer_id === c.id)
-            .reduce((sum, lt) => sum + lt.points, 0);
-          return { ...c, visitCount: custSales.length, totalSpend, lastVisit, pointsBalance };
-        });
-        return (
-          <div style={{ overflowX: "auto", marginBottom: "40px" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Status</th>
-                  <th>Visits</th>
-                  <th>Total Spend</th>
-                  <th>Last Visit</th>
-                  <th>Points</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr><td colSpan={9}>No customers yet</td></tr>
-                ) : (
-                  rows.map((row) => {
-                    const isExpanded = expandedCustomerId === row.id;
-                    const isEditing = editingCustomerId === row.id;
-                    const inactive = row.status !== "active";
-                    const custSales = sales.filter(s => s.customer_id === row.id && s.status !== 'open');
-                    return (
-                      <React.Fragment key={row.id}>
-                        <tr
-                          onClick={() => { if (!isEditing) setExpandedCustomerId(isExpanded ? null : row.id); }}
-                          style={{
-                            cursor: isEditing ? "default" : "pointer",
-                            background: isExpanded ? "#f0f4ff" : inactive ? "#f5f5f5" : undefined,
-                            color: inactive ? "#999" : undefined,
-                          }}
-                        >
-                          <td>{isExpanded ? "▾" : "▸"} {row.name}</td>
-                          <td>{row.phone}</td>
-                          <td>{row.email ?? "—"}</td>
-                          <td>
-                            <span style={{
-                              fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                              background: inactive ? "#e5e7eb" : "#dcfce7",
-                              color: inactive ? "#6b7280" : "#15803d",
-                            }}>{row.status}</span>
-                          </td>
-                          <td>{row.visitCount}</td>
-                          <td>${row.totalSpend.toFixed(2)}</td>
-                          <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
-                          <td style={{ color: row.pointsBalance > 0 ? "#7c3aed" : "#888", fontWeight: row.pointsBalance > 0 ? "bold" : "normal" }}>{row.pointsBalance}</td>
-                          <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => {
-                                if (isEditing) { setEditingCustomerId(null); return; }
-                                setEditingCustomerId(row.id);
-                                setEditCusName(row.name);
-                                setEditCusPhone(row.phone);
-                                setEditCusEmail(row.email ?? "");
-                              }}
-                              style={{ marginRight: "6px", padding: "3px 10px", cursor: "pointer" }}
-                            >{isEditing ? "Cancel" : "Edit"}</button>
-                            <button
-                              onClick={() => handleToggleCustomerStatus(row)}
-                              style={{ padding: "3px 10px", cursor: "pointer" }}
-                            >{inactive ? "Activate" : "Deactivate"}</button>
-                          </td>
-                        </tr>
-                        {isEditing && (
-                          <tr>
-                            <td colSpan={9} style={{ background: "#f9fafb", padding: "16px" }}>
-                              <form onSubmit={(e) => handleEditCustomer(e, row.id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-                                <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Customer — {row.name}</strong>
-                                <input type="text" placeholder="Name *" value={editCusName} onChange={(e) => setEditCusName(e.target.value)} required style={{ flex: "2 1 160px", padding: "7px" }} />
-                                <input type="text" placeholder="Phone *" value={editCusPhone} onChange={(e) => setEditCusPhone(e.target.value)} required style={{ flex: "1 1 130px", padding: "7px" }} />
-                                <input type="email" placeholder="Email" value={editCusEmail} onChange={(e) => setEditCusEmail(e.target.value)} style={{ flex: "1 1 180px", padding: "7px" }} />
-                                <button type="submit" style={{ padding: "7px 16px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
-                                <button type="button" onClick={() => setEditingCustomerId(null)} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
-                              </form>
-                            </td>
-                          </tr>
-                        )}
-                        {isExpanded && !isEditing && (
-                          <tr>
-                            <td colSpan={9} style={{ background: "#f8f9ff", padding: "16px" }}>
-                              {(() => {
-                                const custLoyalty = loyaltyTransactions.filter(lt => lt.customer_id === row.id);
-                                const lifetimeEarned = custLoyalty.filter(lt => lt.type === 'earn' && lt.points > 0).reduce((s, lt) => s + lt.points, 0);
-                                const lifetimeRedeemed = custLoyalty.filter(lt => lt.type === 'redeem').reduce((s, lt) => s + Math.abs(lt.points), 0);
-                                const custReturns = allReturnItems.filter(ri => custSales.some(s => s.id === ri.sale_id));
-                                const totalReturned = custReturns.reduce((s, ri) => s + ri.quantity_returned, 0);
-                                const avgSpend = row.visitCount > 0 ? row.totalSpend / row.visitCount : 0;
-                                const productNameMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
-
-                                return (
-                                  <>
-                                    {/* Customer Summary */}
-                                    <strong style={{ display: "block", marginBottom: "12px" }}>Customer Summary — {row.name}</strong>
-                                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
-                                      {[
-                                        { label: "Total Visits", value: String(row.visitCount) },
-                                        { label: "Total Spent", value: `$${row.totalSpend.toFixed(2)}` },
-                                        { label: "Avg per Visit", value: `$${avgSpend.toFixed(2)}` },
-                                        { label: "Last Purchase", value: row.lastVisit ? row.lastVisit.toLocaleDateString() : "—" },
-                                        { label: "Points Balance", value: String(row.pointsBalance), color: row.pointsBalance > 0 ? "#7c3aed" : "#888" },
-                                        { label: "Items Returned", value: String(totalReturned), color: totalReturned > 0 ? "#dc2626" : "#888" },
-                                        { label: "Lifetime Earned", value: `+${lifetimeEarned} pts`, color: "#15803d" },
-                                        { label: "Lifetime Redeemed", value: `${lifetimeRedeemed} pts`, color: lifetimeRedeemed > 0 ? "#dc2626" : "#888" },
-                                      ].map(card => (
-                                        <div key={card.label} style={{ border: "1px solid #e5e7eb", borderRadius: "6px", padding: "10px 14px", minWidth: "110px", flex: 1, background: "#fff" }}>
-                                          <div style={{ fontSize: "10px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
-                                          <div style={{ fontSize: "18px", fontWeight: "bold", color: card.color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
-                                        </div>
-                                      ))}
-                                    </div>
-
-                                    {/* Purchase History */}
-                                    <strong style={{ display: "block", marginBottom: "8px" }}>Purchase History</strong>
-                                    {custSales.length === 0 ? (
-                                      <p style={{ margin: "0 0 16px", color: "#888" }}>No sales recorded for this customer.</p>
-                                    ) : (
-                                      custSales.map(s => {
-                                        const items = saleItems.filter(si => si.sale_id === s.id);
-                                        const salePayments = allPayments.filter(p => p.sale_id === s.id && p.payment_type !== 'refund');
-                                        const saleReturns = allReturnItems.filter(ri => ri.sale_id === s.id);
-                                        const saleLoyalty = custLoyalty.filter(lt => lt.sale_id === s.id);
-                                        const earnedPts = saleLoyalty.filter(lt => lt.type === 'earn' && lt.points > 0).reduce((sum, lt) => sum + lt.points, 0);
-                                        const redeemedPts = saleLoyalty.filter(lt => lt.type === 'redeem').reduce((sum, lt) => sum + Math.abs(lt.points), 0);
-                                        const payMethods = salePayments.map(p => p.payment_method === "other" && p.reference ? p.reference : p.payment_method + (p.payment_method !== "other" && p.reference ? ` (${p.reference})` : "")).join(", ") || "—";
-                                        const statusBg = s.status === "completed" ? "#dcfce7" : s.status === "returned" ? "#fef2f2" : s.status === "voided" ? "#e5e7eb" : "#f1f5f9";
-                                        const statusColor = s.status === "completed" ? "#15803d" : s.status === "returned" ? "#dc2626" : s.status === "voided" ? "#6b7280" : "#475569";
-
-                                        return (
-                                          <div key={s.id} style={{ border: "1px solid #e5e7eb", borderRadius: "6px", marginBottom: "12px", background: "#fff" }}>
-                                            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f1f5f9" }}>
-                                              <span style={{ fontWeight: "bold", fontSize: "13px" }}>{new Date(s.created_at).toLocaleString()}</span>
-                                              <span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: statusBg, color: statusColor }}>{s.status}</span>
-                                              <span style={{ fontSize: "13px" }}>Payment: <strong>{payMethods}</strong></span>
-                                              {Number(s.discount_amount) > 0 && (
-                                                <span style={{ fontSize: "13px", color: "#b45309" }}>Discount: −${Number(s.discount_amount).toFixed(2)}</span>
-                                              )}
-                                              {earnedPts > 0 && <span style={{ fontSize: "12px", color: "#15803d", fontWeight: "bold" }}>+{earnedPts} pts earned</span>}
-                                              {redeemedPts > 0 && <span style={{ fontSize: "12px", color: "#7c3aed", fontWeight: "bold" }}>−{redeemedPts} pts redeemed</span>}
-                                              <span style={{ marginLeft: "auto", fontWeight: "bold", fontSize: "15px" }}>${Number(s.total).toFixed(2)}</span>
-                                              <button onClick={() => handlePrintReceipt(s)} style={{ padding: "2px 10px", cursor: "pointer", fontSize: "12px" }}>Receipt</button>
-                                            </div>
-                                            <table cellPadding={6} style={{ width: "100%", fontSize: "13px" }}>
-                                              <thead>
-                                                <tr style={{ background: "#f9fafb" }}>
-                                                  <th style={{ textAlign: "left", padding: "6px 14px" }}>Product</th>
-                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Qty</th>
-                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Unit Price</th>
-                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Line Total</th>
-                                                  <th style={{ textAlign: "right", padding: "6px 14px" }}>Returned</th>
-                                                </tr>
-                                              </thead>
-                                              <tbody>
-                                                {items.map(si => {
-                                                  const retQty = saleReturns.filter(ri => ri.product_id === si.product_id).reduce((s2, ri) => s2 + ri.quantity_returned, 0);
-                                                  return (
-                                                    <tr key={si.product_id}>
-                                                      <td style={{ padding: "4px 14px" }}>{productNameMap[si.product_id] ?? si.product_id.slice(0, 8)}</td>
-                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>{si.quantity}</td>
-                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>${si.unit_price.toFixed(2)}</td>
-                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>${si.line_total.toFixed(2)}</td>
-                                                      <td style={{ textAlign: "right", padding: "4px 14px", color: retQty > 0 ? "#dc2626" : "#ccc", fontWeight: retQty > 0 ? "bold" : "normal" }}>
-                                                        {retQty > 0 ? retQty : "—"}
-                                                      </td>
-                                                    </tr>
-                                                  );
-                                                })}
-                                              </tbody>
-                                            </table>
-                                          </div>
-                                        );
-                                      })
-                                    )}
-
-                                    {/* Points History (kept) */}
-                                    <strong style={{ display: "block", marginTop: "16px" }}>Points History</strong>
-                                    {(() => {
-                                      const recentLoyalty = custLoyalty.slice(0, 20);
-                                      return recentLoyalty.length === 0 ? (
-                                        <p style={{ margin: "8px 0 0", color: "#888" }}>No points history yet.</p>
-                                      ) : (
-                                        <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "8px", fontSize: "13px" }}>
-                                          <thead>
-                                            <tr><th>Date</th><th>Type</th><th>Points</th><th>Sale</th></tr>
-                                          </thead>
-                                          <tbody>
-                                            {recentLoyalty.map(lt => (
-                                              <tr key={lt.id}>
-                                                <td>{new Date(lt.created_at).toLocaleString()}</td>
-                                                <td style={{ color: lt.type === 'earn' ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>{lt.type}</td>
-                                                <td style={{ color: lt.points > 0 ? '#15803d' : '#dc2626', fontWeight: 'bold' }}>
-                                                  {lt.points > 0 ? `+${lt.points}` : lt.points}
-                                                </td>
-                                                <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{lt.sale_id ? lt.sale_id.slice(0, 8) + '…' : '—'}</td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      );
-                                    })()}
-                                  </>
-                                );
-                              })()}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
-      </div>
-
-      </div>{/* end customers */}
-
-      {/* ── PURCHASING TAB (2) ── */}
-      <div style={{ display: activeTab === 'purchasing' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
-
-      <form
-        onSubmit={handleCreatePO}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "16px",
-        }}
-      >
-        <select
-          value={poSupplierId}
-          onChange={(e) => setPoSupplierId(e.target.value)}
-          style={{ flex: "2 1 200px", padding: "8px" }}
-        >
-          <option value="">Select supplier...</option>
-          {suppliers.filter(s => s.status === "active").map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-
-        <input
-          type="text"
-          placeholder="Notes"
-          value={poNotes}
-          onChange={(e) => setPoNotes(e.target.value)}
-          style={{ flex: "3 1 240px", padding: "8px" }}
-        />
-
-        <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-          Create PO
-        </button>
-      </form>
-
-      <button
-        onClick={() => setPoListOpen(!(poListOpen ?? (purchaseOrders.length < 10)))}
-        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(poListOpen ?? (purchaseOrders.length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Purchase Orders</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({purchaseOrders.length} orders)</span>
-      </button>
-      <div style={{ display: (poListOpen ?? (purchaseOrders.length < 10)) ? '' : 'none' }}>
-      {(() => {
-        const counts = {
-          all: purchaseOrders.length,
-          draft: purchaseOrders.filter(po => po.status === "draft").length,
-          ordered: purchaseOrders.filter(po => po.status === "ordered").length,
-          partially_received: purchaseOrders.filter(po => po.status === "partially_received").length,
-          received: purchaseOrders.filter(po => po.status === "received").length,
-          cancelled: purchaseOrders.filter(po => po.status === "cancelled").length,
-        };
-        const chips: { key: typeof poStatusFilter; label: string }[] = [
-          { key: "all", label: "All" },
-          { key: "draft", label: "Draft" },
-          { key: "ordered", label: "Awaiting Delivery" },
-          { key: "partially_received", label: "Partial" },
-          { key: "received", label: "Received" },
-          { key: "cancelled", label: "Cancelled" },
-        ];
-        const filteredPOs = poStatusFilter === "all"
-          ? purchaseOrders
-          : purchaseOrders.filter(po => po.status === poStatusFilter);
-        const visiblePOs = showAllPOs ? filteredPOs : filteredPOs.slice(0, 50);
-        const supplierMap = Object.fromEntries(
-          suppliers.map((supplier) => [supplier.id, supplier.name])
-        );
-        const productItemMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
-        return (
-          <>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
-            {chips.map(chip => {
-              const active = poStatusFilter === chip.key;
-              return (
-                <button
-                  key={chip.key}
-                  onClick={() => { setPoStatusFilter(chip.key); setShowAllPOs(false); }}
-                  style={{
-                    padding: "6px 16px",
-                    borderRadius: "20px",
-                    border: active ? "2px solid #1d4ed8" : "1px solid #d1d5db",
-                    background: active ? "#dbeafe" : "#f9fafb",
-                    color: active ? "#1d4ed8" : "#374151",
-                    fontWeight: active ? 600 : 400,
-                    cursor: "pointer",
-                    fontSize: "13px",
-                  }}
-                >
-                  {chip.label} ({counts[chip.key]})
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ marginBottom: "40px" }}>
-            {filteredPOs.length > 50 && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px", color: "#64748b" }}>
-                <span>Showing {visiblePOs.length} of {filteredPOs.length} purchase orders</span>
-                {!showAllPOs && (
-                  <button onClick={() => setShowAllPOs(true)} style={{ fontSize: "13px", color: "#1d4ed8", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
-                    Show All
-                  </button>
-                )}
-              </div>
-            )}
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
-                  <th style={{ textAlign: "left", padding: "8px" }}>PO Number</th>
-                  <th style={{ textAlign: "left", padding: "8px" }}>Supplier</th>
-                  <th style={{ padding: "8px" }}>Status</th>
-                  <th style={{ textAlign: "right", padding: "8px" }}>Subtotal</th>
-                  <th style={{ textAlign: "left", padding: "8px" }}>Created</th>
-                  <th style={{ padding: "8px", textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPOs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ padding: "16px", color: "#94a3b8" }}>{poStatusFilter === "all" ? "No purchase orders found" : `No ${poStatusFilter} purchase orders`}</td>
-                  </tr>
-                ) : (
-                  visiblePOs.map((po) => {
-                    const isDraft = po.status === "draft";
-                    const isOrdered = po.status === "ordered";
-                    const isPartiallyReceived = po.status === "partially_received";
-                    const isCancelled = po.status === "cancelled";
-                    const isReceived = po.status === "received";
-                    const isSelected = selectedPoId === po.id;
-                    const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isPartiallyReceived ? "#fef9c3" : isCancelled ? "#e5e7eb" : "#dcfce7";
-                    const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isPartiallyReceived ? "#a16207" : isCancelled ? "#6b7280" : "#15803d";
-                    const badgeLabel = isDraft ? "Draft" : isOrdered ? "Awaiting" : isPartiallyReceived ? "Partial" : isCancelled ? "Cancelled" : "Received";
-                    const isDraftPO = isDraft;
-                    const moreOpen = poMoreOpen === po.id;
-                    const hasSecondary = isDraft || isOrdered || isPartiallyReceived;
-                    return (
-                      <React.Fragment key={po.id}>
-                      <tr style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: isCancelled ? "#f9fafb" : isSelected ? "#f0f4ff" : "inherit", color: isCancelled ? "#9ca3af" : "inherit" }}>
-                        <td style={{ padding: "8px", fontWeight: 500 }}>{po.po_number}</td>
-                        <td style={{ padding: "8px" }}>{supplierMap[po.supplier_id] ?? "Unknown"}</td>
-                        <td style={{ padding: "8px", textAlign: "center" }}>
-                          <span style={{ fontSize: "12px", fontWeight: 700, padding: "3px 10px", borderRadius: "12px", background: badgeBg, color: badgeColor, display: "inline-block" }}>{badgeLabel}</span>
-                        </td>
-                        <td style={{ padding: "8px", textAlign: "right", fontWeight: 500 }}>${Number(po.subtotal ?? 0).toFixed(2)}</td>
-                        <td style={{ padding: "8px", fontSize: "13px", color: "#64748b" }}>{new Date(po.created_at).toLocaleDateString()}</td>
-                        <td style={{ padding: "8px", textAlign: "right", whiteSpace: "nowrap" }}>
-                          {/* Primary: View */}
-                          {isCancelled && (
-                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", fontSize: "13px", cursor: "pointer" }}>
-                              {isSelected ? "Close" : "View"}
-                            </button>
-                          )}
-                          {!isCancelled && (
-                            <button onClick={() => handleSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer" }}>
-                              {isSelected ? "Close" : isDraft ? "View/Edit" : "View"}
-                            </button>
-                          )}
-                          {/* Primary: Mark Ordered (draft only) */}
-                          {isDraft && (
-                            <button onClick={() => handleMarkOrdered(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd", borderRadius: "4px" }}>
-                              Mark Ordered
-                            </button>
-                          )}
-                          {/* Primary: Receive (ordered/partial) */}
-                          {(isOrdered || isPartiallyReceived) && (
-                            <button onClick={() => handleOpenReceive(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: receivingPoId === po.id ? "#d1fae5" : "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "4px" }}>
-                              {receivingPoId === po.id ? "Cancel" : isPartiallyReceived ? "Receive More" : "Receive"}
-                            </button>
-                          )}
-                          {/* Primary: Receive (draft — less prominent) */}
-                          {isDraft && (
-                            <button onClick={() => handleOpenReceive(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: receivingPoId === po.id ? "#d1fae5" : undefined }}>
-                              {receivingPoId === po.id ? "Cancel" : "Receive"}
-                            </button>
-                          )}
-                          {/* Primary: Delete (draft only) */}
-                          {isDraft && (
-                            <button onClick={() => handleDeletePO(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}>
-                              Delete
-                            </button>
-                          )}
-                          {/* More menu */}
-                          {(hasSecondary || isReceived) && (
-                            <span style={{ position: "relative", display: "inline-block" }}>
-                              <button onClick={() => setPoMoreOpen(moreOpen ? null : po.id)} style={{ padding: "4px 8px", fontSize: "13px", cursor: "pointer", background: moreOpen ? "#e5e7eb" : undefined }}>
-                                ···
-                              </button>
-                              {moreOpen && (
-                                <div style={{ position: "absolute", right: 0, top: "100%", zIndex: 10, background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: "140px", padding: "4px 0" }}>
-                                  {(isDraft || isOrdered || isPartiallyReceived) && (
-                                    <button onClick={() => { handlePrintPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px" }}>Print PO</button>
-                                  )}
-                                  {(isDraft || isOrdered || isPartiallyReceived) && (
-                                    <button onClick={() => { handleEmailPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#1d4ed8" }}>Email PO</button>
-                                  )}
-                                  {(isDraft || isOrdered || isPartiallyReceived) && (
-                                    <button onClick={() => { setSignPoId(po.id); setSignRole("manager"); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#15803d" }}>Sign PO</button>
-                                  )}
-                                  {isDraft && (
-                                    <button onClick={() => { handleCancelPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#dc2626" }}>Cancel PO</button>
-                                  )}
-                                  {isReceived && (
-                                    <button onClick={() => { handlePrintPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px" }}>Print PO</button>
-                                  )}
-                                </div>
-                              )}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                      {isSelected && (
-                        <tr>
-                          <td colSpan={6} style={{ background: "#f9fafb", padding: "16px", border: "1px solid #c7d2fe" }}>
-                            <strong style={{ display: "block", marginBottom: "12px", color: "#1d4ed8" }}>
-                              PO Detail — {po.po_number}
-                              <span style={{
-                                marginLeft: "12px", fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                                background: isDraftPO ? "#fef3c7" : po.status === "cancelled" ? "#e5e7eb" : isPartiallyReceived ? "#fef9c3" : "#dcfce7",
-                                color: isDraftPO ? "#92400e" : po.status === "cancelled" ? "#6b7280" : isPartiallyReceived ? "#a16207" : "#15803d",
-                              }}>{po.status === "partially_received" ? "partial" : po.status}</span>
-                            </strong>
-
-                            {isDraftPO && (
-                              <form
-                                onSubmit={handleAddPOItem}
-                                style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
-                              >
-                                <select
-                                  value={itemProductId}
-                                  onChange={(e) => setItemProductId(e.target.value)}
-                                  style={{ flex: "2 1 200px", padding: "8px" }}
-                                >
-                                  <option value="">Select product...</option>
-                                  {products.map((p) => (
-                                    <option key={p.product_id} value={p.product_id}>
-                                      {p.product_name}
-                                    </option>
-                                  ))}
-                                </select>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  placeholder="Quantity"
-                                  value={itemQuantity}
-                                  onChange={(e) => setItemQuantity(e.target.value)}
-                                  style={{ flex: "1 1 120px", padding: "8px" }}
-                                />
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  placeholder="Unit Cost"
-                                  value={itemUnitCost}
-                                  onChange={(e) => setItemUnitCost(e.target.value)}
-                                  style={{ flex: "1 1 120px", padding: "8px" }}
-                                />
-                                <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-                                  Add Item
-                                </button>
-                              </form>
-                            )}
-
-                            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-                              <thead>
-                                <tr>
-                                  <th>Product</th>
-                                  <th>Ordered</th>
-                                  {!isDraftPO && <th>Received</th>}
-                                  {!isDraftPO && <th>Remaining</th>}
-                                  <th>Unit Cost</th>
-                                  <th>Line Total</th>
-                                  {isDraftPO && <th></th>}
-                                  {!isDraftPO && poItems.some(i => i.receive_notes) && <th>Notes</th>}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {poItems.length === 0 ? (
-                                  <tr>
-                                    <td colSpan={isDraftPO ? 5 : (poItems.some(i => i.receive_notes) ? 7 : 6)}>No items yet</td>
-                                  </tr>
-                                ) : (
-                                  poItems.map((item) => {
-                                    const rcvd = item.quantity_received ?? 0;
-                                    const rem = item.quantity - rcvd;
-                                    return (
-                                      <tr key={item.id}>
-                                        <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
-                                        <td>{item.quantity}</td>
-                                        {!isDraftPO && <td>{rcvd}</td>}
-                                        {!isDraftPO && (
-                                          <td style={{ fontWeight: rem > 0 ? "bold" : "normal", color: rem > 0 ? "#b45309" : "#15803d" }}>
-                                            {rem}
-                                          </td>
-                                        )}
-                                        <td>${Number(item.unit_cost).toFixed(2)}</td>
-                                        <td>${Number(item.line_total).toFixed(2)}</td>
-                                        {isDraftPO && (
-                                          <td>
-                                            <button
-                                              onClick={() => handleRemovePOItem(item.id)}
-                                              style={{ padding: "2px 8px", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px", cursor: "pointer" }}
-                                            >
-                                              ×
-                                            </button>
-                                          </td>
-                                        )}
-                                        {!isDraftPO && poItems.some(i => i.receive_notes) && (
-                                          <td style={{ color: "#6b7280", fontSize: "12px" }}>{item.receive_notes ?? ""}</td>
-                                        )}
-                                      </tr>
-                                    );
-                                  })
-                                )}
-                              </tbody>
-                            </table>
-
-                            {poItems.length > 0 && (
-                              <p style={{ textAlign: "right", fontWeight: "bold", marginTop: "8px" }}>
-                                Subtotal: ${poItems.reduce((sum, i) => sum + Number(i.line_total), 0).toFixed(2)}
-                              </p>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                      {receivingPoId === po.id && (
-                        <tr>
-                          <td colSpan={6} style={{ background: "#f0fdf4", padding: "16px", border: "2px solid #16a34a" }}>
-                            <strong style={{ display: "block", marginBottom: "12px", color: "#15803d" }}>
-                              Receive Inventory — {po.po_number}
-                            </strong>
-
-                            <table border={1} cellPadding={10} style={{ width: "100%", marginBottom: "16px" }}>
-                              <thead>
-                                <tr>
-                                  <th>Product</th>
-                                  <th>Ordered</th>
-                                  <th>Received</th>
-                                  <th>Remaining</th>
-                                  <th>Receive Qty</th>
-                                  <th style={{ color: "#dc2626" }}>Damaged</th>
-                                  <th style={{ color: "#d97706" }}>Expired</th>
-                                  <th style={{ color: "#6b7280" }}>Rejected</th>
-                                  <th>Unit Cost</th>
-                                  <th>Notes</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {receivingItems.length === 0 ? (
-                                  <tr>
-                                    <td colSpan={10}>No line items on this PO</td>
-                                  </tr>
-                                ) : (
-                                  receivingItems.map((item) => {
-                                    const alreadyReceived = item.quantity_received ?? 0;
-                                    const remaining = item.quantity - alreadyReceived;
-                                    return (
-                                      <tr key={item.id} style={{ background: remaining <= 0 ? "#f0fdf4" : undefined }}>
-                                        <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
-                                        <td>{item.quantity}</td>
-                                        <td>{alreadyReceived}</td>
-                                        <td style={{ fontWeight: remaining > 0 ? "bold" : "normal", color: remaining > 0 ? "#b45309" : "#15803d" }}>
-                                          {remaining}
-                                        </td>
-                                        <td>
-                                          {remaining > 0 ? (
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              max={remaining}
-                                              value={receiveQtys[item.id] ?? ""}
-                                              onChange={(e) =>
-                                                setReceiveQtys((prev) => ({ ...prev, [item.id]: e.target.value }))
-                                              }
-                                              style={{ width: "80px", padding: "4px" }}
-                                            />
-                                          ) : (
-                                            <span style={{ color: "#15803d", fontWeight: "bold" }}>Done</span>
-                                          )}
-                                        </td>
-                                        <td>
-                                          {remaining > 0 ? (
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              value={receiveDamagedQtys[item.id] ?? "0"}
-                                              onChange={(e) => setReceiveDamagedQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                                              style={{ width: "60px", padding: "4px" }}
-                                            />
-                                          ) : (
-                                            <span style={{ color: "#94a3b8" }}>—</span>
-                                          )}
-                                        </td>
-                                        <td>
-                                          {remaining > 0 ? (
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              value={receiveExpiredQtys[item.id] ?? "0"}
-                                              onChange={(e) => setReceiveExpiredQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                                              style={{ width: "60px", padding: "4px" }}
-                                            />
-                                          ) : (
-                                            <span style={{ color: "#94a3b8" }}>—</span>
-                                          )}
-                                        </td>
-                                        <td>
-                                          {remaining > 0 ? (
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              value={receiveRejectedQtys[item.id] ?? "0"}
-                                              onChange={(e) => setReceiveRejectedQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                                              style={{ width: "60px", padding: "4px" }}
-                                            />
-                                          ) : (
-                                            <span style={{ color: "#94a3b8" }}>—</span>
-                                          )}
-                                        </td>
-                                        <td>
-                                          {remaining > 0 ? (
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              step="0.01"
-                                              value={receiveUnitCosts[item.id] ?? String(item.unit_cost)}
-                                              onChange={(e) => setReceiveUnitCosts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                                              style={{ width: "80px", padding: "4px" }}
-                                            />
-                                          ) : (
-                                            <span>${Number(item.unit_cost).toFixed(2)}</span>
-                                          )}
-                                        </td>
-                                        <td>
-                                          {remaining > 0 ? (
-                                            <input
-                                              type="text"
-                                              placeholder="Optional note…"
-                                              value={receiveLineNotes[item.id] ?? ""}
-                                              onChange={(e) => setReceiveLineNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                                              style={{ width: "160px", padding: "4px" }}
-                                            />
-                                          ) : (
-                                            item.receive_notes ? <span style={{ color: "#6b7280", fontSize: "12px" }}>{item.receive_notes}</span> : <span style={{ color: "#94a3b8" }}>—</span>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })
-                                )}
-                              </tbody>
-                            </table>
-
-                            <button
-                              onClick={handleConfirmReceive}
-                              disabled={receivingItems.length === 0 || isConfirmingReceive}
-                              style={{ padding: "10px 24px", background: "#16a34a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
-                            >
-                              {isConfirmingReceive ? "Processing…" : "Confirm Receive"}
-                            </button>
-                          </td>
-                        </tr>
-                      )}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-          </>
-        );
-      })()}
-      </div>
-
-      </div>{/* end purchasing */}
-
-      {/* ── INVENTORY TAB (3) ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <button
-        onClick={() => setTxHistoryOpen(o => !o)}
-        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{txHistoryOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Transaction History</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>
-          ({txDateRange === 'today' ? 'Today' : txDateRange === '7d' ? 'Last 7 Days' : txDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {transactions.length} records)
-        </span>
-      </button>
-      {txHistoryOpen && <>
-      <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTxDateRange(key as typeof txDateRange)}
-            style={{
-              padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px",
-              background: txDateRange === key ? "#1d4ed8" : "#fff",
-              color: txDateRange === key ? "#fff" : "#333",
-              border: txDateRange === key ? "1px solid #1d4ed8" : "1px solid #ccc",
-              fontWeight: txDateRange === key ? "bold" : "normal",
-            }}
-          >{label}</button>
-        ))}
-      </div>
-      <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {["all", "sale", "receiving", "return", "void", "damaged", "expired", "lost", "correction"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setMovementFilter(f)}
-            style={{
-              padding: "6px 14px", borderRadius: "4px", border: "1px solid #ccc", cursor: "pointer",
-              backgroundColor: movementFilter === f ? "#333" : "#fff",
-              color: movementFilter === f ? "#fff" : "#333",
-              fontWeight: movementFilter === f ? "bold" : "normal",
-            }}
-          >{f.charAt(0).toUpperCase() + f.slice(1)}</button>
-        ))}
-      </div>
-      {(() => {
-        const filtered = movementFilter === "all"
-          ? transactions
-          : transactions.filter(tx => tx.transaction_type === movementFilter);
-        return (
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Product</th>
-                  <th>Type</th>
-                  <th>Change</th>
-                  <th>Before</th>
-                  <th>After</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={6}>No transactions</td></tr>
-                ) : (
-                  filtered.map((tx) => (
-                    <tr key={tx.id}>
-                      <td>{new Date(tx.created_at).toLocaleString()}</td>
-                      <td>{tx.products?.name}</td>
-                      <td>{tx.transaction_type}</td>
-                      <td style={{ color: tx.quantity_change < 0 ? "red" : "green", fontWeight: "bold" }}>
-                        {tx.quantity_change > 0 ? `+${tx.quantity_change}` : tx.quantity_change}
-                      </td>
-                      <td>{tx.quantity_before}</td>
-                      <td>{tx.quantity_after}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
-      </>}
-
-      </div>{/* end inventory */}
 
       {/* ── POS TAB (2) ── */}
       <div style={{ display: activeTab === 'pos' && businessId && appUnlocked ? '' : 'none' }}>
@@ -8687,140 +5454,37 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <p className="page-subtitle">Review sales, tax, inventory, loyalty, and operational performance</p>
       </div>
 
-      {/* Sales Analytics Dashboard */}
-      <h2 style={{ marginTop: "40px" }}>Sales Analytics</h2>
+      <SalesAnalyticsReport
+        analyticsData={analyticsData}
+        analyticsRange={analyticsRange}
+        setAnalyticsRange={setAnalyticsRange}
+      />
 
-      {(() => {
-        const { revenue, txCount, avgTx, itemsSold, discounts, taxCollected,
-                cashTotal, cardTotal, otherTotal, dailyRows, productRows, rangeLabel } = analyticsData;
-
-        return (
-          <>
-            {/* Period selector */}
-            <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
-              {(['today', '7d', '30d', 'all'] as const).map(r => {
-                const label = r === 'today' ? 'Today' : r === '7d' ? 'Last 7 Days' : r === '30d' ? 'Last 30 Days' : 'All Time';
-                const active = analyticsRange === r;
-                return (
-                  <button
-                    key={r}
-                    onClick={() => setAnalyticsRange(r)}
-                    style={{
-                      padding: "7px 18px", cursor: "pointer", borderRadius: "6px", fontWeight: active ? "bold" : "normal",
-                      background: active ? "#1d4ed8" : "#fff", color: active ? "#fff" : "#333",
-                      border: active ? "1px solid #1d4ed8" : "1px solid #ccc",
-                    }}
-                  >{label}</button>
-                );
-              })}
-              <span style={{ alignSelf: "center", fontSize: "13px", color: "#888", marginLeft: "8px" }}>
-                {txCount} completed sale{txCount !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            {/* KPI cards */}
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "28px" }}>
-              {[
-                { label: "Revenue", value: `$${revenue.toFixed(2)}`, color: "#1d4ed8" },
-                { label: "Transactions", value: String(txCount) },
-                { label: "Avg Transaction", value: `$${avgTx.toFixed(2)}` },
-                { label: "Items Sold", value: String(itemsSold) },
-                { label: "Discounts Given", value: `$${discounts.toFixed(2)}`, color: discounts > 0 ? "#b45309" : undefined },
-                { label: "Tax Collected", value: `$${taxCollected.toFixed(2)}`, color: taxCollected > 0 ? "#b45309" : undefined },
-              ].map(card => (
-                <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "14px 20px", minWidth: "140px", flex: 1 }}>
-                  <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
-                  <div style={{ fontSize: "24px", fontWeight: "bold", color: card.color ?? "inherit" }}>{card.value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Payment split */}
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "32px" }}>
-              {[
-                { label: "Cash", value: cashTotal, color: "#15803d" },
-                { label: "Card", value: cardTotal, color: "#1d4ed8" },
-                ...(otherTotal > 0 ? [{ label: "Other", value: otherTotal, color: "#6b7280" }] : []),
-              ].map(p => (
-                <div key={p.label} style={{ border: "1px solid #e5e7eb", borderRadius: "8px", padding: "12px 18px", minWidth: "120px" }}>
-                  <div style={{ fontSize: "12px", color: "#888" }}>{p.label}</div>
-                  <div style={{ fontSize: "20px", fontWeight: "bold", color: p.color }}>${p.value.toFixed(2)}</div>
-                  <div style={{ fontSize: "11px", color: "#aaa" }}>
-                    {revenue > 0 ? `${((p.value / revenue) * 100).toFixed(0)}%` : '—'}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", gap: "32px", flexWrap: "wrap", alignItems: "flex-start" }}>
-              {/* Daily revenue breakdown */}
-              <div style={{ flex: 1, minWidth: "280px" }}>
-                <h3 style={{ marginBottom: "8px" }}>Daily Revenue — {rangeLabel}</h3>
-                {dailyRows.length === 0 ? (
-                  <p style={{ color: "#888", fontSize: "14px" }}>No completed sales in this period.</p>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table border={1} cellPadding={10} style={{ width: "100%", fontSize: "14px" }}>
-                      <thead>
-                        <tr><th>Date</th><th>Revenue</th><th>Transactions</th></tr>
-                      </thead>
-                      <tbody>
-                        {dailyRows.map(([date, row]) => (
-                          <tr key={date}>
-                            <td>{new Date(date + 'T12:00:00').toLocaleDateString()}</td>
-                            <td>${row.revenue.toFixed(2)}</td>
-                            <td>{row.count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
-                          <td>Total</td>
-                          <td>${revenue.toFixed(2)}</td>
-                          <td>{txCount}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Best-selling products */}
-              <div style={{ flex: 1, minWidth: "280px" }}>
-                <h3 style={{ marginBottom: "8px" }}>Best-Selling Products — {rangeLabel}</h3>
-                {productRows.length === 0 ? (
-                  <p style={{ color: "#888", fontSize: "14px" }}>No product data for this period.</p>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table border={1} cellPadding={10} style={{ width: "100%", fontSize: "14px" }}>
-                      <thead>
-                        <tr><th>#</th><th>Product</th><th>Units Sold</th><th>Revenue</th></tr>
-                      </thead>
-                      <tbody>
-                        {productRows.map((row, i) => (
-                          <tr key={row.product_id}>
-                            <td>{i + 1}</td>
-                            <td>{row.name}</td>
-                            <td>{row.units}</td>
-                            <td>${row.revenue.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
-                          <td colSpan={2}>Total</td>
-                          <td>{productRows.reduce((s, r) => s + r.units, 0)}</td>
-                          <td>${productRows.reduce((s, r) => s + r.revenue, 0).toFixed(2)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        );
-      })()}
+      <InventoryReportsPanel
+        products={products}
+        lowStockProducts={lowStockProducts}
+        purchaseOrders={purchaseOrders}
+        suppliers={suppliers}
+        sales={sales}
+        saleItems={saleItems}
+        allReturnItems={allReturnItems}
+        returnHistory={returnHistory}
+        customerMap={customerMap}
+        employeeMap={employeeMap}
+        productIdMap={productIdMap}
+        analyticsRange={analyticsRange}
+        setAnalyticsRange={setAnalyticsRange}
+        invValuationOpen={invValuationOpen}
+        setInvValuationOpen={setInvValuationOpen}
+        lowStockReportOpen={lowStockReportOpen}
+        setLowStockReportOpen={setLowStockReportOpen}
+        poReportOpen={poReportOpen}
+        setPoReportOpen={setPoReportOpen}
+        returnHistoryOpen={returnHistoryOpen}
+        setReturnHistoryOpen={setReturnHistoryOpen}
+        expandedReturnSaleId={expandedReturnSaleId}
+        setExpandedReturnSaleId={setExpandedReturnSaleId}
+      />
 
       </div>{/* end reports */}
 
@@ -9183,739 +5847,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       </div>{/* end employees */}
 
-      {/* ── REPORTS TAB (2) ── */}
-      <div style={{ display: activeTab === 'reports' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <h2 style={{ marginTop: "40px" }}>Inventory Reports</h2>
-
-      {/* 1. Inventory Valuation Report */}
-      <button
-        onClick={() => setInvValuationOpen(!(invValuationOpen ?? (products.length < 10)))}
-        style={{ marginTop: "24px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(invValuationOpen ?? (products.length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Inventory Valuation</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.length} products)</span>
-      </button>
-      <div style={{ display: (invValuationOpen ?? (products.length < 10)) ? '' : 'none', overflowX: "auto" }}>
-        <table border={1} cellPadding={10} style={{ width: "100%" }}>
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Stock</th>
-              <th>Avg Cost</th>
-              <th>Inventory Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.length === 0 ? (
-              <tr><td colSpan={4}>No products found</td></tr>
-            ) : (
-              products.map((p) => (
-                <tr key={p.product_id}>
-                  <td>{p.product_name}</td>
-                  <td>{p.quantity_on_hand}</td>
-                  <td>${p.average_cost.toFixed(2)}</td>
-                  <td>${(p.quantity_on_hand * p.average_cost).toFixed(2)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total Inventory Value</td>
-              <td style={{ fontWeight: "bold" }}>
-                ${products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0).toFixed(2)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      {/* 2. Low Stock Report */}
-      <button
-        onClick={() => setLowStockReportOpen(!(lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)))}
-        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Low Stock Report</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length} items)</span>
-      </button>
-      <div style={{ display: (lowStockReportOpen ?? (products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level).length < 10)) ? '' : 'none' }}>
-      {(() => {
-        const lowStock = products.filter(p => p.status === 'active' && p.reorder_level !== null && p.quantity_on_hand < p.reorder_level);
-        return (
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Current Stock</th>
-                  <th>Reorder Level</th>
-                  <th>Shortage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lowStock.length === 0 ? (
-                  <tr><td colSpan={4}>No low stock items</td></tr>
-                ) : (
-                  lowStock.map((p) => (
-                    <tr key={p.product_id} style={{ backgroundColor: "#ffe5e5" }}>
-                      <td>{p.product_name}</td>
-                      <td>{p.quantity_on_hand}</td>
-                      <td>{p.reorder_level}</td>
-                      <td style={{ color: "red", fontWeight: "bold" }}>
-                        {(p.reorder_level ?? 0) - p.quantity_on_hand}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
-      </div>
-
-      {/* 3. Product Movement Report */}
-      <button
-        onClick={() => setTxHistoryOpen(o => !o)}
-        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{txHistoryOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Transaction History</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>
-          ({txDateRange === 'today' ? 'Today' : txDateRange === '7d' ? 'Last 7 Days' : txDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {transactions.length} records)
-        </span>
-      </button>
-      {txHistoryOpen && <>
-      <div style={{ marginTop: "8px", marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTxDateRange(key as typeof txDateRange)}
-            style={{
-              padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px",
-              background: txDateRange === key ? "#1d4ed8" : "#fff",
-              color: txDateRange === key ? "#fff" : "#333",
-              border: txDateRange === key ? "1px solid #1d4ed8" : "1px solid #ccc",
-              fontWeight: txDateRange === key ? "bold" : "normal",
-            }}
-          >{label}</button>
-        ))}
-      </div>
-      <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {["all", "sale", "receiving", "damaged", "adjustment"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setMovementFilter(f)}
-            style={{
-              padding: "6px 14px",
-              borderRadius: "4px",
-              border: "1px solid #ccc",
-              cursor: "pointer",
-              backgroundColor: movementFilter === f ? "#333" : "#fff",
-              color: movementFilter === f ? "#fff" : "#333",
-              fontWeight: movementFilter === f ? "bold" : "normal",
-            }}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
-      </div>
-      {(() => {
-        const filtered = movementFilter === "all"
-          ? transactions
-          : transactions.filter(tx => tx.transaction_type === movementFilter);
-        return (
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Product</th>
-                  <th>Type</th>
-                  <th>Change</th>
-                  <th>Before</th>
-                  <th>After</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={6}>No transactions</td></tr>
-                ) : (
-                  filtered.map((tx) => (
-                    <tr key={tx.id}>
-                      <td>{new Date(tx.created_at).toLocaleString()}</td>
-                      <td>{tx.products?.name}</td>
-                      <td>{tx.transaction_type}</td>
-                      <td style={{ color: tx.quantity_change < 0 ? "red" : "green", fontWeight: "bold" }}>
-                        {tx.quantity_change > 0 ? `+${tx.quantity_change}` : tx.quantity_change}
-                      </td>
-                      <td>{tx.quantity_before}</td>
-                      <td>{tx.quantity_after}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
-      </>}
-
-      {/* 4. Purchase Order Report */}
-      <button
-        onClick={() => setPoReportOpen(o => !o)}
-        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{poReportOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Purchase Order Report</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({purchaseOrders.length} orders)</span>
-      </button>
-      {poReportOpen && (() => {
-        const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
-        const totalPO = purchaseOrders.reduce((sum, po) => sum + po.subtotal, 0);
-        return (
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>PO Number</th>
-                  <th>Supplier</th>
-                  <th>Status</th>
-                  <th>Subtotal</th>
-                  <th>Created At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {purchaseOrders.length === 0 ? (
-                  <tr><td colSpan={5}>No purchase orders found</td></tr>
-                ) : (
-                  purchaseOrders.map((po) => (
-                    <tr key={po.id}>
-                      <td>{po.po_number}</td>
-                      <td>{supplierMap[po.supplier_id] ?? po.supplier_id}</td>
-                      <td>{po.status}</td>
-                      <td>${po.subtotal.toFixed(2)}</td>
-                      <td>{new Date(po.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total PO Value</td>
-                  <td style={{ fontWeight: "bold" }}>${totalPO.toFixed(2)}</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        );
-      })()}
-
-      {/* 5. Profit Reporting v1 */}
-      <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Profit Report</h3>
-      {(() => {
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const profitRangeStart: Date | null =
-          analyticsRange === 'today' ? startOfDay :
-          analyticsRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
-          analyticsRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
-          null;
-
-        const eligibleSales = sales.filter(s =>
-          (s.status === 'completed' || s.status === 'returned') &&
-          (profitRangeStart === null || new Date(s.created_at) >= profitRangeStart)
-        );
-        const eligibleSaleIds = new Set(eligibleSales.map(s => s.id));
-
-        const periodItems = saleItems.filter(si => eligibleSaleIds.has(si.sale_id));
-
-        const returnMap: Record<string, number> = {};
-        for (const ri of allReturnItems) {
-          if (!eligibleSaleIds.has(ri.sale_id)) continue;
-          const key = `${ri.sale_id}::${ri.product_id}`;
-          returnMap[key] = (returnMap[key] ?? 0) + ri.quantity_returned;
-        }
-
-        const productMap = Object.fromEntries(products.map(p => [p.product_id, p]));
-
-        let grossSales = 0;
-        let totalDiscounts = 0;
-        let totalReturns = 0;
-        let totalCogs = 0;
-
-        const byProduct: Record<string, { name: string; soldUnits: number; returnedUnits: number; grossRev: number; returnedRev: number; cogs: number }> = {};
-
-        for (const si of periodItems) {
-          const product = productMap[si.product_id];
-          const avgCost = product?.average_cost ?? 0;
-          const unitPrice = si.unit_price;
-          const returnKey = `${si.sale_id}::${si.product_id}`;
-          const returnedQty = returnMap[returnKey] ?? 0;
-          const netQty = si.quantity - returnedQty;
-          const returnedRev = returnedQty * unitPrice;
-
-          grossSales += si.line_total;
-          totalReturns += returnedRev;
-          totalCogs += netQty * avgCost;
-
-          if (!byProduct[si.product_id]) {
-            byProduct[si.product_id] = { name: product?.product_name ?? si.product_id, soldUnits: 0, returnedUnits: 0, grossRev: 0, returnedRev: 0, cogs: 0 };
-          }
-          byProduct[si.product_id].soldUnits += si.quantity;
-          byProduct[si.product_id].returnedUnits += returnedQty;
-          byProduct[si.product_id].grossRev += si.line_total;
-          byProduct[si.product_id].returnedRev += returnedRev;
-          byProduct[si.product_id].cogs += netQty * avgCost;
-        }
-
-        for (const s of eligibleSales) {
-          totalDiscounts += Number(s.discount_amount);
-        }
-
-        const netSales = grossSales - totalDiscounts - totalReturns;
-        const grossProfit = netSales - totalCogs;
-        const grossMargin = netSales > 0 ? (grossProfit / netSales) * 100 : 0;
-
-        const productRows = Object.entries(byProduct).map(([pid, row]) => {
-          const netRev = row.grossRev - row.returnedRev;
-          const gp = netRev - row.cogs;
-          const margin = netRev > 0 ? (gp / netRev) * 100 : 0;
-          return { pid, ...row, netRev, gp, margin };
-        });
-        const topProfit = [...productRows].sort((a, b) => b.gp - a.gp).slice(0, 10);
-        const lowestMargin = [...productRows].filter(r => r.netRev > 0).sort((a, b) => a.margin - b.margin).slice(0, 10);
-
-        const rangeLabel = analyticsRange === 'today' ? 'Today' : analyticsRange === '7d' ? 'Last 7 Days' : analyticsRange === '30d' ? 'Last 30 Days' : 'All Time';
-
-        return (
-          <>
-            <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
-              {(['today', '7d', '30d', 'all'] as const).map(r => {
-                const label = r === 'today' ? 'Today' : r === '7d' ? 'Last 7 Days' : r === '30d' ? 'Last 30 Days' : 'All Time';
-                const active = analyticsRange === r;
-                return (
-                  <button
-                    key={r}
-                    onClick={() => setAnalyticsRange(r)}
-                    style={{
-                      padding: "7px 18px", cursor: "pointer", borderRadius: "6px", fontWeight: active ? "bold" : "normal",
-                      background: active ? "#1d4ed8" : "#fff", color: active ? "#fff" : "#333",
-                      border: active ? "1px solid #1d4ed8" : "1px solid #ccc",
-                    }}
-                  >{label}</button>
-                );
-              })}
-            </div>
-
-            {/* P&L Summary Cards */}
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "28px" }}>
-              {[
-                { label: "Gross Sales", value: `$${grossSales.toFixed(2)}`, color: "#1d4ed8" },
-                { label: "Discounts", value: `−$${totalDiscounts.toFixed(2)}`, color: totalDiscounts > 0 ? "#b45309" : "#888" },
-                { label: "Returns", value: `−$${totalReturns.toFixed(2)}`, color: totalReturns > 0 ? "#dc2626" : "#888" },
-                { label: "Net Sales", value: `$${netSales.toFixed(2)}`, color: "#0f172a" },
-                { label: "COGS", value: `$${totalCogs.toFixed(2)}`, color: "#6b7280" },
-                { label: "Gross Profit", value: `$${grossProfit.toFixed(2)}`, color: grossProfit >= 0 ? "#15803d" : "#dc2626" },
-                { label: "Gross Margin", value: `${grossMargin.toFixed(1)}%`, color: grossMargin >= 20 ? "#15803d" : grossMargin >= 0 ? "#b45309" : "#dc2626" },
-              ].map(card => (
-                <div key={card.label} style={{ border: "1px solid #e5e7eb", borderRadius: "8px", padding: "14px 18px", minWidth: "130px", flex: 1 }}>
-                  <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
-                  <div style={{ fontSize: "22px", fontWeight: "bold", color: card.color, marginTop: "4px" }}>{card.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", gap: "32px", flexWrap: "wrap", alignItems: "flex-start" }}>
-              {/* Top Profit Products */}
-              <div style={{ flex: 1, minWidth: "320px" }}>
-                <h4 style={{ marginBottom: "8px" }}>Top Profit Products — {rangeLabel}</h4>
-                {topProfit.length === 0 ? (
-                  <p style={{ color: "#888", fontSize: "14px" }}>No sales data for this period.</p>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-                      <thead>
-                        <tr><th>#</th><th>Product</th><th>Net Units</th><th>Net Revenue</th><th>COGS</th><th>Profit</th><th>Margin</th></tr>
-                      </thead>
-                      <tbody>
-                        {topProfit.map((row, i) => (
-                          <tr key={row.pid}>
-                            <td>{i + 1}</td>
-                            <td>{row.name}</td>
-                            <td>{row.soldUnits - row.returnedUnits}</td>
-                            <td>${row.netRev.toFixed(2)}</td>
-                            <td>${row.cogs.toFixed(2)}</td>
-                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>${row.gp.toFixed(2)}</td>
-                            <td>{row.margin.toFixed(1)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
-                          <td colSpan={3}>Top 10 Total</td>
-                          <td>${topProfit.reduce((s, r) => s + r.netRev, 0).toFixed(2)}</td>
-                          <td>${topProfit.reduce((s, r) => s + r.cogs, 0).toFixed(2)}</td>
-                          <td style={{ color: "#15803d" }}>${topProfit.reduce((s, r) => s + r.gp, 0).toFixed(2)}</td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Lowest Margin Products */}
-              <div style={{ flex: 1, minWidth: "320px" }}>
-                <h4 style={{ marginBottom: "8px" }}>Lowest Margin Products — {rangeLabel}</h4>
-                {lowestMargin.length === 0 ? (
-                  <p style={{ color: "#888", fontSize: "14px" }}>No sales data for this period.</p>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-                      <thead>
-                        <tr><th>#</th><th>Product</th><th>Net Units</th><th>Net Revenue</th><th>COGS</th><th>Profit</th><th>Margin</th></tr>
-                      </thead>
-                      <tbody>
-                        {lowestMargin.map((row, i) => (
-                          <tr key={row.pid} style={{ background: row.margin < 20 ? "#fef2f2" : undefined }}>
-                            <td>{i + 1}</td>
-                            <td>{row.name}</td>
-                            <td>{row.soldUnits - row.returnedUnits}</td>
-                            <td>${row.netRev.toFixed(2)}</td>
-                            <td>${row.cogs.toFixed(2)}</td>
-                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>${row.gp.toFixed(2)}</td>
-                            <td style={{ color: row.margin < 20 ? "#dc2626" : "#b45309", fontWeight: "bold" }}>{row.margin.toFixed(1)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        );
-      })()}
-
-      {/* Return History */}
-      <button
-        onClick={() => setReturnHistoryOpen(o => !o)}
-        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{returnHistoryOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Return History</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({new Set(returnHistory.map(r => r.return_number || r.id)).size} returns)</span>
-      </button>
-      {returnHistoryOpen && (() => {
-        const productMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
-        const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
-        const employeeMap = Object.fromEntries(employees.map(e => [e.id, e.name]));
-        const grouped: Record<string, ReturnRecord[]> = {};
-        for (const r of returnHistory) {
-          const key = r.return_number || r.id;
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(r);
-        }
-        const groups = Object.entries(grouped).sort((a, b) => {
-          const da = new Date(a[1][0].created_at).getTime();
-          const db = new Date(b[1][0].created_at).getTime();
-          return db - da;
-        });
-        return groups.length === 0 ? (
-          <p style={{ color: "#888", fontSize: "14px" }}>No returns recorded yet.</p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%", fontSize: "13px" }}>
-              <thead>
-                <tr style={{ background: "#f3f4f6" }}>
-                  <th style={{ textAlign: "left" }}>Return #</th>
-                  <th style={{ textAlign: "left" }}>Sale</th>
-                  <th>Date</th>
-                  <th>Customer</th>
-                  <th>Processed By</th>
-                  <th>Reason</th>
-                  <th style={{ textAlign: "right" }}>Refund Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groups.map(([key, items]) => {
-                  const first = items[0];
-                  const sale = sales.find(s => s.id === first.sale_id);
-                  const custName = sale?.customer_id ? (customerMap[sale.customer_id] ?? "—") : "—";
-                  const empName = first.processed_by ? (employeeMap[first.processed_by] ?? "—") : "Owner";
-                  const refundValue = items.reduce((sum, r) => {
-                    const si = saleItems.find(s => s.sale_id === r.sale_id && s.product_id === r.product_id);
-                    return sum + (si ? r.quantity_returned * si.unit_price : 0);
-                  }, 0);
-                  const isExpanded = expandedReturnSaleId === key;
-                  return (
-                    <React.Fragment key={key}>
-                      <tr
-                        style={{ cursor: "pointer", background: isExpanded ? "#faf5ff" : "inherit" }}
-                        onClick={() => setExpandedReturnSaleId(isExpanded ? null : key)}
-                      >
-                        <td style={{ fontFamily: "monospace", fontWeight: "bold", color: "#7c3aed" }}>{first.return_number || "—"}</td>
-                        <td style={{ fontFamily: "monospace", color: "#475569" }}>{first.sale_id.slice(0, 8)}…</td>
-                        <td>{new Date(first.created_at).toLocaleString()}</td>
-                        <td>{custName}</td>
-                        <td>{empName}</td>
-                        <td>{first.return_reason || first.reason || "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: "bold" }}>${refundValue.toFixed(2)}</td>
-                      </tr>
-                      {isExpanded && (
-                        <tr>
-                          <td colSpan={7} style={{ background: "#faf5ff", padding: "12px" }}>
-                            {first.notes && <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#64748b" }}><strong>Notes:</strong> {first.notes}</p>}
-                            <table border={1} cellPadding={6} style={{ width: "100%", fontSize: "12px" }}>
-                              <thead>
-                                <tr style={{ background: "#e5e7eb" }}>
-                                  <th style={{ textAlign: "left" }}>Product</th>
-                                  <th>Qty Returned</th>
-                                  <th style={{ textAlign: "right" }}>Unit Price</th>
-                                  <th style={{ textAlign: "right" }}>Refund</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {items.map(r => {
-                                  const si = saleItems.find(s => s.sale_id === r.sale_id && s.product_id === r.product_id);
-                                  const unitPrice = si?.unit_price ?? 0;
-                                  return (
-                                    <tr key={r.id}>
-                                      <td>{productMap[r.product_id] ?? r.product_id.slice(0, 8)}</td>
-                                      <td style={{ textAlign: "center" }}>{r.quantity_returned}</td>
-                                      <td style={{ textAlign: "right" }}>${unitPrice.toFixed(2)}</td>
-                                      <td style={{ textAlign: "right" }}>${(r.quantity_returned * unitPrice).toFixed(2)}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
-
-      </div>{/* end reports */}
-
-      {/* ── INVENTORY TAB (4) ── */}
-      <div style={{ display: activeTab === 'inventory' && businessId && appUnlocked ? '' : 'none' }}>
-
-      {/* Stock Take / Inventory Count */}
-      <h2 style={{ marginTop: "40px" }}>Stock Take / Inventory Count</h2>
-      {!stockCountActive ? (
-        <div style={{ marginBottom: "24px" }}>
-          <p style={{ color: "#555", marginBottom: "12px", fontSize: "14px" }}>
-            Count all products on the shelf and correct any discrepancies between
-            the system quantity and the physical count.
-          </p>
-          <button
-            onClick={handleStartCount}
-            disabled={products.length === 0}
-            style={{ padding: "9px 22px", fontWeight: "bold", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px" }}
-          >
-            Start Stock Count ({products.length} products)
-          </button>
-        </div>
-      ) : (
-        <div style={{ marginBottom: "32px" }}>
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
-            <strong>Active Count — {stockCountLines.length} products</strong>
-            <span style={{ fontSize: "13px", color: "#666" }}>
-              Variances: {stockCountLines.filter(l => l.counted_qty !== l.system_qty).length}
-            </span>
-            <button
-              onClick={() => { setStockCountActive(false); setStockCountLines([]); }}
-              style={{ padding: "5px 14px", cursor: "pointer", marginLeft: "auto" }}
-            >
-              Cancel
-            </button>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-              <thead>
-                <tr style={{ background: "#f3f4f6" }}>
-                  <th style={{ textAlign: "left" }}>Product</th>
-                  <th>SKU</th>
-                  <th>Barcode</th>
-                  <th>System Qty</th>
-                  <th>Counted Qty</th>
-                  <th>Variance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stockCountLines.map((line, idx) => {
-                  const variance = line.counted_qty - line.system_qty;
-                  return (
-                    <tr key={line.product_id} style={{ background: variance !== 0 ? "#fefce8" : "inherit" }}>
-                      <td>{line.product_name}</td>
-                      <td style={{ color: "#888" }}>{line.sku ?? "—"}</td>
-                      <td style={{ color: "#888" }}>{line.barcode ?? "—"}</td>
-                      <td style={{ textAlign: "center" }}>{line.system_qty}</td>
-                      <td style={{ textAlign: "center" }}>
-                        <input
-                          type="number"
-                          min={0}
-                          value={line.counted_qty}
-                          onChange={(e) => {
-                            const val = Math.max(0, Number(e.target.value));
-                            setStockCountLines(prev => prev.map((l, i) => i === idx ? { ...l, counted_qty: val } : l));
-                          }}
-                          style={{ width: "70px", padding: "4px 6px", textAlign: "center" }}
-                        />
-                      </td>
-                      <td style={{
-                        textAlign: "center",
-                        fontWeight: variance !== 0 ? "bold" : "normal",
-                        color: variance > 0 ? "#16a34a" : variance < 0 ? "#dc2626" : "#888",
-                      }}>
-                        {variance > 0 ? `+${variance}` : variance}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "14px", flexWrap: "wrap" }}>
-            <button
-              onClick={handleConfirmCount}
-              disabled={stockCountLoading}
-              style={{
-                padding: "9px 24px", fontWeight: "bold", cursor: stockCountLoading ? "not-allowed" : "pointer",
-                background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px",
-              }}
-            >
-              {stockCountLoading ? "Saving…" : `Confirm Count (${stockCountLines.filter(l => l.counted_qty !== l.system_qty).length} variance(s))`}
-            </button>
-            <button
-              onClick={() => { setStockCountActive(false); setStockCountLines([]); }}
-              style={{ padding: "9px 18px", cursor: "pointer", borderRadius: "6px" }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Past Stock Counts */}
-      <button
-        onClick={() => setStockCountHistoryOpen(!(stockCountHistoryOpen ?? (stockCounts.length < 10)))}
-        style={{ marginTop: "32px", marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(stockCountHistoryOpen ?? (stockCounts.length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Past Stock Counts</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({stockCounts.length} counts)</span>
-      </button>
-      <div style={{ display: (stockCountHistoryOpen ?? (stockCounts.length < 10)) ? '' : 'none' }}>
-      {stockCounts.length === 0 ? (
-        <p style={{ color: "#888", fontSize: "14px", marginBottom: "24px" }}>No stock counts recorded yet.</p>
-      ) : (
-        <div style={{ overflowX: "auto", marginBottom: "32px" }}>
-          <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ background: "#f3f4f6" }}>
-                <th style={{ textAlign: "left" }}>Date</th>
-                <th style={{ textAlign: "left" }}>Notes</th>
-                <th style={{ textAlign: "center" }}>Status</th>
-                <th style={{ textAlign: "center" }}>Items Counted</th>
-                <th style={{ textAlign: "center" }}>Variances</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stockCounts.map((sc) => {
-                const isExpanded = expandedCountId === sc.id;
-                const items = countItemsMap[sc.id] ?? [];
-                return (
-                  <React.Fragment key={sc.id}>
-                    <tr
-                      style={{ cursor: "pointer", background: isExpanded ? "#eff6ff" : "inherit" }}
-                      onClick={() => {
-                        if (isExpanded) {
-                          setExpandedCountId(null);
-                        } else {
-                          setExpandedCountId(sc.id);
-                          loadCountItems(sc.id);
-                        }
-                      }}
-                    >
-                      <td>{new Date(sc.completed_at).toLocaleString()}</td>
-                      <td style={{ color: "#555" }}>{sc.notes ?? "—"}</td>
-                      <td style={{ textAlign: "center" }}>
-                        <span style={{
-                          fontSize: "12px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px",
-                          background: "#dcfce7", color: "#15803d",
-                        }}>{sc.status}</span>
-                      </td>
-                      <td style={{ textAlign: "center", color: "#555" }}>
-                        {countItemsMap[sc.id] ? countItemsMap[sc.id].length : "—"}
-                      </td>
-                      <td style={{ textAlign: "center", color: "#555" }}>
-                        {countItemsMap[sc.id]
-                          ? countItemsMap[sc.id].filter(i => i.variance !== 0).length
-                          : "—"}
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={5} style={{ background: "#f9fafb", padding: "16px" }}>
-                          {items.length === 0 ? (
-                            <span style={{ color: "#888", fontSize: "13px" }}>Loading…</span>
-                          ) : (
-                            <table border={1} cellPadding={6} style={{ width: "100%", fontSize: "12px" }}>
-                              <thead>
-                                <tr style={{ background: "#e5e7eb" }}>
-                                  <th style={{ textAlign: "left" }}>Product</th>
-                                  <th style={{ textAlign: "left" }}>SKU</th>
-                                  <th style={{ textAlign: "center" }}>System Qty</th>
-                                  <th style={{ textAlign: "center" }}>Counted Qty</th>
-                                  <th style={{ textAlign: "center" }}>Variance</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {items.map((item) => (
-                                  <tr key={item.id}>
-                                    <td>{item.products?.name ?? "—"}</td>
-                                    <td style={{ color: "#888" }}>{item.products?.sku ?? "—"}</td>
-                                    <td style={{ textAlign: "center" }}>{item.system_qty}</td>
-                                    <td style={{ textAlign: "center" }}>{item.counted_qty}</td>
-                                    <td style={{
-                                      textAlign: "center",
-                                      fontWeight: item.variance !== 0 ? "bold" : "normal",
-                                      color: item.variance > 0 ? "#16a34a" : item.variance < 0 ? "#dc2626" : "#9ca3af",
-                                    }}>
-                                      {item.variance > 0 ? `+${item.variance}` : item.variance}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      </div>
-
-      </div>{/* end inventory */}
-
       {/* ── EMPLOYEES TAB ── */}
       <div style={{ display: activeTab === 'employees' && businessId && appUnlocked ? '' : 'none' }}>
 
@@ -10053,118 +5984,31 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       </div>{/* end employees */}
 
       {/* ── SETTINGS TAB ── */}
-      <div style={{ display: activeTab === 'settings' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <div className="page-header">
-        <h2 className="page-title">Settings</h2>
-        <p className="page-subtitle">Configure business profile, tax, receipt, and store preferences</p>
-      </div>
-
-      {!editingBusiness ? (
-        <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "20px", maxWidth: "480px", marginBottom: "16px" }}>
-          <p style={{ margin: "0 0 8px" }}><strong>Name:</strong> {businessName || "—"}</p>
-          <p style={{ margin: "0 0 8px" }}><strong>Phone:</strong> {businessPhone || "—"}</p>
-          <p style={{ margin: "0 0 8px" }}><strong>Email:</strong> {businessEmail || "—"}</p>
-          <p style={{ margin: "0 0 8px" }}><strong>Address:</strong> {businessAddress || "—"}</p>
-          <p style={{ margin: "0 0 8px" }}><strong>Tax Rate:</strong> {businessTaxRate}%</p>
-          <p style={{ margin: "0 0 16px" }}><strong>Selling Policy:</strong> {sellingPolicy === "fixed_pricing" ? "Fixed Prices" : sellingPolicy === "negotiated_pricing" ? "Negotiated Prices" : "Negotiated Prices with Approval"}</p>
-          <button
-            onClick={() => {
-              setEditBizName(businessName);
-              setEditBizPhone(businessPhone);
-              setEditBizEmail(businessEmail);
-              setEditBizAddress(businessAddress);
-              setEditBizTaxRate(String(businessTaxRate));
-              setEditBizSellingPolicy(sellingPolicy);
-              setEditingBusiness(true);
-            }}
-            style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600 }}
-          >Edit Business Profile</button>
-        </div>
-      ) : (
-        <form
-          onSubmit={handleSaveBusiness}
-          style={{ maxWidth: "480px", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}
-        >
-          <strong>Edit Business Profile</strong>
-          <input
-            type="text"
-            placeholder="Business name *"
-            value={editBizName}
-            onChange={(e) => setEditBizName(e.target.value)}
-            required
-            style={{ padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Phone"
-            value={editBizPhone}
-            onChange={(e) => setEditBizPhone(e.target.value)}
-            style={{ padding: "8px" }}
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={editBizEmail}
-            onChange={(e) => setEditBizEmail(e.target.value)}
-            style={{ padding: "8px" }}
-          />
-          <input
-            type="text"
-            placeholder="Address"
-            value={editBizAddress}
-            onChange={(e) => setEditBizAddress(e.target.value)}
-            style={{ padding: "8px" }}
-          />
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.01"
-              placeholder="Tax rate %"
-              value={editBizTaxRate}
-              onChange={(e) => setEditBizTaxRate(e.target.value)}
-              style={{ padding: "8px", width: "150px" }}
-            />
-            <span style={{ fontSize: "13px", color: "#64748b" }}>% Sales tax (0 = no tax)</span>
-          </div>
-          <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "14px", background: "#fff" }}>
-            <strong style={{ fontSize: "14px", display: "block", marginBottom: "10px" }}>Selling Policy</strong>
-            {userRole !== "owner" && (
-              <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Only the business owner can change this setting</p>
-            )}
-            {([
-              { value: "fixed_pricing", label: "Fixed Prices", desc: "No negotiated prices — sales use listed price only" },
-              { value: "negotiated_pricing", label: "Negotiated Prices", desc: "Staff may negotiate prices within policy" },
-              { value: "negotiated_with_approval", label: "Negotiated Prices with Approval", desc: "Negotiation allowed — approval workflow coming soon" },
-            ] as { value: string; label: string; desc: string }[]).map(opt => (
-              <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 0", cursor: userRole === "owner" ? "pointer" : "default", opacity: userRole !== "owner" ? 0.6 : 1 }}>
-                <input type="radio" name="selling_policy" value={opt.value} checked={editBizSellingPolicy === opt.value} onChange={() => setEditBizSellingPolicy(opt.value)} disabled={userRole !== "owner"} style={{ marginTop: "3px" }} />
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: "14px" }}>{opt.label}</div>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>{opt.desc}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button type="submit" style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
-            <button type="button" onClick={() => setEditingBusiness(false)} style={{ padding: "8px 20px", cursor: "pointer" }}>Cancel</button>
-          </div>
-        </form>
-      )}
-
-      <h3 style={{ marginTop: "32px", marginBottom: "12px" }}>Receipt Settings</h3>
-      <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "20px", maxWidth: "480px", marginBottom: "16px" }}>
-        <p style={{ margin: "0 0 8px" }}><strong>Business Name:</strong> {businessName || "—"}</p>
-        <p style={{ margin: "0 0 8px" }}><strong>Phone:</strong> {businessPhone || "—"}</p>
-        <p style={{ margin: "0 0 8px" }}><strong>Address:</strong> {businessAddress || "—"}</p>
-        <p style={{ margin: "0 0 16px" }}><strong>Tax Rate:</strong> {businessTaxRate}%</p>
-        <p style={{ margin: 0, fontSize: "13px", color: "#64748b", fontStyle: "italic" }}>Receipt logo and printer setup coming in v2</p>
-      </div>
-
-      </div>{/* end settings */}
+      <SettingsTab
+        visible={activeTab === 'settings' && !!businessId && appUnlocked}
+        businessName={businessName}
+        businessPhone={businessPhone}
+        businessEmail={businessEmail}
+        businessAddress={businessAddress}
+        businessTaxRate={businessTaxRate}
+        sellingPolicy={sellingPolicy}
+        editingBusiness={editingBusiness}
+        setEditingBusiness={setEditingBusiness}
+        editBizName={editBizName}
+        setEditBizName={setEditBizName}
+        editBizPhone={editBizPhone}
+        setEditBizPhone={setEditBizPhone}
+        editBizEmail={editBizEmail}
+        setEditBizEmail={setEditBizEmail}
+        editBizAddress={editBizAddress}
+        setEditBizAddress={setEditBizAddress}
+        editBizTaxRate={editBizTaxRate}
+        setEditBizTaxRate={setEditBizTaxRate}
+        editBizSellingPolicy={editBizSellingPolicy}
+        setEditBizSellingPolicy={setEditBizSellingPolicy}
+        userRole={userRole}
+        onSave={handleSaveBusiness}
+      />{/* end settings */}
 
       {/* Smart Receive — Receive Inventory Modal */}
       {/* Backdrop: z-index 1099, sibling of panel */}
@@ -10649,92 +6493,30 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       )}
 
       {/* ── Product Resolution Dialog (global, reusable) ── */}
-      {productResolution && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1200 }} onClick={(e) => { if (e.target === e.currentTarget) { productResolution.onSkipped(); closeProductResolution(); } }} />
-      )}
-      {productResolution && (
-        <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 1201, background: "#fff", borderRadius: "12px", width: "480px", maxWidth: "95vw", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 32px rgba(0,0,0,0.2)", overflow: "hidden" }}>
-          {/* Header */}
-          <div style={{ padding: "18px 20px 0", flexShrink: 0, borderBottom: "1px solid #f1f5f9" }}>
-            <div style={{ fontWeight: 700, fontSize: "16px", color: "#0f172a", marginBottom: "4px" }}>Product Not Found</div>
-            <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "14px" }}>
-              {productResolution.barcode
-                ? <span>Barcode <code style={{ background: "#fef3c7", padding: "1px 6px", borderRadius: "4px", fontFamily: "monospace" }}>{productResolution.barcode}</code> is not linked to any product.</span>
-                : <span>No product matched <strong>"{productResolution.description}"</strong> from the invoice.</span>}
-            </div>
-          </div>
-          {/* Scrollable body */}
-          <div style={{ overflowY: "auto", flex: 1, padding: "14px 20px 20px" }}>
-            {!productResolutionMode && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <button type="button" onClick={() => setProductResolutionMode("link")} style={{ padding: "12px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "8px", textAlign: "left" }}>🔗 Link to Existing Product</button>
-                <button type="button" onClick={() => { setProductResolutionMode("create"); setProductResolutionNewName(productResolution.description ?? ""); setProductResolutionNewCost(productResolution.suggestedCost != null ? String(productResolution.suggestedCost) : ""); }} style={{ padding: "12px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", background: "#15803d", color: "#fff", border: "none", borderRadius: "8px", textAlign: "left" }}>➕ Create New Product</button>
-                <button type="button" onClick={() => { productResolution.onSkipped(); closeProductResolution(); }} style={{ padding: "12px 16px", fontSize: "14px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "8px", color: "#64748b", textAlign: "left" }}>✕ Skip — do not add this item</button>
-              </div>
-            )}
-            {productResolutionMode === "link" && (
-              <div>
-                <div style={{ fontSize: "13px", color: "#475569", marginBottom: "8px" }}>Select the product to link{productResolution.barcode ? " this barcode to" : " to this invoice line"}:</div>
-                <select value={productResolutionLinkId} onChange={e => setProductResolutionLinkId(e.target.value)} style={{ width: "100%", padding: "9px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "8px", marginBottom: "12px" }}>
-                  <option value="">Select product...</option>
-                  {products.filter(p => p.status === "active").map(p => <option key={p.product_id} value={p.product_id}>{p.product_name}</option>)}
-                </select>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button type="button" onClick={handleProductResolutionLink} disabled={!productResolutionLinkId || isSavingProductResolution} style={{ flex: 1, padding: "9px", fontSize: "13px", fontWeight: 600, cursor: productResolutionLinkId && !isSavingProductResolution ? "pointer" : "not-allowed", background: productResolutionLinkId ? "#1d4ed8" : "#e2e8f0", color: productResolutionLinkId ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px", opacity: isSavingProductResolution ? 0.6 : 1 }}>{isSavingProductResolution ? "Linking..." : "Link & Continue"}</button>
-                  <button type="button" onClick={() => setProductResolutionMode(null)} style={{ padding: "9px 16px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>Back</button>
-                </div>
-              </div>
-            )}
-            {productResolutionMode === "create" && (
-              <div>
-                {/* Invoice context — pre-filled info shown as reference */}
-                {productResolution.suggestedQuantity != null && (
-                  <div style={{ padding: "8px 10px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "6px", fontSize: "12px", color: "#15803d", marginBottom: "10px" }}>
-                    📦 From invoice: <strong>{productResolution.suggestedQuantity} units</strong> @ <strong>${productResolution.suggestedCost?.toFixed(2)}</strong> each — will be added to receiving session
-                  </div>
-                )}
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
-                  <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Product Name *</label>
-                    <input type="text" value={productResolutionNewName} onChange={e => setProductResolutionNewName(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                  </div>
-                  {productResolution.barcode && (
-                    <div style={{ fontSize: "12px", color: "#64748b", background: "#fef9c3", padding: "5px 8px", borderRadius: "5px" }}>🏷 Barcode <code style={{ padding: "1px 4px" }}>{productResolution.barcode}</code> will be linked to this product.</div>
-                  )}
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Cost Price ($)</label>
-                      <input type="number" step="0.01" min="0" value={productResolutionNewCost} onChange={e => setProductResolutionNewCost(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Selling Price ($) *</label>
-                      <input type="number" step="0.01" min="0" value={productResolutionNewSelling} onChange={e => setProductResolutionNewSelling(e.target.value)} placeholder="0.00" style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }} />
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Category</label>
-                    <select value={productResolutionCategoryId} onChange={e => setProductResolutionCategoryId(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
-                      <option value="">Uncategorized</option>
-                      {categories.filter(c => c.status === "active").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "3px" }}>Supplier</label>
-                    <select value={productResolutionSupplierId} onChange={e => setProductResolutionSupplierId(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}>
-                      <option value="">No supplier</option>
-                      {suppliers.filter(s => s.status === "active").map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button type="button" onClick={handleProductResolutionCreate} disabled={!productResolutionNewName.trim() || !productResolutionNewSelling || isSavingProductResolution} style={{ flex: 1, padding: "9px", fontSize: "13px", fontWeight: 600, cursor: productResolutionNewName.trim() && productResolutionNewSelling && !isSavingProductResolution ? "pointer" : "not-allowed", background: productResolutionNewName.trim() && productResolutionNewSelling ? "#15803d" : "#e2e8f0", color: productResolutionNewName.trim() && productResolutionNewSelling ? "#fff" : "#94a3b8", border: "none", borderRadius: "6px", opacity: isSavingProductResolution ? 0.6 : 1 }}>{isSavingProductResolution ? "Creating..." : "Create & Continue"}</button>
-                  <button type="button" onClick={() => setProductResolutionMode(null)} style={{ padding: "9px 16px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>Back</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ProductResolutionDialog
+        request={productResolution}
+        mode={productResolutionMode}
+        setMode={setProductResolutionMode}
+        linkId={productResolutionLinkId}
+        setLinkId={setProductResolutionLinkId}
+        newName={productResolutionNewName}
+        setNewName={setProductResolutionNewName}
+        newCost={productResolutionNewCost}
+        setNewCost={setProductResolutionNewCost}
+        newSelling={productResolutionNewSelling}
+        setNewSelling={setProductResolutionNewSelling}
+        categoryId={productResolutionCategoryId}
+        setCategoryId={setProductResolutionCategoryId}
+        supplierId={productResolutionSupplierId}
+        setSupplierId={setProductResolutionSupplierId}
+        isSaving={isSavingProductResolution}
+        products={products}
+        categories={categories}
+        suppliers={suppliers}
+        onLink={handleProductResolutionLink}
+        onCreate={handleProductResolutionCreate}
+        onClose={closeProductResolution}
+      />
 
       {/* Signature Modal */}
       {signPoId && (() => {
@@ -10829,317 +6611,26 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         );
       })()}
 
-      {printPo && (() => {
-        const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
-        const grandTotal = printPo.items.reduce((sum, i) => sum + Number(i.line_total), 0);
-        return (
-          <>
-            <style>{`
-              @media print {
-                @page { margin: 0.5in; }
-                .app-root > * { display: none !important; }
-                #po-print-modal {
-                  display: block !important;
-                  position: static !important;
-                  background: none !important;
-                  align-items: stretch !important;
-                  justify-content: flex-start !important;
-                  height: auto !important;
-                  inset: auto !important;
-                }
-                #po-print-content {
-                  box-shadow: none !important;
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  width: 100% !important;
-                  max-width: 100% !important;
-                  max-height: none !important;
-                  overflow: visible !important;
-                  font-size: 12pt !important;
-                }
-                #po-print-content table { page-break-inside: avoid; break-inside: avoid; }
-                #po-print-actions { display: none !important; }
-              }
-            `}</style>
-            <div
-              id="po-print-modal"
-              style={{
-                position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-              }}
-              onClick={(e) => { if (e.target === e.currentTarget) setPrintPo(null); }}
-            >
-              <div
-                id="po-print-content"
-                style={{
-                  background: "#fff", padding: "36px 40px", width: "760px", maxHeight: "90vh", overflowY: "auto",
-                  fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: "14px", lineHeight: "1.4",
-                  boxShadow: "0 4px 24px rgba(0,0,0,0.2)", color: "#1e293b",
-                }}
-              >
-                {/* Header */}
-                {(() => {
-                  const statusLabel = printPo.po.status === "ordered" ? "Awaiting Delivery" : printPo.po.status === "received" ? "Received" : printPo.po.status === "partially_received" ? "Partially Received" : "Draft";
-                  const statusBg = printPo.po.status === "ordered" ? "#dbeafe" : printPo.po.status === "received" ? "#dcfce7" : printPo.po.status === "partially_received" ? "#fef9c3" : "#f1f5f9";
-                  const statusColor = printPo.po.status === "ordered" ? "#1e40af" : printPo.po.status === "received" ? "#15803d" : printPo.po.status === "partially_received" ? "#a16207" : "#475569";
-                  const sigs = getPoSignatures(printPo.po.id);
-                  return (
-                    <>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: "12px", borderBottom: "3px solid #0f172a" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: "16px" }}>
-                        <img src="/logo.png" alt="" style={{ height: "72px", width: "auto", maxWidth: "72px", objectFit: "contain", marginTop: "2px" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                        <div>
-                          {businessName && <div style={{ fontWeight: 800, fontSize: "24px", color: "#0f172a", letterSpacing: "-0.01em" }}>{businessName}</div>}
-                          {businessAddress && <div style={{ fontSize: "13px", color: "#475569", lineHeight: "1.5" }}>{businessAddress}</div>}
-                          {businessPhone && <div style={{ fontSize: "13px", color: "#475569" }}>{fmtPhone(businessPhone)}</div>}
-                          {businessEmail && <div style={{ fontSize: "13px", color: "#475569" }}>{businessEmail}</div>}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: "right", minWidth: "220px" }}>
-                        <div style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", letterSpacing: "0.03em" }}>PURCHASE ORDER</div>
-                        <div style={{ fontSize: "17px", fontWeight: 700, color: "#334155", marginTop: "2px", fontFamily: "monospace" }}>{printPo.po.po_number}</div>
-                        <div style={{ fontSize: "13px", color: "#64748b", marginTop: "2px" }}>{new Date(printPo.po.created_at).toLocaleDateString()}</div>
-                      </div>
-                    </div>
+      <POPrintModal
+        printPo={printPo}
+        products={products}
+        businessName={businessName}
+        businessAddress={businessAddress}
+        businessPhone={businessPhone}
+        businessEmail={businessEmail}
+        fmtPhone={fmtPhone}
+        getPoSignatures={getPoSignatures}
+        onClose={() => setPrintPo(null)}
+      />
 
-                    {/* Supplier + Details row */}
-                    <div style={{ display: "flex", gap: "12px", margin: "14px 0 10px" }}>
-                      <div style={{ flex: 2, border: "1px solid #cbd5e1", borderRadius: "5px", padding: "10px 14px" }}>
-                        <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "3px" }}>Supplier</div>
-                        <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "2px" }}>{printPo.supplier?.name ?? "Unknown"}</div>
-                        <div style={{ fontSize: "12px", color: printPo.supplier?.contact_name ? "#475569" : "#94a3b8" }}>
-                          Contact: {printPo.supplier?.contact_name || "_______________"}&emsp;
-                          Phone: {printPo.supplier?.phone ? fmtPhone(printPo.supplier.phone) : "_______________"}
-                        </div>
-                        <div style={{ fontSize: "12px", color: printPo.supplier?.email ? "#475569" : "#94a3b8", marginTop: "1px" }}>
-                          Email: {printPo.supplier?.email || "_______________"}
-                        </div>
-                      </div>
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
-                        <div style={{ border: "1px solid #cbd5e1", borderRadius: "5px", padding: "8px 12px", flex: 1 }}>
-                          <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "2px" }}>Status</div>
-                          <span style={{ fontSize: "13px", fontWeight: 700, padding: "2px 10px", borderRadius: "10px", background: statusBg, color: statusColor }}>{statusLabel}</span>
-                        </div>
-                        <div style={{ border: "1px solid #cbd5e1", borderRadius: "5px", padding: "8px 12px", flex: 1 }}>
-                          <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "2px" }}>Expected Delivery</div>
-                          <div style={{ fontSize: "13px", color: "#94a3b8" }}>_______________</div>
-                        </div>
-                        <div style={{ border: "1px solid #cbd5e1", borderRadius: "5px", padding: "8px 12px", flex: 1 }}>
-                          <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "2px" }}>Prepared By</div>
-                          <div style={{ fontSize: "13px", color: "#94a3b8" }}>_______________</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {printPo.po.notes && (
-                      <div style={{ fontSize: "13px", color: "#475569", marginBottom: "10px", padding: "8px 12px", background: "#f8fafc", borderRadius: "4px", borderLeft: "3px solid #94a3b8" }}>
-                        <strong style={{ color: "#334155" }}>Notes:</strong> {printPo.po.notes}
-                      </div>
-                    )}
-
-                    {/* Items table */}
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", border: "1px solid #94a3b8" }}>
-                      <thead>
-                        <tr style={{ background: "#1e293b" }}>
-                          <th style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff" }}>Product</th>
-                          <th style={{ textAlign: "center", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff", width: "70px" }}>Qty</th>
-                          <th style={{ textAlign: "right", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff", width: "100px" }}>Unit Cost</th>
-                          <th style={{ textAlign: "right", padding: "9px 12px", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#fff", width: "100px" }}>Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {printPo.items.map((item, i) => (
-                          <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
-                            <td style={{ padding: "10px 12px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
-                            <td style={{ padding: "10px 12px", textAlign: "center" }}>{item.quantity}</td>
-                            <td style={{ padding: "10px 12px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
-                            <td style={{ padding: "10px 12px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    {/* Grand total box */}
-                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0" }}>
-                      <div style={{ background: "#f1f5f9", border: "1px solid #94a3b8", borderTop: "none", borderRadius: "0 0 5px 5px", padding: "10px 24px", minWidth: "240px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: "14px", fontWeight: 600, color: "#475569" }}>Grand Total</span>
-                        <span style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>${grandTotal.toFixed(2)}</span>
-                      </div>
-                    </div>
-
-                    {/* Signature blocks */}
-                    <div style={{ display: "flex", gap: "32px", marginTop: "24px" }}>
-                      <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: "5px", padding: "10px 14px" }}>
-                        <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", marginBottom: "6px" }}>Manager Approval</div>
-                        {sigs.manager ? (
-                          <>
-                            <img src={sigs.manager.dataUrl} alt="Manager signature" style={{ height: "44px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block" }} />
-                            <div style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>{new Date(sigs.manager.signedAt).toLocaleString()}</div>
-                          </>
-                        ) : (
-                          <div style={{ borderBottom: "1px solid #334155", height: "36px", marginBottom: "4px" }} />
-                        )}
-                        <div style={{ fontSize: "11px", color: "#94a3b8", borderTop: "1px solid #e2e8f0", paddingTop: "4px", marginTop: "4px" }}>Name: _______________&emsp;Date: ________</div>
-                      </div>
-                      <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: "5px", padding: "10px 14px" }}>
-                        <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", marginBottom: "6px" }}>Supplier Acceptance</div>
-                        {sigs.supplier ? (
-                          <>
-                            <img src={sigs.supplier.dataUrl} alt="Supplier signature" style={{ height: "44px", width: "auto", maxWidth: "100%", objectFit: "contain", display: "block" }} />
-                            <div style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>{new Date(sigs.supplier.signedAt).toLocaleString()}</div>
-                          </>
-                        ) : (
-                          <div style={{ borderBottom: "1px solid #334155", height: "36px", marginBottom: "4px" }} />
-                        )}
-                        <div style={{ fontSize: "11px", color: "#94a3b8", borderTop: "1px solid #e2e8f0", paddingTop: "4px", marginTop: "4px" }}>Name: _______________&emsp;Date: ________</div>
-                      </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div style={{ textAlign: "center", marginTop: "18px", paddingTop: "8px", borderTop: "1px solid #e2e8f0", fontSize: "11px", color: "#94a3b8" }}>
-                      Generated by Wegn-Store&emsp;|&emsp;Generated: {new Date().toLocaleString()}
-                    </div>
-                    </>
-                  );
-                })()}
-
-                <div id="po-print-actions" style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "16px" }}>
-                  <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "5px" }}>
-                    Print
-                  </button>
-                  <button onClick={() => setPrintPo(null)} style={{ padding: "8px 20px", cursor: "pointer" }}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </>
-        );
-      })()}
-
-      {receipt && (() => {
-        const productMap = Object.fromEntries(products.map((p) => [p.product_id, p.product_name]));
-        return (
-          <>
-            <style>{`
-              @media print {
-                @page { size: 80mm auto; margin: 0; }
-                html, body { margin: 0; padding: 0; }
-                .app-root > * { display: none !important; }
-                #receipt-modal {
-                  display: block !important;
-                  position: static !important;
-                  background: none !important;
-                  padding: 0 !important;
-                  margin: 0 !important;
-                }
-                #receipt-print {
-                  box-shadow: none !important;
-                  margin: 0 !important;
-                  padding: 3mm 2.5mm 4mm 2.5mm !important;
-                  width: 100% !important;
-                  max-width: 80mm !important;
-                  box-sizing: border-box !important;
-                  font-size: 12pt !important;
-                  color: #000 !important;
-                  -webkit-print-color-adjust: exact;
-                  print-color-adjust: exact;
-                }
-                #receipt-print * { color: #000 !important; }
-                #receipt-actions { display: none !important; }
-              }
-            `}</style>
-            <div
-              id="receipt-modal"
-              style={{
-                position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-              }}
-              onClick={(e) => { if (e.target === e.currentTarget) setReceipt(null); }}
-            >
-              <div
-                id="receipt-print"
-                style={{
-                  background: "#fff", padding: "32px 28px", width: "320px",
-                  fontFamily: "monospace", fontSize: "13px", lineHeight: "1.6",
-                  boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
-                }}
-              >
-                <div style={{ textAlign: "center", marginBottom: "6px" }}>
-                  <img src="/logo.png" alt="Wegn-Store" style={{ height: "56px", width: "auto", maxWidth: "160px", objectFit: "contain" }} />
-                </div>
-                {businessName && (
-                  <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", marginBottom: "4px" }}>{businessName}</div>
-                )}
-                {(businessPhone || businessAddress) && (
-                  <div style={{ textAlign: "center", fontSize: "12px", color: "#555", marginBottom: "4px" }}>
-                    {businessPhone && <div>{businessPhone}</div>}
-                    {businessAddress && <div>{businessAddress}</div>}
-                  </div>
-                )}
-                <div style={{ textAlign: "center", borderBottom: "1px dashed #333", paddingBottom: "8px", marginBottom: "8px" }}>
-                  {receipt.sale.status === "voided" && (
-                    <div style={{ color: "#b91c1c", fontWeight: "bold" }}>** VOIDED **</div>
-                  )}
-                  <div>Sale: {receipt.sale.id.slice(0, 8)}</div>
-                  <div>{new Date(receipt.sale.created_at).toLocaleString()}</div>
-                </div>
-
-                {receipt.items.map((item, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
-                    <span style={{ flex: 1 }}>{productMap[item.product_id] ?? item.product_id.slice(0, 8)} x{item.quantity}</span>
-                    <span>${Number(item.line_total).toFixed(2)}</span>
-                  </div>
-                ))}
-
-                <div style={{ borderTop: "1px dashed #333", marginTop: "8px", paddingTop: "8px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Subtotal</span><span>${Number(receipt.sale.subtotal).toFixed(2)}</span>
-                  </div>
-                  {Number(receipt.sale.discount_amount) > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}>
-                      <span>Discount</span><span>−${Number(receipt.sale.discount_amount).toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Tax</span><span>${Number(receipt.sale.tax).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "15px", marginTop: "4px" }}>
-                    <span>TOTAL</span><span>${Number(receipt.sale.total).toFixed(2)}</span>
-                  </div>
-                  <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod === "other" && receipt.paymentReference ? receipt.paymentReference : receipt.paymentMethod}{receipt.paymentMethod !== "other" && receipt.paymentReference ? ` (Ref: ${receipt.paymentReference})` : ""}</div>
-                </div>
-
-                {(receipt.pointsEarned !== undefined || receipt.pointsRedeemed !== undefined) && (
-                  <div style={{ borderTop: "1px dashed #333", marginTop: "8px", paddingTop: "8px", fontSize: "12px" }}>
-                    {receipt.pointsRedeemed !== undefined && receipt.pointsRedeemed > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", color: "#7c3aed" }}>
-                        <span>Points Redeemed</span><span>−{receipt.pointsRedeemed} pts</span>
-                      </div>
-                    )}
-                    {receipt.pointsEarned !== undefined && receipt.pointsEarned > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", color: "#15803d" }}>
-                        <span>Points Earned</span><span>+{receipt.pointsEarned} pts</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div style={{ textAlign: "center", borderTop: "1px dashed #333", marginTop: "6px", paddingTop: "6px", paddingBottom: "2mm" }}>
-                  Thank you!
-                </div>
-                <div id="receipt-actions" style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "center" }}>
-                  <button onClick={() => window.print()} style={{ padding: "8px 20px", cursor: "pointer", fontWeight: "bold" }}>
-                    Print
-                  </button>
-                  <button onClick={() => setReceipt(null)} style={{ padding: "8px 20px", cursor: "pointer" }}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </>
-        );
-      })()}
+      <ReceiptPrintModal
+        receipt={receipt}
+        products={products}
+        businessName={businessName}
+        businessPhone={businessPhone}
+        businessAddress={businessAddress}
+        onClose={() => setReceipt(null)}
+      />
     </div>
   );
 }
