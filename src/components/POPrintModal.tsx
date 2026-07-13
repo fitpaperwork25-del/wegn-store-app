@@ -1,4 +1,4 @@
-import type { PurchaseOrder, POItem, Supplier, PoSignatures } from "../App";
+import type { PurchaseOrder, POItem, Supplier, PoSignatures } from "../lib/purchasing/types";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
 

@@ -1,4 +1,4 @@
-import type { Receipt } from "../App";
+import type { Receipt } from "../lib/sales/types";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
 

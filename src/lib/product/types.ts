@@ -26,3 +26,13 @@ export type Category = {
   status: string;
   created_at: string;
 };
+
+export type ProductResolutionRequest = {
+  barcode?: string;
+  description?: string;
+  suggestedCost?: number;
+  suggestedQuantity?: number;   // invoice line qty — shown as context, not initial stock
+  suggestedSupplierId?: string; // pre-select supplier
+  onResolved: (productId: string) => Promise<void>;
+  onSkipped: () => void;
+};

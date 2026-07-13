@@ -1,5 +1,5 @@
-import type { ProductResolutionRequest, Supplier } from "../App";
-import type { ProductStock, Category } from "../lib/product/types";
+import type { Supplier } from "../lib/purchasing/types";
+import type { ProductStock, Category, ProductResolutionRequest } from "../lib/product/types";
 
 type ProductResolutionDialogProps = {
   request: ProductResolutionRequest | null;

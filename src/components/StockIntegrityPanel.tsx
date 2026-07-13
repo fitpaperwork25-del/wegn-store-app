@@ -1,5 +1,5 @@
 import React from "react";
-import type { InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail } from "../App";
+import type { InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail } from "../lib/inventory/types";
 import type { ProductStock } from "../lib/product/types";
 
 type StockIntegrityPanelProps = {

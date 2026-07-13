@@ -1,4 +1,4 @@
-import type { SupplierStatementRow } from "../App";
+import type { SupplierStatementRow } from "../lib/purchasing/types";
 
 /**
  * Renders a single supplier's invoice/payment statement, expanded inline

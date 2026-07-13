@@ -1,4 +1,4 @@
-import type { Sale, SaleItemRecord, EodPayment } from "../../App";
+import type { Sale, SaleItemRecord, EodPayment } from "./types";
 import type { ProductStock } from "../product/types";
 
 /**

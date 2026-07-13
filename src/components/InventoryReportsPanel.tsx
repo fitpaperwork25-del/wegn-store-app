@@ -1,5 +1,8 @@
 import React from "react";
-import type { PurchaseOrder, Supplier, Sale, SaleItemRecord, Customer, Employee, ReturnRecord } from "../App";
+import type { PurchaseOrder, Supplier } from "../lib/purchasing/types";
+import type { Sale, SaleItemRecord, ReturnRecord } from "../lib/sales/types";
+import type { Customer } from "../lib/customers/types";
+import type { Employee } from "../lib/staff/types";
 import type { ProductStock } from "../lib/product/types";
 import { getTotalInventoryValue } from "../lib/product/productHelpers";
 

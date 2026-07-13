@@ -1,5 +1,5 @@
 import React from "react";
-import type { Supplier } from "../App";
+import type { Supplier } from "../lib/purchasing/types";
 import type { ProductStock } from "../lib/product/types";
 
 type PurchasingTabProps = {

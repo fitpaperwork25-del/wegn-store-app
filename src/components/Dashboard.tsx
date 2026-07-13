@@ -1,5 +1,6 @@
 import React from "react";
-import type { Sale, Employee, DrawerSession } from "../App";
+import type { Sale } from "../lib/sales/types";
+import type { Employee, DrawerSession } from "../lib/staff/types";
 import type { SalesTodaySummary } from "../lib/sales/salesHelpers";
 import type { PurchasingDashboardSummary } from "../lib/purchasing/purchasingHelpers";
 import type { CustomersDashboardSummary } from "../lib/customers/customersHelpers";

@@ -1,4 +1,4 @@
-import type { PurchaseOrder } from "../../App";
+import type { PurchaseOrder } from "./types";
 
 /**
  * Pure, stateless Purchasing-domain helpers for the Dashboard summary.

@@ -1,5 +1,5 @@
 import React from "react";
-import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow } from "../App";
+import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow } from "../lib/purchasing/types";
 import type { ProductStock } from "../lib/product/types";
 import { SupplierStatementPanel } from "./SupplierStatementPanel";
 

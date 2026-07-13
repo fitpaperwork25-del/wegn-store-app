@@ -1,5 +1,6 @@
 import React from "react";
-import type { Customer, Sale, SaleItemRecord, EodPayment, LoyaltyTransaction } from "../App";
+import type { Customer, LoyaltyTransaction } from "../lib/customers/types";
+import type { Sale, SaleItemRecord, EodPayment } from "../lib/sales/types";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
 

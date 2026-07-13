@@ -1,4 +1,4 @@
-import type { Customer, LoyaltyTransaction } from "../../App";
+import type { Customer, LoyaltyTransaction } from "./types";
 
 /**
  * Pure, stateless Customers-domain helpers for the Dashboard summary.

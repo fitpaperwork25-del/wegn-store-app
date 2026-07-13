@@ -1,4 +1,4 @@
-import type { AnalyticsData } from "../App";
+import type { AnalyticsData } from "../lib/sales/types";
 
 type SalesAnalyticsReportProps = {
   analyticsData: AnalyticsData;

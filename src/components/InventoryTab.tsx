@@ -1,11 +1,7 @@
 import React from "react";
-import type {
-  Supplier,
-  ProductResolutionRequest,
-  Transaction,
-  BulkRow,
-} from "../App";
-import type { ProductStock } from "../lib/product/types";
+import type { Supplier } from "../lib/purchasing/types";
+import type { Transaction, BulkRow } from "../lib/inventory/types";
+import type { ProductStock, ProductResolutionRequest } from "../lib/product/types";
 
 type ActiveReceivingSession = {
   id: string;

@@ -1,5 +1,5 @@
 import React from "react";
-import type { Supplier, PurchaseOrder, POItem } from "../App";
+import type { Supplier, PurchaseOrder, POItem } from "../lib/purchasing/types";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
 
