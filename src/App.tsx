@@ -83,6 +83,14 @@ export type SupplierStatementRow = {
   paid: number;
 };
 
+/** A PO's manager and/or supplier signature, keyed by role. Backed by the
+ * po_signatures table (business_id-scoped) as of Phase 7 of the
+ * stabilization effort — previously localStorage-only. */
+export type PoSignatures = {
+  manager?: { dataUrl: string; signedAt: string };
+  supplier?: { dataUrl: string; signedAt: string };
+};
+
 export type ReceiptItem = {
   product_id: string;
   quantity: number;
@@ -502,34 +510,67 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [signRole, setSignRole] = useState<"manager" | "supplier">("manager");
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sigDrawingRef = useRef(false);
+  const [poSignatures, setPoSignatures] = useState<Record<string, PoSignatures>>({});
+  const [preferredQtys, setPreferredQtys] = useState<Record<string, number>>({});
 
-  function getPoSignatures(poId: string): { manager?: { dataUrl: string; signedAt: string }; supplier?: { dataUrl: string; signedAt: string } } {
-    try { return JSON.parse(localStorage.getItem(`po-sig-${poId}`) || "{}"); } catch { return {}; }
+  // PO signatures — business_id-scoped in Supabase (po_signatures), cached per-PO in
+  // poSignatures once loaded via loadPoSignatures (defined further down, after the
+  // effects that call it — see the signPoId effect and handlePrintPO). getPoSignatures
+  // stays a synchronous reader of that cache so every existing call site (including
+  // render-time reads in POPrintModal and the Sign PO modal) is unaffected.
+  function getPoSignatures(poId: string): PoSignatures {
+    return poSignatures[poId] ?? {};
   }
-  function savePoSignature(poId: string, role: "manager" | "supplier", dataUrl: string) {
-    const sigs = getPoSignatures(poId);
-    sigs[role] = { dataUrl, signedAt: new Date().toISOString() };
-    localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
+  async function savePoSignature(poId: string, role: "manager" | "supplier", dataUrl: string) {
+    const signedAt = new Date().toISOString();
+    setPoSignatures(prev => ({ ...prev, [poId]: { ...prev[poId], [role]: { dataUrl, signedAt } } }));
+    const { error } = await supabase
+      .from("po_signatures")
+      .upsert({ business_id: businessId, purchase_order_id: poId, role, data_url: dataUrl, signed_at: signedAt }, { onConflict: "purchase_order_id,role" });
+    if (error) console.error("[PoSignatures] save error:", error);
   }
-  function clearPoSignature(poId: string, role: "manager" | "supplier") {
-    const sigs = getPoSignatures(poId);
-    delete sigs[role];
-    localStorage.setItem(`po-sig-${poId}`, JSON.stringify(sigs));
+  async function clearPoSignature(poId: string, role: "manager" | "supplier") {
+    setPoSignatures(prev => {
+      const next = { ...(prev[poId] ?? {}) };
+      delete next[role];
+      return { ...prev, [poId]: next };
+    });
+    const { error } = await supabase
+      .from("po_signatures")
+      .delete()
+      .eq("purchase_order_id", poId)
+      .eq("role", role);
+    if (error) console.error("[PoSignatures] clear error:", error);
   }
 
+  // Preferred reorder quantity — business_id-scoped in Supabase (product_reorder_preferences),
+  // loaded once at mount via loadPreferredQtys (defined further down, after the mount
+  // effect that calls it). getPrefQty stays a synchronous reader of preferredQtys so every
+  // existing call site (including render-time reads in SupplierManagementPanel) is unaffected.
   function getPrefQty(productId: string): number | null {
-    try { const v = localStorage.getItem(`pref-qty-${productId}`); return v ? Number(v) : null; } catch { return null; }
+    return preferredQtys[productId] ?? null;
   }
-  function savePrefQty(productId: string, qty: number) {
-    localStorage.setItem(`pref-qty-${productId}`, String(qty));
+  async function savePrefQty(productId: string, qty: number) {
+    setPreferredQtys(prev => ({ ...prev, [productId]: qty }));
+    const { error } = await supabase
+      .from("product_reorder_preferences")
+      .upsert({ business_id: businessId, product_id: productId, preferred_qty: qty, updated_at: new Date().toISOString() }, { onConflict: "product_id" });
+    if (error) console.error("[PreferredQty] save error:", error);
   }
 
-  function getPoEmailLog(poId: string): { lastEmailedAt: string; count: number } | null {
-    try { const v = localStorage.getItem(`po-email-${poId}`); return v ? JSON.parse(v) : null; } catch { return null; }
-  }
-  function savePoEmailLog(poId: string) {
-    const prev = getPoEmailLog(poId);
-    localStorage.setItem(`po-email-${poId}`, JSON.stringify({ lastEmailedAt: new Date().toISOString(), count: (prev?.count ?? 0) + 1 }));
+  // PO email log — business_id-scoped in Supabase (po_email_log). Write-only from the UI
+  // today (nothing currently reads it back for display), so no cached state is needed.
+  async function savePoEmailLog(poId: string) {
+    const { data: existing } = await supabase
+      .from("po_email_log")
+      .select("email_count")
+      .eq("purchase_order_id", poId)
+      .maybeSingle();
+    const newCount = (existing?.email_count ?? 0) + 1;
+    const { error } = await supabase
+      .from("po_email_log")
+      .upsert({ business_id: businessId, purchase_order_id: poId, email_count: newCount, last_emailed_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "purchase_order_id" });
+    if (error) console.error("[PoEmailLog] save error:", error);
   }
 
   async function handleEmailPO(po: PurchaseOrder) {
@@ -771,6 +812,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     loadEmployees();
     loadStockCounts();
     loadBatches();
+    loadPreferredQtys();
   }, []);
 
   // businessId is set asynchronously by loadBusiness(); these two loaders guard
@@ -783,10 +825,33 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
   useEffect(() => { loadSales(); }, [salesDateRange]);
+  // Populate the signature cache for whichever PO the Sign PO modal is opened for.
+  useEffect(() => { if (signPoId) loadPoSignatures(signPoId); }, [signPoId]);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedProductSearch(productSearch), 150);
     return () => clearTimeout(t);
   }, [productSearch]);
+
+  async function loadPoSignatures(poId: string) {
+    const { data, error } = await supabase
+      .from("po_signatures")
+      .select("role, data_url, signed_at")
+      .eq("purchase_order_id", poId);
+    if (error) { console.error("[PoSignatures] load error:", error); return; }
+    const sigs: PoSignatures = {};
+    for (const row of data ?? []) {
+      sigs[row.role as "manager" | "supplier"] = { dataUrl: row.data_url, signedAt: row.signed_at };
+    }
+    setPoSignatures(prev => ({ ...prev, [poId]: sigs }));
+  }
+
+  async function loadPreferredQtys() {
+    const { data, error } = await supabase
+      .from("product_reorder_preferences")
+      .select("product_id, preferred_qty");
+    if (error) { console.error("[PreferredQty] load error:", error); return; }
+    setPreferredQtys(Object.fromEntries((data ?? []).map(r => [r.product_id, Number(r.preferred_qty)])));
+  }
 
   useEffect(() => {
     if (cart.length === 0) return;
@@ -2172,6 +2237,9 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .order("created_at", { ascending: true });
     if (error || !data) { console.error(error); return; }
     const supplier = suppliers.find(s => s.id === po.supplier_id) ?? null;
+    // Awaited so signatures are already in the cache before the print modal's first
+    // render — matches the old localStorage read's zero-delay feel.
+    await loadPoSignatures(po.id);
     setPrintPo({ po, items: data as POItem[], supplier });
   }
 

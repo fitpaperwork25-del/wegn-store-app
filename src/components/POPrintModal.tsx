@@ -1,11 +1,6 @@
-import type { PurchaseOrder, POItem, Supplier } from "../App";
+import type { PurchaseOrder, POItem, Supplier, PoSignatures } from "../App";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
-
-type PoSignatures = {
-  manager?: { dataUrl: string; signedAt: string };
-  supplier?: { dataUrl: string; signedAt: string };
-};
 
 type POPrintModalProps = {
   printPo: { po: PurchaseOrder; items: POItem[]; supplier: Supplier | null } | null;
