@@ -56,8 +56,8 @@ export type StockCountRecord = {
   business_id: string;
   status: string;
   notes: string | null;
-  completed_at: string;
-  created_at: string;
+  completed_at: string | null;
+  created_at: string | null;
 };
 
 export type StockCountItemDetail = {

@@ -168,7 +168,7 @@ export function Dashboard({
             <div className="dash-card-label">Cash Drawer</div>
             <div className="dash-card-value" style={{ color: drawerSession ? "#15803d" : "#475569" }}>{drawerSession ? "OPEN" : "CLOSED"}</div>
             <div className="dash-card-helper">
-              {drawerSession ? `Since ${new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
+              {drawerSession ? `Since ${new Date(drawerSession.opened_at as string).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
             </div>
           </div>
         </div>

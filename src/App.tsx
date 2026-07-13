@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "./supabase";
+import type { Database } from "./lib/database.types";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { SettingsTab } from "./components/SettingsTab";
@@ -582,7 +583,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   // Filters to completed sales only (excludes voided/returned) scoped to current drawer session.
   const drawerCashSales = useMemo(() => {
     if (!drawerSession) return 0;
-    const openedAt = new Date(drawerSession.opened_at);
+    const openedAt = new Date(drawerSession.opened_at as string);
     const validIds = new Set(
       sales
         .filter(s => s.status === 'completed' && new Date(s.created_at) >= openedAt)
@@ -822,7 +823,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setBusinessEmail(data.email ?? "");
       setBusinessAddress(data.address ?? "");
       setBusinessTaxRate(Number(data.tax_rate ?? 0));
-      setSellingPolicy(data.selling_policy ?? "fixed_pricing");
+      setSellingPolicy((data.selling_policy ?? "fixed_pricing") as "fixed_pricing" | "negotiated_pricing" | "negotiated_with_approval");
       setBusinessError("");
     }
     setBusinessLoaded(true);
@@ -878,7 +879,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     e.preventDefault();
     if (!editBizName.trim() || !businessId) return;
     const parsedTaxRate = Math.min(100, Math.max(0, parseFloat(editBizTaxRate) || 0));
-    const updatePayload: Record<string, unknown> = {
+    const updatePayload: Database['public']['Tables']['businesses']['Update'] = {
       name: editBizName.trim(),
       phone: editBizPhone.trim() || null,
       email: editBizEmail.trim() || null,
@@ -1160,7 +1161,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setDrawerLoading(true);
     const { error } = await supabase
       .from('drawer_paid_outs')
-      .insert({ business_id: businessId, drawer_session_id: drawerSession.id, amount, reason: paidOutReason || null });
+      .insert({ business_id: businessId, drawer_session_id: drawerSession.id, amount, reason: (paidOutReason || null) as string });
     if (error) { setMessage({ text: 'Paid out failed: ' + error.message, type: "error" }); setDrawerLoading(false); return; }
     setPaidOutAmount('');
     setPaidOutReason('');
@@ -1260,7 +1261,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         name: row.name,
         sku: row.sku || null,
         barcode: row.barcode || null,
-        cost_price: costPrice,
+        cost_price: costPrice as number,
         selling_price: Number(row.selling_price),
         reorder_level: Number(row.reorder_level) || 10,
         average_cost: costPrice ?? 0,
@@ -1725,7 +1726,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
         // Phase 2: remaining writes in parallel (all values computed from pre-receive snapshot)
         const newReceived = (item.quantity_received ?? 0) + clampedQty;
-        const poiPayload: Record<string, unknown> = { quantity_received: newReceived };
+        const poiPayload: Database['public']['Tables']['purchase_order_items']['Update'] = { quantity_received: newReceived };
         if (lineNote) poiPayload.receive_notes = lineNote;
 
         const [avgCostRes, txRes] = await Promise.all([
@@ -2841,7 +2842,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         name: newName,
         sku: newSku || null,
         barcode: newBarcode || null,
-        cost_price: costPrice || null,
+        cost_price: (costPrice || null) as number,
         selling_price: Number(newSellingPrice),
         reorder_level: newReorderLevel ? Number(newReorderLevel) : 10,
         average_cost: costPrice,
@@ -3066,7 +3067,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .in("receiving_session_id", allSessions.map(s => s.id));
     const paidByInvoice: Record<string, number> = {};
     for (const p of (payments ?? [])) {
-      const inv = sessionToInvoice[p.receiving_session_id];
+      const inv = p.receiving_session_id ? sessionToInvoice[p.receiving_session_id] : undefined;
       if (inv) paidByInvoice[inv] = (paidByInvoice[inv] ?? 0) + Number(p.amount);
     }
     setSupplierStatement([...byInvoice.values()].map(s => ({
@@ -4313,7 +4314,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                 </span>
               )}
               <span style={{ fontSize: "13px", color: "#374151" }}>
-                Opened: <strong>{new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong>
+                Opened: <strong>{new Date(drawerSession.opened_at as string).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong>
               </span>
               <span style={{ fontSize: "13px", color: "#374151" }}>
                 Float: <strong>${Number(drawerSession.opening_float).toFixed(2)}</strong>
@@ -5521,7 +5522,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         <div style={{ border: "1px solid #16a34a", borderRadius: "8px", padding: "20px", marginBottom: "32px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
             <strong style={{ color: "#15803d", fontSize: "16px" }}>Drawer Open</strong>
-            <span style={{ fontSize: "13px", color: "#888" }}>Opened: {new Date(drawerSession.opened_at).toLocaleString()}</span>
+            <span style={{ fontSize: "13px", color: "#888" }}>Opened: {new Date(drawerSession.opened_at as string).toLocaleString()}</span>
           </div>
 
           {/* Session summary cards */}
