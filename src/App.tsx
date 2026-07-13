@@ -9,8 +9,13 @@ import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
 import { POPrintModal } from "./components/POPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
 import { InventoryTab } from "./components/InventoryTab";
+import { Dashboard } from "./components/Dashboard";
 import type { ProductStock, Category } from "./lib/product/types";
 import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips, getTotalInventoryValue } from "./lib/product/productHelpers";
+import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
+import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
+import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
+import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
 
 export type Transaction = {
   id: string;
@@ -959,61 +964,25 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     return { revenue, txCount, avgTx, itemsSold, discounts, taxCollected, cashTotal, cardTotal, otherTotal, dailyRows, productRows, rangeLabel };
   }, [sales, saleItems, allPayments, productIdMap, analyticsRange]);
 
-  // Dashboard derived values — replaces the full computation block in the Dashboard IIFE.
-  const dashboardData = useMemo(() => {
-    const today = new Date();
-    const todaySales = sales.filter(s => {
-      const d = new Date(s.created_at);
-      return s.status === 'completed' &&
-        d.getFullYear() === today.getFullYear() &&
-        d.getMonth() === today.getMonth() &&
-        d.getDate() === today.getDate();
-    });
-    const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
-    const txnCount = todaySales.length;
-    const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
-    const openPoCount = purchaseOrders.filter(po =>
-      po.status === 'draft' || po.status === 'ordered' || po.status === 'partially_received'
-    ).length;
-    const activeCustomerCount = customers.filter(c => c.status === 'active').length;
-    const pointsOutstanding = Math.max(0, loyaltyTransactions.reduce((sum, lt) => sum + lt.points, 0));
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const isYesterday = (d: string) => {
-      const dt = new Date(d);
-      return dt.getFullYear() === yesterday.getFullYear() &&
-        dt.getMonth() === yesterday.getMonth() &&
-        dt.getDate() === yesterday.getDate();
-    };
-    const yesterdaySales = sales.filter(s => s.status === 'completed' && isYesterday(s.created_at));
-    const yesterdaySaleIds = new Set(yesterdaySales.map(s => s.id));
-    const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + Number(s.total), 0);
-    const yesterdayItems = saleItems.filter(si => yesterdaySaleIds.has(si.sale_id));
-    const productCostMap = Object.fromEntries(products.map(p => [p.product_id, p.average_cost ?? 0]));
-    const yesterdayCOGS = yesterdayItems.reduce((sum, si) => sum + si.quantity * (productCostMap[si.product_id] ?? 0), 0);
-    const yesterdayProfit = (yesterdayItems.length > 0 && yesterdayCOGS > 0) ? yesterdayRevenue - yesterdayCOGS : null;
-    const yesterdayCash = allPayments
-      .filter(p => yesterdaySaleIds.has(p.sale_id) && p.payment_method === 'cash' && p.payment_type !== 'refund')
-      .reduce((sum, p) => sum + Number(p.amount), 0);
-    const qtyBySku: Record<string, number> = {};
-    for (const si of yesterdayItems) qtyBySku[si.product_id] = (qtyBySku[si.product_id] ?? 0) + si.quantity;
-    const topYesterdayId = Object.entries(qtyBySku).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-    const topYesterdayName = topYesterdayId ? (productIdMap[topYesterdayId]?.product_name ?? '—') : '—';
-    const topYesterdayQty = topYesterdayId ? qtyBySku[topYesterdayId] : 0;
-    const buyTodayCost = lowStockProducts.reduce((sum, p) => {
-      const qty = Math.max(1, (p.reorder_level ?? 0) - p.quantity_on_hand);
-      return sum + qty * (p.cost_price ?? p.average_cost ?? 0);
-    }, 0);
-    const receivablePOs = purchaseOrders.filter(po => po.status === 'ordered' || po.status === 'partially_received');
-    const outOfStockCount = lowStockProducts.filter(p => p.quantity_on_hand === 0).length;
-    return {
-      revenueToday, txnCount, avgSale,
-      openPoCount, activeCustomerCount, pointsOutstanding,
-      yesterdaySalesCount: yesterdaySales.length, yesterdayRevenue, yesterdayProfit, yesterdayCash,
-      topYesterdayId, topYesterdayName, topYesterdayQty,
-      buyTodayCost, receivablePOs, outOfStockCount,
-    };
-  }, [sales, saleItems, allPayments, products, purchaseOrders, customers, loyaltyTransactions, lowStockProducts, productIdMap]);
+  // Dashboard derived values — one memo per owning domain (Sales, Purchasing,
+  // Customers, Inventory), each backed by a pure helper in lib/<domain>/.
+  // Replaces the single wide-dependency dashboardData memo.
+  const salesTodaySummary = useMemo(
+    () => getSalesTodaySummary(sales, saleItems, allPayments, products, productIdMap),
+    [sales, saleItems, allPayments, products, productIdMap]
+  );
+  const purchasingDashboardSummary = useMemo(
+    () => getPurchasingDashboardSummary(purchaseOrders),
+    [purchaseOrders]
+  );
+  const customersDashboardSummary = useMemo(
+    () => getCustomersDashboardSummary(customers, loyaltyTransactions),
+    [customers, loyaltyTransactions]
+  );
+  const inventoryDashboardSummary = useMemo(
+    () => getInventoryDashboardSummary(lowStockProducts),
+    [lowStockProducts]
+  );
 
   async function loadBusiness() {
     const { data, error } = await supabase
@@ -5291,205 +5260,21 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       />{/* end inventory */}
 
       {/* ── DASHBOARD TAB ── */}
-      <div style={{ display: activeTab === 'dashboard' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <div className="page-header">
-        <h2 className="page-title">Dashboard</h2>
-        <p className="page-subtitle">Today's store performance and operating status</p>
-      </div>
-
-      {(() => {
-        const { revenueToday, txnCount, avgSale, openPoCount, activeCustomerCount, pointsOutstanding,
-                yesterdaySalesCount, yesterdayRevenue, yesterdayProfit, yesterdayCash,
-                topYesterdayId, topYesterdayName, topYesterdayQty,
-                buyTodayCost, receivablePOs, outOfStockCount } = dashboardData;
-        const lowStockCount = lowStockProducts.length;
-
-        const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
-        const pCardStyle: React.CSSProperties = { borderRadius: "10px", padding: "16px 18px", background: "#fff", display: "flex", flexDirection: "column", gap: "6px" };
-        const pCardBtn: React.CSSProperties = { marginTop: "10px", padding: "7px 0", borderRadius: "6px", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "13px", width: "100%" };
-
-        return (
-          <>
-            {/* ── Today's Priorities ── */}
-            <div style={{ ...sLabel, marginBottom: "10px" }}>Today's Priorities</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "12px", marginBottom: "28px" }}>
-
-              {/* 1. Buy Today */}
-              <div style={{ ...pCardStyle, border: lowStockCount > 0 ? "1px solid #fca5a5" : "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: lowStockCount > 0 ? "#dc2626" : "#94a3b8" }}>Buy Today</div>
-                <div style={{ fontSize: "22px", fontWeight: 700, color: lowStockCount > 0 ? "#0f172a" : "#94a3b8" }}>{lowStockCount} item{lowStockCount !== 1 ? "s" : ""}</div>
-                <div style={{ fontSize: "12px", color: "#64748b" }}>
-                  {lowStockCount > 0
-                    ? (buyTodayCost > 0 ? `Est. $${buyTodayCost.toFixed(2)}` : "Cost data unavailable")
-                    : "All products stocked"}
-                </div>
-                <button
-                  onClick={() => setActiveTab("purchasing")}
-                  disabled={lowStockCount === 0}
-                  style={{ ...pCardBtn, background: lowStockCount > 0 ? "#1d4ed8" : "#e2e8f0", color: lowStockCount > 0 ? "#fff" : "#94a3b8", cursor: lowStockCount > 0 ? "pointer" : "not-allowed" }}
-                >Reorder Center</button>
-              </div>
-
-              {/* 2. Receive Today */}
-              <div style={{ ...pCardStyle, border: receivablePOs.length > 0 ? "1px solid #fed7aa" : "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: receivablePOs.length > 0 ? "#ea580c" : "#94a3b8" }}>Receive Today</div>
-                <div style={{ fontSize: "22px", fontWeight: 700, color: receivablePOs.length > 0 ? "#0f172a" : "#94a3b8" }}>{receivablePOs.length} PO{receivablePOs.length !== 1 ? "s" : ""}</div>
-                <div style={{ fontSize: "12px", color: "#64748b" }}>
-                  {receivablePOs.length > 0 ? "waiting to be received" : "No orders pending"}
-                </div>
-                <button
-                  onClick={() => setActiveTab("purchasing")}
-                  disabled={receivablePOs.length === 0}
-                  style={{ ...pCardBtn, background: receivablePOs.length > 0 ? "#ea580c" : "#e2e8f0", color: receivablePOs.length > 0 ? "#fff" : "#94a3b8", cursor: receivablePOs.length > 0 ? "pointer" : "not-allowed" }}
-                >Open Purchasing</button>
-              </div>
-
-              {/* 3. Inventory Alerts */}
-              <div style={{ ...pCardStyle, border: outOfStockCount > 0 ? "1px solid #fca5a5" : lowStockCount > 0 ? "1px solid #fde68a" : "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: outOfStockCount > 0 ? "#dc2626" : lowStockCount > 0 ? "#b45309" : "#94a3b8" }}>Inventory Alerts</div>
-                <div style={{ fontSize: "22px", fontWeight: 700, color: outOfStockCount > 0 ? "#dc2626" : "#0f172a" }}>{outOfStockCount} out of stock</div>
-                <div style={{ fontSize: "12px", color: "#64748b" }}>{lowStockCount} total below reorder level</div>
-                <button
-                  onClick={() => setActiveTab("inventory")}
-                  style={{ ...pCardBtn, background: outOfStockCount > 0 ? "#dc2626" : lowStockCount > 0 ? "#b45309" : "#64748b", color: "#fff" }}
-                >View Inventory</button>
-              </div>
-
-              {/* 4. Yesterday's Summary */}
-              <div style={{ ...pCardStyle, border: "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Yesterday's Summary</div>
-                {yesterdaySalesCount === 0 ? (
-                  <div style={{ fontSize: "13px", color: "#94a3b8", flex: 1 }}>No sales recorded</div>
-                ) : (
-                  <>
-                    <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>${yesterdayRevenue.toFixed(2)}</div>
-                    <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7 }}>
-                      <div>Profit: <strong>{yesterdayProfit !== null ? `$${yesterdayProfit.toFixed(2)}` : "—"}</strong></div>
-                      <div>Cash: <strong>${yesterdayCash.toFixed(2)}</strong></div>
-                      {topYesterdayId && <div>Top: <strong>{topYesterdayName}</strong> ({topYesterdayQty})</div>}
-                    </div>
-                  </>
-                )}
-                <button
-                  onClick={() => { setActiveTab("employees"); if (!showEod) handleToggleEod(); }}
-                  style={{ ...pCardBtn, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}
-                >View EOD Report</button>
-              </div>
-
-            </div>
-
-            {/* ── Today's Operations ── */}
-            <div style={sLabel}>Today's Operations</div>
-            <div className="dash-card-row">
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>$</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Revenue Today</div>
-                  <div className="dash-card-value">${revenueToday.toFixed(2)}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>&#x1D4E1;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Transactions</div>
-                  <div className="dash-card-value">{txnCount}</div>
-                  <div className="dash-card-helper">{txnCount === 1 ? "sale" : "sales"} today</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#eef2ff", color: "#4f46e5" }}>&#x2197;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Average Sale</div>
-                  <div className="dash-card-value">{txnCount > 0 ? `$${avgSale.toFixed(2)}` : "—"}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: lowStockCount > 0 ? "#fef2f2" : "#f0fdf4", color: lowStockCount > 0 ? "#dc2626" : "#16a34a" }}>&#x26A0;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Low Stock Items</div>
-                  <div className="dash-card-value" style={lowStockCount > 0 ? { color: "#dc2626" } : undefined}>{lowStockCount}</div>
-                  <div className="dash-card-helper">{lowStockCount > 0 ? "need reorder" : "all stocked"}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Business Status ── */}
-            <div style={sLabel}>Business Status</div>
-            <div className="dash-card-row">
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: drawerSession ? "#f0fdf4" : "#f1f5f9", color: drawerSession ? "#16a34a" : "#64748b" }}>&#x1F4B0;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Cash Drawer</div>
-                  <div className="dash-card-value" style={{ color: drawerSession ? "#15803d" : "#475569" }}>{drawerSession ? "OPEN" : "CLOSED"}</div>
-                  <div className="dash-card-helper">
-                    {drawerSession ? `Since ${new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
-                  </div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: openPoCount > 0 ? "#fff7ed" : "#f1f5f9", color: openPoCount > 0 ? "#ea580c" : "#64748b" }}>&#x1F4C4;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Open Purchase Orders</div>
-                  <div className="dash-card-value">{openPoCount}</div>
-                  <div className="dash-card-helper">{openPoCount > 0 ? "pending" : "none pending"}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#f0fdfa", color: "#0d9488" }}>&#x1F465;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Active Customers</div>
-                  <div className="dash-card-value">{activeCustomerCount}</div>
-                </div>
-              </div>
-              <div className="dash-card">
-                <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>&#x2605;</div>
-                <div className="dash-card-body">
-                  <div className="dash-card-label">Loyalty Points</div>
-                  <div className="dash-card-value">{pointsOutstanding.toLocaleString()}</div>
-                  <div className="dash-card-helper">outstanding</div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Recent Sales ── */}
-            <div style={sLabel}>Recent Sales</div>
-            {recentSales.length === 0 ? (
-              <p style={{ color: "#94a3b8", fontSize: "14px", margin: "0" }}>No completed sales yet.</p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Sale #</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Total</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Cashier</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentSales.map((s, i) => {
-                      const cashierName = s.cashier_id
-                        ? (employeeMap[s.cashier_id]?.name ?? s.cashier_id.slice(0, 8))
-                        : "—";
-                      return (
-                        <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                          <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>{s.id.slice(0, 8)}…</td>
-                          <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>${Number(s.total).toFixed(2)}</td>
-                          <td style={{ padding: "10px 14px", color: "#64748b" }}>{cashierName}</td>
-                          <td style={{ padding: "10px 14px", color: "#94a3b8" }}>{new Date(s.created_at).toLocaleString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        );
-      })()}
-
-      </div>{/* end dashboard */}
+      <Dashboard
+        visible={activeTab === 'dashboard' && !!businessId && appUnlocked}
+        salesSummary={salesTodaySummary}
+        purchasingSummary={purchasingDashboardSummary}
+        customersSummary={customersDashboardSummary}
+        inventorySummary={inventoryDashboardSummary}
+        lowStockCount={lowStockProducts.length}
+        recentSales={recentSales}
+        drawerSession={drawerSession}
+        employeeMap={employeeMap}
+        onGoToReorderCenter={() => setActiveTab("purchasing")}
+        onOpenPurchasing={() => setActiveTab("purchasing")}
+        onViewInventory={() => setActiveTab("inventory")}
+        onViewEodReport={() => { setActiveTab("employees"); if (!showEod) handleToggleEod(); }}
+      />{/* end dashboard */}
 
 
       {/* ── PURCHASING TAB ── */}
