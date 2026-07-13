@@ -69,6 +69,7 @@
 | `historyExpanded` Fragment boundary | JSX parse error | Closing `</>)}` must match opening `{historyExpanded && (<>` exactly |
 | `average_cost` calculation in post | Cost accuracy | Weighted average formula must use `quantity_on_hand` before the new receive is added |
 | `sessionPayments` transient state | "Fully paid" guard | Payment "remaining" is computed from this; it resets on page reload |
+| `expandedCustomerId` state | Cross-module row-expansion collision | Shared by both `CustomersTab.tsx` (row-expansion keyed by raw customer `id`) and `SupplierManagementPanel.tsx` (row-expansion keyed by `` `sup-${supplierId}` ``). The prefix avoids ID collisions today, but any change to either component's expansion logic must account for the other consumer. Identified during the Phase 8 stabilization audit; not a bug, left as-is (renaming/splitting would touch both components' prop interfaces for a purely cosmetic gain). |
 
 ---
 
