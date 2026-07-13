@@ -8,6 +8,8 @@ import { ProductResolutionDialog } from "./components/ProductResolutionDialog";
 import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
 import { POPrintModal } from "./components/POPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
+import { SupplierManagementPanel } from "./components/SupplierManagementPanel";
+import { PurchaseOrderLifecyclePanel } from "./components/PurchaseOrderLifecyclePanel";
 import { InventoryTab } from "./components/InventoryTab";
 import { CatalogManagementPanel } from "./components/CatalogManagementPanel";
 import { StockIntegrityPanel } from "./components/StockIntegrityPanel";
@@ -63,6 +65,22 @@ export type POItem = {
   line_total: number;
   created_at: string;
   receive_notes: string | null;
+};
+
+/**
+ * One invoiced-and-deduplicated line of a Supplier Statement. This is a
+ * Purchasing-domain view, but it is assembled entirely from Inventory-owned
+ * data: `receiving_sessions` (invoice_number/invoice_date/invoice_total)
+ * joined against `supplier_payments` (aggregated into `paid`) — both tables
+ * are written exclusively by Inventory's Receiving Session History feature,
+ * never by anything in Purchasing itself. See loadSupplierStatement().
+ */
+export type SupplierStatementRow = {
+  session_id: string;
+  invoice_number: string;
+  invoice_date: string | null;
+  invoice_total: number;
+  paid: number;
 };
 
 export type ReceiptItem = {
@@ -390,7 +408,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
-  const [supplierStatement, setSupplierStatement] = useState<{ session_id: string; invoice_number: string; invoice_date: string | null; invoice_total: number; paid: number }[]>([]);
+  const [supplierStatement, setSupplierStatement] = useState<SupplierStatementRow[]>([]);
   const [isLoadingStatement, setIsLoadingStatement] = useState(false);
   const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
   const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
@@ -5314,6 +5332,22 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       <PurchasingTab
         visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
         suppliers={suppliers}
+        products={products}
+        reorderSuppliers={reorderSuppliers} setReorderSuppliers={setReorderSuppliers}
+        reorderFilter={reorderFilter} setReorderFilter={setReorderFilter}
+        reorderSelected={reorderSelected} setReorderSelected={setReorderSelected}
+        reorderQtys={reorderQtys} setReorderQtys={setReorderQtys}
+        aiReorderRecs={aiReorderRecs}
+        collapsedSuppliers={collapsedSuppliers} setCollapsedSuppliers={setCollapsedSuppliers}
+        bulkSupplierId={bulkSupplierId} setBulkSupplierId={setBulkSupplierId}
+        onBulkAssignSupplier={handleBulkAssignSupplier}
+        onBatchReorderPO={handleBatchReorderPO}
+      />{/* end purchasing */}
+
+      {/* ── SUPPLIER MANAGEMENT (Purchasing sub-domain) ── */}
+      <SupplierManagementPanel
+        visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
+        suppliers={suppliers}
         supName={supName} setSupName={setSupName}
         supContact={supContact} setSupContact={setSupContact}
         supPhone={supPhone} setSupPhone={setSupPhone}
@@ -5344,15 +5378,13 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         getPrefQty={getPrefQty}
         savePrefQty={savePrefQty}
         onCreateCatalogPO={handleCreateCatalogPO}
-        reorderSuppliers={reorderSuppliers} setReorderSuppliers={setReorderSuppliers}
-        reorderFilter={reorderFilter} setReorderFilter={setReorderFilter}
-        reorderSelected={reorderSelected} setReorderSelected={setReorderSelected}
-        reorderQtys={reorderQtys} setReorderQtys={setReorderQtys}
-        aiReorderRecs={aiReorderRecs}
-        collapsedSuppliers={collapsedSuppliers} setCollapsedSuppliers={setCollapsedSuppliers}
-        bulkSupplierId={bulkSupplierId} setBulkSupplierId={setBulkSupplierId}
-        onBulkAssignSupplier={handleBulkAssignSupplier}
-        onBatchReorderPO={handleBatchReorderPO}
+      />{/* end supplier management */}
+
+      {/* ── PURCHASE ORDER LIFECYCLE (Purchasing sub-domain) ── */}
+      <PurchaseOrderLifecyclePanel
+        visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
+        suppliers={suppliers}
+        products={products}
         poSupplierId={poSupplierId} setPoSupplierId={setPoSupplierId}
         poNotes={poNotes} setPoNotes={setPoNotes}
         onCreatePO={handleCreatePO}
@@ -5387,7 +5419,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         receiveLineNotes={receiveLineNotes} setReceiveLineNotes={setReceiveLineNotes}
         onConfirmReceive={handleConfirmReceive}
         isConfirmingReceive={isConfirmingReceive}
-      />{/* end purchasing */}
+      />{/* end purchase order lifecycle */}
 
       {/* ── CUSTOMERS TAB ── */}
       <CustomersTab
