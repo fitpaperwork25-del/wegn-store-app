@@ -22,7 +22,7 @@ import { Dashboard } from "./components/Dashboard";
 import { SalesAnalyticsReport } from "./components/SalesAnalyticsReport";
 import { InventoryReportsPanel } from "./components/InventoryReportsPanel";
 import type { ProductStock, Category, ProductResolutionRequest } from "./lib/product/types";
-import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips } from "./lib/product/productHelpers";
+import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips, generateWegnBarcode } from "./lib/product/productHelpers";
 import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
 import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
@@ -2907,6 +2907,29 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       if (conflict) { setMessage({ text: `Barcode already assigned to ${conflict.product_name}`, type: "error" }); return; }
     }
 
+    // If no barcode was entered, generate a unique internal "Wegn" barcode so
+    // the product is scannable at POS immediately. A manually-entered barcode
+    // is preserved exactly as the original code stored it (newBarcode, not
+    // the trimmed `barcode` above) - untouched, not even whitespace-trimmed.
+    let finalBarcode: string | null = newBarcode || null;
+    if (!finalBarcode) {
+      const MAX_GENERATION_ATTEMPTS = 5;
+      for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
+        const candidate = generateWegnBarcode();
+        const { data: existing, error: checkErr } = await supabase
+          .from("products")
+          .select("id")
+          .eq("barcode", candidate)
+          .maybeSingle();
+        if (checkErr) { console.error(checkErr); break; }
+        if (!existing) { finalBarcode = candidate; break; }
+      }
+      if (!finalBarcode) {
+        setMessage({ text: "Could not generate a unique barcode. Product was not created — please retry.", type: "error" });
+        return;
+      }
+    }
+
     const initialStock = Number(newInitialStock);
 
     const costPrice = newCostPrice ? Number(newCostPrice) : 0;
@@ -2917,7 +2940,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         business_id: businessId,
         name: newName,
         sku: newSku || null,
-        barcode: newBarcode || null,
+        barcode: finalBarcode,
         cost_price: (costPrice || null) as number,
         selling_price: Number(newSellingPrice),
         reorder_level: newReorderLevel ? Number(newReorderLevel) : 10,
