@@ -1,0 +1,164 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { verifyAuth } from "../_shared/verifyAuth.ts";
+import { resolveRoleForRequest } from "../_shared/resolveRole.ts";
+import { findTool, toAiToolDefinitions } from "../_shared/toolRegistry.ts";
+import { AnthropicProvider } from "../_shared/anthropicProvider.ts";
+import { writeAuditLog } from "../_shared/auditLog.ts";
+import type { AiMessage, AiToolCallRequest } from "../_shared/aiProvider.ts";
+
+/**
+ * Store Manager Copilot orchestrator - Foundation Milestone 1.
+ *
+ * Request flow (matches the approved design): authenticated user -> this
+ * function -> permission check -> search_products tool -> tenant-scoped
+ * database query -> validated tool result -> model response -> audit-log
+ * record.
+ *
+ * Unlike supabase/functions/process-invoice, every request here is
+ * verified against the caller's real JWT before anything else happens -
+ * there is no code path that reaches the model or a tool without a
+ * resolved business_id and role.
+ */
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const SYSTEM_PROMPT = `You are the Wegn Store Manager Copilot. You answer questions about a single store's data by calling the tools available to you - you never answer from general knowledge about "this store," only from what a tool returns. If a tool returns no results, say so plainly. If the information needed isn't available through any tool you have (including because it was withheld for the current user's role), say so plainly rather than guessing or hinting at what the answer might be.`;
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+  });
+}
+
+serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: CORS_HEADERS });
+  }
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
+
+  if (!supabaseUrl || !supabaseAnonKey || !anthropicApiKey) {
+    return jsonResponse({ error: "Server is not configured (missing required secrets)" }, 500);
+  }
+
+  let requestBody: { message?: string; conversationId?: string; employeeId?: string | null; priorMessages?: AiMessage[] };
+  try {
+    requestBody = await req.json();
+  } catch {
+    return jsonResponse({ error: "Invalid JSON body" }, 400);
+  }
+
+  const { message, conversationId, employeeId } = requestBody;
+  if (typeof message !== "string" || message.trim().length === 0) {
+    return jsonResponse({ error: "message is required" }, 400);
+  }
+  if (typeof conversationId !== "string" || conversationId.trim().length === 0) {
+    return jsonResponse({ error: "conversationId is required" }, 400);
+  }
+
+  // 1. Authenticated user verification + tenant resolution.
+  const verified = await verifyAuth({
+    supabaseUrl,
+    supabaseAnonKey,
+    authorizationHeader: req.headers.get("Authorization"),
+  });
+  if (!verified) {
+    return jsonResponse({ error: "Not authenticated" }, 401);
+  }
+
+  // 2. Full role-permission resolution - never a tenant-only fallback.
+  const roleResult = await resolveRoleForRequest(verified.supabase, {
+    businessId: verified.businessId,
+    authUserId: verified.authUserId,
+    requestedEmployeeId: typeof employeeId === "string" ? employeeId : null,
+  });
+  if (!roleResult.ok) {
+    return jsonResponse({ error: `Not authorized (${roleResult.reason})` }, 403);
+  }
+
+  const ctx = { businessId: verified.businessId, role: roleResult.role, supabase: verified.supabase };
+  const provider = new AnthropicProvider(anthropicApiKey);
+
+  const messages: AiMessage[] = [
+    ...(Array.isArray(requestBody.priorMessages) ? requestBody.priorMessages : []),
+    { role: "user", content: message },
+  ];
+
+  try {
+    // 3-8. Tool invocation (permission-gated inside executeTool), model
+    // response, audit logging - all driven by the provider's internal loop.
+    const result = await provider.runConversation({
+      systemPrompt: SYSTEM_PROMPT,
+      messages,
+      tools: toAiToolDefinitions(),
+      executeTool: async (call: AiToolCallRequest) => {
+        const tool = findTool(call.toolName);
+
+        if (!tool) {
+          await writeAuditLog(verified.supabase, {
+            businessId: ctx.businessId,
+            authUserId: verified.authUserId,
+            resolvedRole: ctx.role,
+            employeeId: roleResult.employeeId,
+            conversationId,
+            toolName: call.toolName,
+            inputJson: call.input,
+            status: "denied",
+            errorMessage: "Unknown tool",
+          });
+          return { toolCallId: call.toolCallId, toolName: call.toolName, output: { error: "Unknown tool" } };
+        }
+
+        if (tool.allowedRoles && !tool.allowedRoles.includes(ctx.role)) {
+          await writeAuditLog(verified.supabase, {
+            businessId: ctx.businessId,
+            authUserId: verified.authUserId,
+            resolvedRole: ctx.role,
+            employeeId: roleResult.employeeId,
+            conversationId,
+            toolName: call.toolName,
+            inputJson: call.input,
+            status: "denied",
+            errorMessage: "Role not permitted to use this tool",
+          });
+          return { toolCallId: call.toolCallId, toolName: call.toolName, output: { error: "Not permitted for your role" } };
+        }
+
+        const execResult = await tool.execute(call.input, ctx);
+
+        await writeAuditLog(verified.supabase, {
+          businessId: ctx.businessId,
+          authUserId: verified.authUserId,
+          resolvedRole: ctx.role,
+          employeeId: roleResult.employeeId,
+          conversationId,
+          toolName: call.toolName,
+          inputJson: call.input,
+          status: execResult.ok ? "success" : "error",
+          errorMessage: execResult.ok ? undefined : execResult.error,
+        });
+
+        return {
+          toolCallId: call.toolCallId,
+          toolName: call.toolName,
+          output: execResult.ok ? execResult.value : { error: execResult.error },
+        };
+      },
+    });
+
+    return jsonResponse({ text: result.text });
+  } catch (err) {
+    console.error("[copilot-orchestrator] conversation failed:", err);
+    return jsonResponse({ error: "The Copilot couldn't complete that request. Please try again." }, 502);
+  }
+});
