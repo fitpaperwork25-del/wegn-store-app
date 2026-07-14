@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "./supabase";
+import type { Database } from "./lib/database.types";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { SettingsTab } from "./components/SettingsTab";
@@ -10,6 +11,10 @@ import { POPrintModal } from "./components/POPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
 import { SupplierManagementPanel } from "./components/SupplierManagementPanel";
 import { PurchaseOrderLifecyclePanel } from "./components/PurchaseOrderLifecyclePanel";
+import { POSCheckoutPanel } from "./components/POSCheckoutPanel";
+import { SalesHistoryPanel } from "./components/SalesHistoryPanel";
+import { CashDrawerReportPanel } from "./components/CashDrawerReportPanel";
+import { StaffPanel } from "./components/StaffPanel";
 import { InventoryTab } from "./components/InventoryTab";
 import { CatalogManagementPanel } from "./components/CatalogManagementPanel";
 import { StockIntegrityPanel } from "./components/StockIntegrityPanel";
@@ -22,9 +27,9 @@ import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
 import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
 import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
-import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail } from "./lib/inventory/types";
+import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail, SessionItem, SessionHistoryItem, SessionPayment } from "./lib/inventory/types";
 import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow, PoSignatures } from "./lib/purchasing/types";
-import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
+import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReturnItemSummary, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
 import type { Customer, LoyaltyTransaction } from "./lib/customers/types";
 import type { Employee, DrawerSession, DrawerPaidOut } from "./lib/staff/types";
 
@@ -73,7 +78,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [rapidReceiveExceptions, setRapidReceiveExceptions] = useState<{ barcode: string; reason: string }[]>([]);
   const [isPostingRapidReceive, setIsPostingRapidReceive] = useState(false);
   const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string; invoice_number?: string | null; supplier_name?: string | null } | null>(null);
-  const [sessionItems, setSessionItems] = useState<{ id: string; product_id: string; quantity_received: number; unit_cost: number }[]>([]);
+  const [sessionItems, setSessionItems] = useState<SessionItem[]>([]);
   const [sessionScanInput, setSessionScanInput] = useState("");
   // ── Unified Product Resolution dialog ──
   const [productResolution, setProductResolution] = useState<ProductResolutionRequest | null>(null);
@@ -126,7 +131,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editFreightCost, setEditFreightCost] = useState("");
   const [editAdditionalCost, setEditAdditionalCost] = useState("");
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
-  const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
+  const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, SessionHistoryItem[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
@@ -134,7 +139,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
   const [supplierStatement, setSupplierStatement] = useState<SupplierStatementRow[]>([]);
   const [isLoadingStatement, setIsLoadingStatement] = useState(false);
-  const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
+  const [sessionPayments, setSessionPayments] = useState<Record<string, SessionPayment[]>>({});
   const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
   const [editPaymentDate, setEditPaymentDate] = useState("");
   const [editPaymentAmount, setEditPaymentAmount] = useState("");
@@ -403,7 +408,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [posRedeemPoints, setPosRedeemPoints] = useState("");
   const [analyticsRange, setAnalyticsRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
-  const [allReturnItems, setAllReturnItems] = useState<{ sale_id: string; product_id: string; quantity_returned: number }[]>([]);
+  const [allReturnItems, setAllReturnItems] = useState<ReturnItemSummary[]>([]);
   const [allPoItems, setAllPoItems] = useState<POItem[]>([]);
   const [allPayments, setAllPayments] = useState<EodPayment[]>([]);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
@@ -582,7 +587,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   // Filters to completed sales only (excludes voided/returned) scoped to current drawer session.
   const drawerCashSales = useMemo(() => {
     if (!drawerSession) return 0;
-    const openedAt = new Date(drawerSession.opened_at);
+    const openedAt = new Date(drawerSession.opened_at as string);
     const validIds = new Set(
       sales
         .filter(s => s.status === 'completed' && new Date(s.created_at) >= openedAt)
@@ -822,7 +827,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setBusinessEmail(data.email ?? "");
       setBusinessAddress(data.address ?? "");
       setBusinessTaxRate(Number(data.tax_rate ?? 0));
-      setSellingPolicy(data.selling_policy ?? "fixed_pricing");
+      setSellingPolicy((data.selling_policy ?? "fixed_pricing") as "fixed_pricing" | "negotiated_pricing" | "negotiated_with_approval");
       setBusinessError("");
     }
     setBusinessLoaded(true);
@@ -878,7 +883,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     e.preventDefault();
     if (!editBizName.trim() || !businessId) return;
     const parsedTaxRate = Math.min(100, Math.max(0, parseFloat(editBizTaxRate) || 0));
-    const updatePayload: Record<string, unknown> = {
+    const updatePayload: Database['public']['Tables']['businesses']['Update'] = {
       name: editBizName.trim(),
       phone: editBizPhone.trim() || null,
       email: editBizEmail.trim() || null,
@@ -1160,7 +1165,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     setDrawerLoading(true);
     const { error } = await supabase
       .from('drawer_paid_outs')
-      .insert({ business_id: businessId, drawer_session_id: drawerSession.id, amount, reason: paidOutReason || null });
+      .insert({ business_id: businessId, drawer_session_id: drawerSession.id, amount, reason: (paidOutReason || null) as string });
     if (error) { setMessage({ text: 'Paid out failed: ' + error.message, type: "error" }); setDrawerLoading(false); return; }
     setPaidOutAmount('');
     setPaidOutReason('');
@@ -1260,7 +1265,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         name: row.name,
         sku: row.sku || null,
         barcode: row.barcode || null,
-        cost_price: costPrice,
+        cost_price: costPrice as number,
         selling_price: Number(row.selling_price),
         reorder_level: Number(row.reorder_level) || 10,
         average_cost: costPrice ?? 0,
@@ -1314,7 +1319,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const { data } = await supabase
       .from('return_items')
       .select('sale_id, product_id, quantity_returned');
-    setAllReturnItems((data as { sale_id: string; product_id: string; quantity_returned: number }[]) ?? []);
+    setAllReturnItems((data as ReturnItemSummary[]) ?? []);
   }
 
   async function loadReturnHistory() {
@@ -1725,7 +1730,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
         // Phase 2: remaining writes in parallel (all values computed from pre-receive snapshot)
         const newReceived = (item.quantity_received ?? 0) + clampedQty;
-        const poiPayload: Record<string, unknown> = { quantity_received: newReceived };
+        const poiPayload: Database['public']['Tables']['purchase_order_items']['Update'] = { quantity_received: newReceived };
         if (lineNote) poiPayload.receive_notes = lineNote;
 
         const [avgCostRes, txRes] = await Promise.all([
@@ -2841,7 +2846,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         name: newName,
         sku: newSku || null,
         barcode: newBarcode || null,
-        cost_price: costPrice || null,
+        cost_price: (costPrice || null) as number,
         selling_price: Number(newSellingPrice),
         reorder_level: newReorderLevel ? Number(newReorderLevel) : 10,
         average_cost: costPrice,
@@ -3066,7 +3071,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .in("receiving_session_id", allSessions.map(s => s.id));
     const paidByInvoice: Record<string, number> = {};
     for (const p of (payments ?? [])) {
-      const inv = sessionToInvoice[p.receiving_session_id];
+      const inv = p.receiving_session_id ? sessionToInvoice[p.receiving_session_id] : undefined;
       if (inv) paidByInvoice[inv] = (paidByInvoice[inv] ?? 0) + Number(p.amount);
     }
     setSupplierStatement([...byInvoice.values()].map(s => ({
@@ -3086,7 +3091,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("receiving_session_id", sessionId)
       .order("created_at", { ascending: true });
     if (error) { console.error("[SupplierPayment] Load error:", error); return; }
-    setSessionPayments(prev => ({ ...prev, [sessionId]: (data ?? []) as { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[] }));
+    setSessionPayments(prev => ({ ...prev, [sessionId]: (data ?? []) as SessionPayment[] }));
   }
 
   async function handleSavePayment(sessionId: string, supplierId: string, remaining: number) {
@@ -3117,7 +3122,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setIsSavingPayment(false);
       return;
     }
-    setSessionPayments(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), data as { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }] }));
+    setSessionPayments(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), data as SessionPayment] }));
     setPaymentPanelSessionId(null);
     setEditPaymentDate("");
     setEditPaymentAmount("");
@@ -3220,7 +3225,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("receiving_session_id", sessionId)
       .order("created_at", { ascending: true });
     if (error) { console.error("[SessionHistory] Load items error:", error); return; }
-    const items = (data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[];
+    const items = (data ?? []) as SessionHistoryItem[];
     setSessionHistoryItems(prev => ({ ...prev, [sessionId]: items }));
     const session = sessionHistory.find(s => s.id === sessionId);
     if (session && session.invoice_total > 0) {
@@ -3255,7 +3260,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("receiving_session_id", sessionId)
       .order("created_at", { ascending: true });
     if (error) { console.error("[ReceivingSession] Load items error:", error); return; }
-    setSessionItems((data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
+    setSessionItems((data ?? []) as SessionItem[]);
   }
 
   async function handleStartReceivingSession() {
@@ -3420,7 +3425,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               quantity_received: 1,
               unit_cost: resolved?.cost_price ?? 0,
             }).select("id, product_id, quantity_received, unit_cost").single();
-            if (!itemErr && itemData) setSessionItems(prev => [...prev, itemData as { id: string; product_id: string; quantity_received: number; unit_cost: number }]);
+            if (!itemErr && itemData) setSessionItems(prev => [...prev, itemData as SessionItem]);
           }
           playScanBeep(true);
         },
@@ -4267,649 +4272,113 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       )}
 
       {/* ── POS TAB ── */}
-      <div style={{ display: activeTab === 'pos' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <div className="page-header">
-        <h2 className="page-title">Point of Sale</h2>
-        <p className="page-subtitle">Scan items, process sales, manage returns and receipts</p>
-      </div>
-
-      {/* Drawer status bar — always visible */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "10px 16px", borderRadius: "8px", marginBottom: "16px", flexWrap: "wrap", gap: "8px",
-        background: drawerSession ? "#f0fdf4" : "#fef2f2",
-        border: `1px solid ${drawerSession ? "#bbf7d0" : "#fecaca"}`,
-      }}>
-        {!drawerSession ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#dc2626", display: "inline-block", flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, color: "#dc2626", fontSize: "14px" }}>Drawer Closed</span>
-            </div>
-            <form onSubmit={handleOpenDrawer} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                type="number" min="0" step="0.01" placeholder="Opening float ($)"
-                value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)}
-                style={{ padding: "6px 10px", width: "150px", fontSize: "13px", border: "1px solid #fca5a5", borderRadius: "6px" }}
-              />
-              <button type="submit" disabled={drawerLoading || !openingFloat}
-                style={{ padding: "6px 16px", fontWeight: 600, fontSize: "13px", background: drawerLoading || !openingFloat ? "#fca5a5" : "#dc2626", color: "#fff", border: "none", borderRadius: "6px", cursor: drawerLoading || !openingFloat ? "not-allowed" : "pointer" }}
-              >
-                {drawerLoading ? "Opening…" : "Open Drawer"}
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#16a34a", display: "inline-block", flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, color: "#15803d", fontSize: "14px" }}>Drawer Open</span>
-              </div>
-              {drawerSession.cashier_id && (
-                <span style={{ fontSize: "13px", color: "#374151" }}>
-                  Cashier: <strong>{employees.find(e => e.id === drawerSession.cashier_id)?.name ?? "Unknown"}</strong>
-                </span>
-              )}
-              <span style={{ fontSize: "13px", color: "#374151" }}>
-                Opened: <strong>{new Date(drawerSession.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong>
-              </span>
-              <span style={{ fontSize: "13px", color: "#374151" }}>
-                Float: <strong>${Number(drawerSession.opening_float).toFixed(2)}</strong>
-              </span>
-            </div>
-            {!posDrawerCloseOpen ? (
-              <button onClick={() => setPosDrawerCloseOpen(true)}
-                style={{ padding: "6px 14px", fontSize: "13px", fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", borderRadius: "6px", cursor: "pointer" }}
-              >
-                Close Drawer
-              </button>
-            ) : (
-              <form onSubmit={handleCloseDrawer} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  type="number" min="0" step="0.01" placeholder="Counted cash ($)"
-                  value={closingCount} onChange={(e) => setClosingCount(e.target.value)}
-                  style={{ padding: "6px 10px", width: "150px", fontSize: "13px", border: "1px solid #d1d5db", borderRadius: "6px" }}
-                />
-                <button type="submit" disabled={drawerLoading || !closingCount}
-                  style={{ padding: "6px 14px", fontWeight: 600, fontSize: "13px", background: drawerLoading || !closingCount ? "#9ca3af" : "#15803d", color: "#fff", border: "none", borderRadius: "6px", cursor: drawerLoading || !closingCount ? "not-allowed" : "pointer" }}
-                >
-                  {drawerLoading ? "Closing…" : "Confirm Close"}
-                </button>
-                <button type="button" onClick={() => { setPosDrawerCloseOpen(false); setClosingCount(""); }}
-                  style={{ padding: "6px 12px", fontSize: "13px", background: "none", border: "1px solid #d1d5db", borderRadius: "6px", cursor: "pointer", color: "#374151" }}
-                >
-                  Cancel
-                </button>
-              </form>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="pos-card">
-      <input
-        type="text"
-        autoFocus
-        placeholder="Scan barcode or type and press Enter"
-        value={barcodeInput}
-        onChange={(e) => setBarcodeInput(e.target.value)}
-        onKeyDown={handleBarcodeSubmit}
-        className="pos-barcode-input"
+      <POSCheckoutPanel
+        visible={activeTab === 'pos' && !!businessId && appUnlocked}
+        drawerSession={drawerSession}
+        employees={employees}
+        onOpenDrawer={handleOpenDrawer}
+        openingFloat={openingFloat}
+        setOpeningFloat={setOpeningFloat}
+        drawerLoading={drawerLoading}
+        onCloseDrawer={handleCloseDrawer}
+        posDrawerCloseOpen={posDrawerCloseOpen}
+        setPosDrawerCloseOpen={setPosDrawerCloseOpen}
+        closingCount={closingCount}
+        setClosingCount={setClosingCount}
+        barcodeInput={barcodeInput}
+        setBarcodeInput={setBarcodeInput}
+        onBarcodeSubmit={handleBarcodeSubmit}
+        unmatchedBarcode={unmatchedBarcode}
+        setUnmatchedBarcode={setUnmatchedBarcode}
+        linkBarcodeProductId={linkBarcodeProductId}
+        setLinkBarcodeProductId={setLinkBarcodeProductId}
+        products={products}
+        linkBarcodeMode={linkBarcodeMode}
+        setLinkBarcodeMode={setLinkBarcodeMode}
+        setBarcodeAutoFill={setBarcodeAutoFill}
+        setNewBarcode={setNewBarcode}
+        setActiveTab={setActiveTab}
+        onLinkBarcode={handleLinkBarcode}
+        cartProductId={cartProductId}
+        setCartProductId={setCartProductId}
+        cartQty={cartQty}
+        setCartQty={setCartQty}
+        onAddToCart={handleAddToCart}
+        activeCashierId={activeCashierId}
+        setActiveCashierId={setActiveCashierId}
+        activeCashierName={activeCashierName}
+        setActiveCashierName={setActiveCashierName}
+        posCustomerPhone={posCustomerPhone}
+        setPosCustomerPhone={setPosCustomerPhone}
+        setPosCustomerId={setPosCustomerId}
+        setPosCustomerName={setPosCustomerName}
+        onLookupCustomer={handleLookupCustomer}
+        posCustomerName={posCustomerName}
+        posCustomerLoyaltyBalance={posCustomerLoyaltyBalance}
+        cart={cart}
+        setCart={setCart}
+        negotiatingProductId={negotiatingProductId}
+        setNegotiatingProductId={setNegotiatingProductId}
+        negotiatePrice={negotiatePrice}
+        setNegotiatePrice={setNegotiatePrice}
+        negotiateReason={negotiateReason}
+        setNegotiateReason={setNegotiateReason}
+        sellingPolicy={sellingPolicy}
+        onRemoveFromCart={handleRemoveFromCart}
+        posDiscountType={posDiscountType}
+        setPosDiscountType={setPosDiscountType}
+        posDiscountValue={posDiscountValue}
+        setPosDiscountValue={setPosDiscountValue}
+        posCustomerId={posCustomerId}
+        posRedeemPoints={posRedeemPoints}
+        setPosRedeemPoints={setPosRedeemPoints}
+        loyaltyTransactions={loyaltyTransactions}
+        businessTaxRate={businessTaxRate}
+        paymentMethod={paymentMethod}
+        setPaymentMethod={setPaymentMethod}
+        paymentRef={paymentRef}
+        setPaymentRef={setPaymentRef}
+        amountTendered={amountTendered}
+        setAmountTendered={setAmountTendered}
+        isCompletingSale={isCompletingSale}
+        onCompleteSale={handleCompleteSale}
       />
 
-      {unmatchedBarcode && (() => {
-        const selectedProduct = linkBarcodeProductId ? products.find(p => p.product_id === linkBarcodeProductId) : null;
-        return (
-        <div style={{ padding: "12px 16px", marginBottom: "12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: linkBarcodeMode ? "12px" : "0" }}>
-            <span style={{ fontSize: "14px", color: "#92400e" }}>Scanner worked. Barcode not found in catalog: <strong>{unmatchedBarcode}</strong></span>
-            <button onClick={() => { setUnmatchedBarcode(""); setLinkBarcodeMode(false); setLinkBarcodeProductId(""); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", color: "#6b7280" }}>✕</button>
-          </div>
-          {!linkBarcodeMode ? (
-            <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-              <button
-                onClick={() => { setBarcodeAutoFill(unmatchedBarcode); setNewBarcode(unmatchedBarcode); setUnmatchedBarcode(""); setActiveTab("inventory"); }}
-                style={{ padding: "6px 16px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
-              >Add New Product</button>
-              <button
-                onClick={() => setLinkBarcodeMode(true)}
-                style={{ padding: "6px 16px", background: "#fff", color: "#1d4ed8", border: "1px solid #1d4ed8", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
-              >Link to Existing Product</button>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                <select value={linkBarcodeProductId} onChange={(e) => setLinkBarcodeProductId(e.target.value)} style={{ padding: "8px", flex: "1 1 200px", fontSize: "13px" }}>
-                  <option value="">Select product...</option>
-                  {products.map(p => (
-                    <option key={p.product_id} value={p.product_id}>{p.product_name}{p.sku ? ` — ${p.sku}` : ""}{p.barcode ? ` — barcode: ${p.barcode}` : ""}</option>
-                  ))}
-                </select>
-                <button onClick={handleLinkBarcode} disabled={!linkBarcodeProductId} style={{ padding: "6px 16px", background: linkBarcodeProductId ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", cursor: linkBarcodeProductId ? "pointer" : "not-allowed", fontWeight: 600, fontSize: "13px" }}>Save</button>
-                <button onClick={() => { setLinkBarcodeMode(false); setLinkBarcodeProductId(""); }} style={{ padding: "6px 16px", background: "#fff", border: "1px solid #ccc", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}>Cancel</button>
-              </div>
-              {selectedProduct?.barcode && (
-                <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", fontSize: "13px", color: "#b91c1c" }}>
-                  This product already has barcode: <strong>{selectedProduct.barcode}</strong>. Linking will replace it with: <strong>{unmatchedBarcode}</strong>.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        );
-      })()}
-
-      <form
-        onSubmit={handleAddToCart}
-        style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
-      >
-        <select
-          value={cartProductId}
-          onChange={(e) => setCartProductId(e.target.value)}
-          style={{ flex: "2 1 200px", padding: "8px" }}
-        >
-          <option value="">Select product...</option>
-          {products.filter((p) => p.quantity_on_hand > 0 && p.status === "active").map((p) => (
-            <option key={p.product_id} value={p.product_id}>
-              {p.product_name} — ${p.selling_price.toFixed(2)} (stock: {p.quantity_on_hand})
-            </option>
-          ))}
-        </select>
-        <input
-          type="number"
-          min="1"
-          placeholder="Qty"
-          value={cartQty}
-          onChange={(e) => setCartQty(e.target.value)}
-          style={{ flex: "0 1 80px", padding: "8px" }}
-        />
-        <button type="submit" className="pos-add-btn" style={{ flex: "0 1 120px" }}>
-          Add to Cart
-        </button>
-      </form>
-
-      {employees.filter(e => e.status === "active").length > 0 && (
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
-          <select
-            value={activeCashierId ?? ""}
-            onChange={(e) => {
-              const emp = employees.find(em => em.id === e.target.value);
-              setActiveCashierId(emp ? emp.id : null);
-              setActiveCashierName(emp ? emp.name : "");
-            }}
-            style={{ padding: "8px", flex: "1 1 200px", borderColor: !activeCashierId ? "#dc2626" : "#ccc" }}
-          >
-            <option value="">— Select cashier —</option>
-            {employees.filter(e => e.status === "active").map(e => (
-              <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
-            ))}
-          </select>
-          {activeCashierName && (
-            <span style={{ color: "#1d4ed8", fontWeight: "bold" }}>Cashier: {activeCashierName}</span>
-          )}
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
-        <input
-          type="text"
-          placeholder="Customer name or phone"
-          value={posCustomerPhone}
-          onChange={(e) => { setPosCustomerPhone(e.target.value); setPosCustomerId(null); setPosCustomerName(""); }}
-          style={{ padding: "8px", width: "220px" }}
-        />
-        <button type="button" onClick={handleLookupCustomer} style={{ padding: "8px 14px" }}>
-          Lookup
-        </button>
-        {posCustomerName && (
-          <span style={{ color: "#15803d", fontWeight: "bold" }}>
-            {posCustomerName}
-            {` — ${posCustomerLoyaltyBalance} pts`}
-          </span>
-        )}
-      </div>
-      </div>
-
-      {cart.length > 0 && (
-        <div style={{ marginBottom: "32px" }}>
-          <div style={{ overflowX: "auto", marginBottom: "12px" }}>
-            <table border={1} cellPadding={10} style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Qty</th>
-                  <th>Unit Price</th>
-                  <th>Line Total</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cart.map((item) => {
-                  const product = products.find(p => p.product_id === item.product_id);
-                  const isNegotiating = negotiatingProductId === item.product_id;
-                  const wasNegotiated = item.unit_price !== item.original_unit_price;
-                  const avgCost = product?.average_cost ?? 0;
-                  const hasCost = avgCost > 0;
-                  const overheadPct = product?.estimated_overhead_pct ?? 0;
-                  const breakEven = avgCost * (1 + overheadPct / 100);
-                  const minMarginPct = product?.minimum_margin_percent;
-                  const targetMarginPct = product?.target_margin_percent;
-                  const minSafe = minMarginPct != null ? breakEven * (1 + minMarginPct / 100) : breakEven;
-                  const targetPrice = targetMarginPct != null ? breakEven * (1 + targetMarginPct / 100) : item.original_unit_price;
-                  return (
-                  <React.Fragment key={item.product_id}>
-                  <tr>
-                    <td>{item.product_name}</td>
-                    <td>{item.quantity}</td>
-                    <td>
-                      ${item.unit_price.toFixed(2)}
-                      {wasNegotiated && (() => {
-                        const diff = item.unit_price - item.original_unit_price;
-                        const diffColor = diff < 0 ? "#dc2626" : diff > 0 ? "#15803d" : "#64748b";
-                        const diffLabel = diff < 0 ? `-$${Math.abs(diff).toFixed(2)}` : diff > 0 ? `+$${diff.toFixed(2)}` : "$0.00";
-                        return (
-                        <div style={{ fontSize: "11px", color: "#64748b" }}>
-                          <span style={{ textDecoration: "line-through" }}>${item.original_unit_price.toFixed(2)}</span>
-                          {" "}
-                          <span style={{ color: diffColor }}>{diffLabel}</span>
-                        </div>
-                        );
-                      })()}
-                    </td>
-                    <td>${item.line_total.toFixed(2)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                      {sellingPolicy !== "fixed_pricing" && (
-                        <button
-                          onClick={() => {
-                            if (isNegotiating) { setNegotiatingProductId(null); setNegotiatePrice(""); setNegotiateReason(""); }
-                            else { setNegotiatingProductId(item.product_id); setNegotiatePrice(String(item.unit_price)); setNegotiateReason(item.negotiation_reason ?? ""); }
-                          }}
-                          title="Negotiate price"
-                          style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: 500, cursor: "pointer", background: isNegotiating ? "#1d4ed8" : wasNegotiated ? "#dbeafe" : "none", color: isNegotiating ? "#fff" : "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "6px", transition: "background 0.15s" }}
-                          onMouseEnter={(e) => { if (!isNegotiating) e.currentTarget.style.background = "#eff6ff"; }}
-                          onMouseLeave={(e) => { if (!isNegotiating) e.currentTarget.style.background = wasNegotiated ? "#dbeafe" : "none"; }}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                          {wasNegotiated ? "Edit Negotiation" : "Negotiate"}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleRemoveFromCart(item.product_id)}
-                        title="Remove from cart"
-                        style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px", transition: "background 0.15s" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                        Remove
-                      </button>
-                      </div>
-                    </td>
-                  </tr>
-                  {isNegotiating && (() => {
-                    const np = Number(negotiatePrice) || 0;
-                    const expectedProfit = hasCost ? np - breakEven : null;
-                    const marginPct = hasCost && np > 0 ? ((np - breakEven) / np) * 100 : null;
-                    const statusColor = !hasCost ? "#64748b" : np >= targetPrice ? "#15803d" : np >= minSafe ? "#b45309" : np >= breakEven ? "#ea580c" : "#dc2626";
-                    const statusBg = !hasCost ? "#f8fafc" : np >= targetPrice ? "#f0fdf4" : np >= minSafe ? "#fffbeb" : np >= breakEven ? "#fff7ed" : "#fef2f2";
-                    const statusBorder = !hasCost ? "#e2e8f0" : np >= targetPrice ? "#86efac" : np >= minSafe ? "#fde68a" : np >= breakEven ? "#fdba74" : "#fecaca";
-                    const statusLabel = !hasCost ? "No cost data" : np >= targetPrice ? "Target Achieved" : np >= minSafe ? "Safe Margin" : np >= breakEven ? "Low Margin" : "Below Cost";
-                    return (
-                    <tr>
-                      <td colSpan={5} style={{ padding: 0, border: "none" }}>
-                        <div style={{ padding: "16px 20px", background: "#fff", borderTop: "2px solid #e2e8f0", borderBottom: "2px solid #e2e8f0" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                            <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>Pricing Coach — {item.product_name}</div>
-                            <button
-                              onClick={() => { setNegotiatingProductId(null); setNegotiatePrice(""); setNegotiateReason(""); }}
-                              style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px", color: "#64748b" }}
-                            >Close</button>
-                          </div>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
-                            <div>
-                              <label style={{ fontSize: "13px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "6px" }}>Negotiated Unit Price</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={negotiatePrice}
-                                onChange={(e) => setNegotiatePrice(e.target.value)}
-                                autoFocus
-                                style={{ width: "100%", padding: "12px 14px", fontSize: "20px", fontWeight: 700, border: `2px solid ${statusBorder}`, borderRadius: "8px", background: statusBg, color: statusColor, outline: "none", boxSizing: "border-box" }}
-                              />
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", padding: "8px 12px", background: statusBg, border: `1px solid ${statusBorder}`, borderRadius: "6px" }}>
-                                <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
-                                <span style={{ fontSize: "13px", fontWeight: 600, color: statusColor }}>{statusLabel}</span>
-                                {hasCost && expectedProfit != null && marginPct != null && (
-                                  <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>
-                                    Profit ${expectedProfit.toFixed(2)} &middot; Margin {marginPct.toFixed(1)}%
-                                  </span>
-                                )}
-                              </div>
-
-                              <div style={{ marginTop: "12px" }}>
-                                <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>Reason</label>
-                                <select
-                                  value={["Bulk discount", "Loyal customer", "Price match", "Damaged packaging", "Clearance"].includes(negotiateReason) ? negotiateReason : negotiateReason ? "__custom__" : ""}
-                                  onChange={(e) => { if (e.target.value === "__custom__") { setNegotiateReason(""); } else { setNegotiateReason(e.target.value); } }}
-                                  style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", marginBottom: "4px", background: "#fff" }}
-                                >
-                                  <option value="">Select a reason...</option>
-                                  <option value="Bulk discount">Bulk discount</option>
-                                  <option value="Loyal customer">Loyal customer</option>
-                                  <option value="Price match">Price match</option>
-                                  <option value="Damaged packaging">Damaged packaging</option>
-                                  <option value="Clearance">Clearance</option>
-                                  <option value="__custom__">Other (type below)</option>
-                                </select>
-                                {!["Bulk discount", "Loyal customer", "Price match", "Damaged packaging", "Clearance", ""].includes(negotiateReason) && (
-                                  <input
-                                    type="text"
-                                    placeholder="Enter custom reason"
-                                    value={negotiateReason}
-                                    onChange={(e) => setNegotiateReason(e.target.value)}
-                                    style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", boxSizing: "border-box" }}
-                                  />
-                                )}
-                              </div>
-                            </div>
-
-                            <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                              <div style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>Price Reference</div>
-                              {!hasCost && (
-                                <div style={{ padding: "8px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", marginBottom: "8px", fontSize: "12px", color: "#92400e" }}>
-                                  Cost price not configured. Pricing guidance is unavailable.
-                                </div>
-                              )}
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "6px 16px", fontSize: "13px", color: "#475569" }}>
-                                <div>Listed price</div><div style={{ textAlign: "right", fontWeight: 600, color: "#0f172a" }}>${item.original_unit_price.toFixed(2)}</div>
-                                <div>Average cost</div><div style={{ textAlign: "right", fontWeight: 600 }}>{hasCost ? `$${avgCost.toFixed(2)}` : "Not set"}</div>
-                                <div>Overhead</div><div style={{ textAlign: "right", fontWeight: 600 }}>{overheadPct}%</div>
-                                {hasCost && <>
-                                  <div>Break-even</div><div style={{ textAlign: "right", fontWeight: 600 }}>${breakEven.toFixed(2)}</div>
-                                  <div>Minimum safe</div><div style={{ textAlign: "right", fontWeight: 600 }}>${minSafe.toFixed(2)}</div>
-                                  <div>Target price</div><div style={{ textAlign: "right", fontWeight: 600 }}>${targetPrice.toFixed(2)}</div>
-                                </>}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={{ display: "flex", gap: "8px" }}>
-                            <button
-                              onClick={() => {
-                                const price = Math.max(0, Number(negotiatePrice) || 0);
-                                const reason = negotiateReason.trim() || null;
-                                const isNeg = price !== item.original_unit_price;
-                                setCart(cart.map(c => c.product_id === item.product_id ? {
-                                  ...c,
-                                  unit_price: price,
-                                  line_total: c.quantity * price,
-                                  negotiation_reason: isNeg ? reason : null,
-                                  negotiated_by: isNeg ? (activeCashierId || null) : null,
-                                } : c));
-                                setNegotiatingProductId(null);
-                                setNegotiatePrice("");
-                                setNegotiateReason("");
-                              }}
-                              style={{ flex: 1, padding: "10px 16px", fontSize: "13px", fontWeight: 600, cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px" }}
-                            >Apply Price</button>
-                            <button
-                              onClick={() => {
-                                setCart(cart.map(c => c.product_id === item.product_id ? {
-                                  ...c,
-                                  unit_price: c.original_unit_price,
-                                  line_total: c.quantity * c.original_unit_price,
-                                  negotiation_reason: null,
-                                  negotiated_by: null,
-                                } : c));
-                                setNegotiatingProductId(null);
-                                setNegotiatePrice("");
-                                setNegotiateReason("");
-                              }}
-                              style={{ padding: "10px 16px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px" }}
-                            >Reset to Listed</button>
-                            <button
-                              onClick={() => { setNegotiatingProductId(null); setNegotiatePrice(""); setNegotiateReason(""); }}
-                              style={{ padding: "10px 16px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #cbd5e1", borderRadius: "6px" }}
-                            >Cancel</button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                    );
-                  })()}
-                  </React.Fragment>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                {(() => {
-                  const subtotal = cart.reduce((s, c) => s + c.line_total, 0);
-                  const discountVal = Math.max(0, Number(posDiscountValue) || 0);
-                  const rawDiscountAmt = posDiscountType === "percent"
-                    ? subtotal * (discountVal / 100)
-                    : discountVal;
-                  const discountAmt = rawDiscountAmt > subtotal ? 0 : rawDiscountAmt;
-                  const tfDiscountedSubtotal = subtotal - discountAmt;
-                  const tfTaxAmt = Math.round(tfDiscountedSubtotal * (businessTaxRate / 100) * 100) / 100;
-                  const tfCustBal = posCustomerId
-                    ? loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0)
-                    : 0;
-                  const tfRedeemPts = posCustomerId
-                    ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), tfCustBal)
-                    : 0;
-                  const redeemDollar = tfRedeemPts / 100;
-                  const finalTotal = Math.max(0, tfDiscountedSubtotal + tfTaxAmt - redeemDollar);
-                  return (
-                    <>
-                      <tr>
-                        <td colSpan={3} style={{ textAlign: "right" }}>Subtotal</td>
-                        <td>${subtotal.toFixed(2)}</td>
-                        <td></td>
-                      </tr>
-                      {discountAmt > 0 && (
-                        <tr>
-                          <td colSpan={3} style={{ textAlign: "right", color: "#16a34a" }}>Discount</td>
-                          <td style={{ color: "#16a34a" }}>−${discountAmt.toFixed(2)}</td>
-                          <td></td>
-                        </tr>
-                      )}
-                      {tfTaxAmt > 0 && (
-                        <tr>
-                          <td colSpan={3} style={{ textAlign: "right", color: "#b45309" }}>Tax ({businessTaxRate}%)</td>
-                          <td style={{ color: "#b45309" }}>${tfTaxAmt.toFixed(2)}</td>
-                          <td></td>
-                        </tr>
-                      )}
-                      {tfRedeemPts > 0 && (
-                        <tr>
-                          <td colSpan={3} style={{ textAlign: "right", color: "#7c3aed" }}>Points ({tfRedeemPts} pts)</td>
-                          <td style={{ color: "#7c3aed" }}>−${redeemDollar.toFixed(2)}</td>
-                          <td></td>
-                        </tr>
-                      )}
-                      <tr>
-                        <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total</td>
-                        <td style={{ fontWeight: "bold" }}>${finalTotal.toFixed(2)}</td>
-                        <td></td>
-                      </tr>
-                    </>
-                  );
-                })()}
-              </tfoot>
-            </table>
-          </div>
-
-          {/* Discount controls */}
-          {(() => {
-            const dSubtotal = cart.reduce((s, c) => s + c.line_total, 0);
-            const dVal = Math.max(0, Number(posDiscountValue) || 0);
-            const dAmt = posDiscountType === "percent" ? dSubtotal * (dVal / 100) : dVal;
-            const discountExceeds = posDiscountValue !== "" && dAmt > dSubtotal;
-            return (
-              <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
-                <span style={{ fontWeight: "bold", fontSize: "13px" }}>Discount:</span>
-                <select
-                  value={posDiscountType}
-                  onChange={(e) => { setPosDiscountType(e.target.value as "percent" | "fixed"); setPosDiscountValue(""); }}
-                  style={{ padding: "6px 8px", fontSize: "13px" }}
-                >
-                  <option value="percent">% Off</option>
-                  <option value="fixed">$ Off</option>
-                </select>
-                <input
-                  type="number"
-                  min="0"
-                  step={posDiscountType === "percent" ? "1" : "0.01"}
-                  max={posDiscountType === "percent" ? "100" : undefined}
-                  placeholder={posDiscountType === "percent" ? "e.g. 10" : "e.g. 2.00"}
-                  value={posDiscountValue}
-                  onChange={(e) => setPosDiscountValue(e.target.value)}
-                  style={{ width: "110px", padding: "6px 8px", fontSize: "13px", borderColor: discountExceeds ? "#dc2626" : undefined }}
-                />
-                {discountExceeds && (
-                  <span style={{ fontSize: "13px", color: "#dc2626", fontWeight: "bold" }}>Discount exceeds sale amount.</span>
-                )}
-                {posDiscountValue && (
-                  <button onClick={() => setPosDiscountValue("")} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}>
-                    Clear
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Redeem loyalty points */}
-          {posCustomerId && (() => {
-            const custBal = posCustomerLoyaltyBalance;
-            const rawRedeem = Math.max(0, Math.floor(Number(posRedeemPoints) || 0));
-            const redeemExceeds = posRedeemPoints !== "" && rawRedeem > custBal;
-            const redeemVal = Math.min(rawRedeem, custBal);
-            return (
-              <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
-                <span style={{ fontWeight: "bold", fontSize: "13px", color: "#7c3aed" }}>Redeem Points:</span>
-                <span style={{ fontSize: "12px", color: "#888" }}>{custBal} available · 100 pts = $1.00</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={custBal}
-                  step="1"
-                  placeholder="e.g. 100"
-                  value={posRedeemPoints}
-                  onChange={(e) => setPosRedeemPoints(e.target.value)}
-                  style={{ width: "100px", padding: "6px 8px", fontSize: "13px", borderColor: redeemExceeds ? "#dc2626" : undefined }}
-                />
-                {redeemExceeds && (
-                  <span style={{ fontSize: "13px", color: "#dc2626", fontWeight: "bold" }}>Exceeds available points ({custBal})</span>
-                )}
-                {!redeemExceeds && redeemVal > 0 && (
-                  <span style={{ fontSize: "13px", color: "#7c3aed" }}>= −${(redeemVal / 100).toFixed(2)}</span>
-                )}
-                {posRedeemPoints && (
-                  <button onClick={() => setPosRedeemPoints("")} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}>
-                    Clear
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-
-          <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontWeight: "bold" }}>Payment:</span>
-            <select
-              value={paymentMethod}
-              onChange={(e) => { setPaymentMethod(e.target.value); setPaymentRef(""); }}
-              style={{ padding: "8px", fontSize: "14px" }}
-            >
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="telebirr">Telebirr</option>
-              <option value="cbe_birr">CBE Birr</option>
-              <option value="chapa">Chapa</option>
-              <option value="mtn_mobile">MTN Mobile Money</option>
-              <option value="airtel_money">Airtel Money</option>
-              <option value="other">Other (specify)</option>
-            </select>
-            {paymentMethod !== "cash" && paymentMethod !== "card" && (
-              <input
-                type="text"
-                placeholder={paymentMethod === "other" ? "Specify payment method *" : "Reference / phone (optional)"}
-                value={paymentRef}
-                onChange={(e) => setPaymentRef(e.target.value)}
-                required={paymentMethod === "other"}
-                style={{ width: "200px", padding: "8px" }}
-              />
-            )}
-            {paymentMethod === "cash" && (() => {
-              const subtotal = cart.reduce((s, c) => s + c.line_total, 0);
-              const discountVal = Math.max(0, Number(posDiscountValue) || 0);
-              const rawDiscountAmt = posDiscountType === "percent"
-                ? subtotal * (discountVal / 100)
-                : discountVal;
-              const discountAmt = rawDiscountAmt > subtotal ? 0 : rawDiscountAmt;
-              const cashDiscountedSubtotal = subtotal - discountAmt;
-              const cashTaxAmt = Math.round(cashDiscountedSubtotal * (businessTaxRate / 100) * 100) / 100;
-              const cashCustBal = posCustomerLoyaltyBalance;
-              const cashRedeemPts = posCustomerId
-                ? Math.min(Math.max(0, Math.floor(Number(posRedeemPoints) || 0)), cashCustBal)
-                : 0;
-              const finalTotal = Math.max(0, cashDiscountedSubtotal + cashTaxAmt - cashRedeemPts / 100);
-              return (
-                <>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Amount tendered"
-                    value={amountTendered}
-                    onChange={(e) => setAmountTendered(e.target.value)}
-                    style={{ width: "150px", padding: "8px" }}
-                  />
-                  {Number(amountTendered) >= finalTotal && amountTendered !== "" && (
-                    <span style={{ fontWeight: "bold", color: "#15803d" }}>
-                      Change: ${(Number(amountTendered) - finalTotal).toFixed(2)}
-                    </span>
-                  )}
-                </>
-              );
-            })()}
-            {(() => {
-              const btnSubtotal = cart.reduce((s, c) => s + c.line_total, 0);
-              const btnDVal = Math.max(0, Number(posDiscountValue) || 0);
-              const btnDAmt = posDiscountType === "percent" ? btnSubtotal * (btnDVal / 100) : btnDVal;
-              const discountInvalid = posDiscountValue !== "" && btnDAmt > btnSubtotal;
-              const redeemInvalid = posCustomerId && posRedeemPoints !== "" &&
-                Math.max(0, Math.floor(Number(posRedeemPoints) || 0)) >
-                loyaltyTransactions.filter(lt => lt.customer_id === posCustomerId).reduce((s, lt) => s + lt.points, 0);
-              const blocked = cart.length === 0 || isCompletingSale || !!redeemInvalid || discountInvalid;
-              return (
-                <button
-                  onClick={handleCompleteSale}
-                  disabled={blocked}
-                  style={{
-                    padding: "10px 28px",
-                    background: blocked ? "#94a3b8" : "#1d4ed8",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: blocked ? "not-allowed" : "pointer",
-                    fontWeight: "bold",
-                    fontSize: "15px",
-                  }}
-                >
-                  Complete Sale
-                </button>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      </div>{/* end pos */}
+      {/* ── SALES HISTORY / RETURNS ── */}
+      <SalesHistoryPanel
+        visible={activeTab === 'pos' && !!businessId && appUnlocked}
+        salesHistoryOpen={salesHistoryOpen}
+        setSalesHistoryOpen={setSalesHistoryOpen}
+        salesDateRange={salesDateRange}
+        setSalesDateRange={setSalesDateRange}
+        sales={sales}
+        salesSearchQuery={salesSearchQuery}
+        setSalesSearchQuery={setSalesSearchQuery}
+        employees={employees}
+        salesCashierFilter={salesCashierFilter}
+        setSalesCashierFilter={setSalesCashierFilter}
+        filteredSalesHistory={filteredSalesHistory}
+        employeeMap={employeeMap}
+        saleItemsBySaleId={saleItemsBySaleId}
+        productIdMap={productIdMap}
+        onPrintReceipt={handlePrintReceipt}
+        canVoidSales={canVoidSales}
+        onVoidSale={handleVoidSale}
+        voidingId={voidingId}
+        onOpenReturn={handleOpenReturn}
+        returningSaleId={returningSaleId}
+        returnLines={returnLines}
+        setReturnLines={setReturnLines}
+        returnReasonDropdown={returnReasonDropdown}
+        setReturnReasonDropdown={setReturnReasonDropdown}
+        returnReason={returnReason}
+        setReturnReason={setReturnReason}
+        returnNotes={returnNotes}
+        setReturnNotes={setReturnNotes}
+        onConfirmReturn={handleConfirmReturn}
+        returnLoading={returnLoading}
+        setReturningSaleId={setReturningSaleId}
+      />
 
       {/* ── INVENTORY TAB ── */}
       <InventoryTab
@@ -5239,213 +4708,6 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         onPrintReceipt={handlePrintReceipt}
       />{/* end customers */}
 
-
-
-      {/* ── POS TAB (2) ── */}
-      <div style={{ display: activeTab === 'pos' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <button
-        onClick={() => setSalesHistoryOpen(o => !o)}
-        style={{ marginTop: "32px", marginBottom: "8px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{salesHistoryOpen ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Sales History</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>
-          ({salesDateRange === 'today' ? 'Today' : salesDateRange === '7d' ? 'Last 7 Days' : salesDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {sales.filter(s => s.status !== 'open').length} sales)
-        </span>
-      </button>
-      {salesHistoryOpen && <>
-      <input
-        type="text"
-        placeholder="Search receipt, product, barcode, or customer..."
-        value={salesSearchQuery}
-        onChange={e => setSalesSearchQuery(e.target.value)}
-        style={{ width: "100%", padding: "9px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", marginBottom: "10px", boxSizing: "border-box" }}
-      />
-      <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        {([['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['all', 'All Time']] as [string, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setSalesDateRange(key as typeof salesDateRange)}
-            style={{
-              padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px",
-              background: salesDateRange === key ? "#1d4ed8" : "#fff",
-              color: salesDateRange === key ? "#fff" : "#333",
-              border: salesDateRange === key ? "1px solid #1d4ed8" : "1px solid #ccc",
-              fontWeight: salesDateRange === key ? "bold" : "normal",
-            }}
-          >{label}</button>
-        ))}
-      </div>
-
-      {employees.length > 0 && (
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px" }}>
-          <label style={{ fontSize: "14px", color: "#555" }}>Filter by cashier:</label>
-          <select
-            value={salesCashierFilter}
-            onChange={(e) => setSalesCashierFilter(e.target.value)}
-            style={{ padding: "6px 10px" }}
-          >
-            <option value="all">All cashiers</option>
-            <option value="none">No cashier</option>
-            {employees.map(e => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div style={{ overflowX: "auto", marginBottom: "40px" }}>
-        <table border={0} cellPadding={0} className="sh-table">
-          <thead>
-            <tr>
-              <th>Sale ID</th>
-              <th>Products</th>
-              <th>Total</th>
-              <th>Tax</th>
-              <th>Status</th>
-              <th>Cashier</th>
-              <th>Created At</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {sales.length === 0 ? (
-              <tr><td colSpan={8}>No sales yet</td></tr>
-            ) : (
-              filteredSalesHistory.map((s) => {
-                const cashierName = s.cashier_id ? (employeeMap[s.cashier_id]?.name ?? s.cashier_id.slice(0, 8)) : "—";
-                const rowClass = s.status === "voided" ? "sh-row-voided" : s.status === "returned" ? "sh-row-returned" : "";
-                const lineItems = saleItemsBySaleId[s.id] ?? [];
-                const productNames = lineItems.map(si => productIdMap[si.product_id]?.product_name ?? "—");
-                const productsLabel = productNames.length === 0 ? "—"
-                  : productNames.length === 1 ? productNames[0]
-                  : `${productNames[0]} (+${productNames.length - 1} more)`;
-                return (
-                  <React.Fragment key={s.id}>
-                    <tr className={rowClass}>
-                      <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
-                      <td style={{ fontSize: "12px", color: "#475569", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={productNames.join(", ")}>{productsLabel}</td>
-                      <td>${Number(s.total).toFixed(2)}</td>
-                      <td>${Number(s.tax).toFixed(2)}</td>
-                      <td><span className={`status-pill sp-${s.status}`}>{s.status}</span></td>
-                      <td>{cashierName}</td>
-                      <td>{new Date(s.created_at).toLocaleString()}</td>
-                      <td style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                        <button onClick={() => handlePrintReceipt(s)} className="sh-btn sh-btn-print">Print</button>
-                        {s.status === "completed" && canVoidSales && (
-                          <button
-                            onClick={() => handleVoidSale(s.id)}
-                            disabled={voidingId === s.id}
-                            className="sh-btn sh-btn-void"
-                          >Void</button>
-                        )}
-                        {(s.status === "completed" || s.status === "returned") && (
-                          <button
-                            onClick={() => handleOpenReturn(s)}
-                            className="sh-btn sh-btn-return"
-                          >Return</button>
-                        )}
-                      </td>
-                    </tr>
-                    {returningSaleId === s.id && (
-                      <tr key={`${s.id}-return`}>
-                        <td colSpan={8} style={{ background: "#faf5ff", padding: "16px", border: "1px solid #c4b5fd" }}>
-                          <strong style={{ color: "#7c3aed" }}>Process Return — Sale {s.id.slice(0, 8)}</strong>
-                          {returnLines.length === 0 ? (
-                            <p style={{ margin: "8px 0 0", color: "#888" }}>All items from this sale have already been returned.</p>
-                          ) : (
-                            <>
-                              <table border={1} cellPadding={8} style={{ width: "100%", marginTop: "10px", fontSize: "13px" }}>
-                                <thead>
-                                  <tr><th>Product</th><th>Original Qty</th><th>Already Returned</th><th>Available</th><th>Return Qty</th></tr>
-                                </thead>
-                                <tbody>
-                                  {returnLines.map(line => (
-                                    <tr key={line.product_id}>
-                                      <td>{line.product_name}</td>
-                                      <td>{line.original_qty}</td>
-                                      <td>{line.already_returned}</td>
-                                      <td>{line.available_qty}</td>
-                                      <td>
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          max={line.available_qty}
-                                          value={line.return_qty}
-                                          onChange={(e) => {
-                                            const val = Math.min(Math.max(0, Number(e.target.value)), line.available_qty);
-                                            setReturnLines(prev => prev.map(l => l.product_id === line.product_id ? { ...l, return_qty: val } : l));
-                                          }}
-                                          style={{ width: "60px", padding: "4px" }}
-                                        />
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                              <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginTop: "10px", flexWrap: "wrap" }}>
-                                <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: "1 1 200px" }}>
-                                  <select
-                                    value={returnReasonDropdown}
-                                    onChange={(e) => setReturnReasonDropdown(e.target.value)}
-                                    style={{ padding: "7px", fontSize: "13px" }}
-                                    required
-                                  >
-                                    <option value="">Select reason *</option>
-                                    <option value="Damaged">Damaged</option>
-                                    <option value="Expired">Expired</option>
-                                    <option value="Customer changed mind">Customer changed mind</option>
-                                    <option value="Wrong item sold">Wrong item sold</option>
-                                    <option value="Pricing issue">Pricing issue</option>
-                                    <option value="Other">Other</option>
-                                  </select>
-                                  {returnReasonDropdown === "Other" && (
-                                    <input
-                                      type="text"
-                                      placeholder="Specify reason"
-                                      value={returnReason}
-                                      onChange={(e) => setReturnReason(e.target.value)}
-                                      style={{ padding: "7px" }}
-                                    />
-                                  )}
-                                  <input
-                                    type="text"
-                                    placeholder="Notes (optional)"
-                                    value={returnNotes}
-                                    onChange={(e) => setReturnNotes(e.target.value)}
-                                    style={{ padding: "7px" }}
-                                  />
-                                </div>
-                                <button
-                                  onClick={handleConfirmReturn}
-                                  disabled={returnLoading || returnLines.every(l => l.return_qty === 0)}
-                                  style={{
-                                    padding: "7px 20px",
-                                    background: returnLines.every(l => l.return_qty === 0) ? "#ccc" : "#7c3aed",
-                                    color: "#fff", border: "none", borderRadius: "5px",
-                                    cursor: returnLines.every(l => l.return_qty === 0) ? "not-allowed" : "pointer",
-                                    fontWeight: "bold",
-                                  }}
-                                >{returnLoading ? "Processing…" : "Confirm Return"}</button>
-                                <button onClick={() => { setReturningSaleId(null); setReturnLines([]); }} style={{ padding: "7px 14px", cursor: "pointer" }}>Cancel</button>
-                              </div>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-      </>}
-
-      </div>{/* end pos */}
-
       {/* ── REPORTS TAB ── */}
       <div style={{ display: activeTab === 'reports' && businessId && appUnlocked ? '' : 'none' }}>
 
@@ -5488,500 +4750,57 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
 
       </div>{/* end reports */}
 
-      {/* ── EMPLOYEES TAB (2) ── */}
-      <div style={{ display: activeTab === 'employees' && businessId && appUnlocked ? '' : 'none' }}>
+      {/* ── CASH DRAWER / EOD REPORT ── */}
+      <CashDrawerReportPanel
+        visible={activeTab === 'employees' && !!businessId && appUnlocked}
+        drawerSession={drawerSession}
+        onOpenDrawer={handleOpenDrawer}
+        openingFloat={openingFloat}
+        setOpeningFloat={setOpeningFloat}
+        drawerLoading={drawerLoading}
+        drawerCashSales={drawerCashSales}
+        drawerPaidOuts={drawerPaidOuts}
+        onPaidOut={handlePaidOut}
+        paidOutAmount={paidOutAmount}
+        setPaidOutAmount={setPaidOutAmount}
+        paidOutReason={paidOutReason}
+        setPaidOutReason={setPaidOutReason}
+        onCloseDrawer={handleCloseDrawer}
+        closingCount={closingCount}
+        setClosingCount={setClosingCount}
+        onToggleEod={handleToggleEod}
+        showEod={showEod}
+        sales={sales}
+        eodItems={eodItems}
+        eodPayments={eodPayments}
+        allReturnItems={allReturnItems}
+        products={products}
+        loyaltyTransactions={loyaltyTransactions}
+        employees={employees}
+        saleItems={saleItems}
+      />
 
-      {/* Cash Drawer Management */}
-      <h2 style={{ marginTop: "40px" }}>Cash Drawer</h2>
-
-      {!drawerSession ? (
-        <div style={{ marginBottom: "32px" }}>
-          <p style={{ color: "#555", fontSize: "14px", marginBottom: "12px" }}>No drawer is currently open.</p>
-          <form onSubmit={handleOpenDrawer} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Opening float ($)"
-              value={openingFloat}
-              onChange={(e) => setOpeningFloat(e.target.value)}
-              style={{ padding: "8px", width: "180px" }}
-              required
-            />
-            <button
-              type="submit"
-              disabled={drawerLoading || !openingFloat}
-              style={{ padding: "8px 22px", fontWeight: "bold", background: "#15803d", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
-            >
-              Open Drawer
-            </button>
-          </form>
-        </div>
-      ) : (
-        <div style={{ border: "1px solid #16a34a", borderRadius: "8px", padding: "20px", marginBottom: "32px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
-            <strong style={{ color: "#15803d", fontSize: "16px" }}>Drawer Open</strong>
-            <span style={{ fontSize: "13px", color: "#888" }}>Opened: {new Date(drawerSession.opened_at).toLocaleString()}</span>
-          </div>
-
-          {/* Session summary cards */}
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
-            {[
-              { label: "Opening Float", value: `$${Number(drawerSession.opening_float).toFixed(2)}` },
-              { label: "Cash Sales", value: `$${drawerCashSales.toFixed(2)}` },
-              { label: "Paid Outs", value: `−$${drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0).toFixed(2)}` },
-              { label: "Expected Cash", value: `$${(Number(drawerSession.opening_float) + drawerCashSales - drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0)).toFixed(2)}`, bold: true },
-            ].map(card => (
-              <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "12px 16px", minWidth: "140px" }}>
-                <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
-                <div style={{ fontSize: "20px", fontWeight: card.bold ? "bold" : "normal" }}>{card.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Paid out form */}
-          <h4 style={{ margin: "0 0 8px" }}>Record Paid Out</h4>
-          <form onSubmit={handlePaidOut} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "16px" }}>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              placeholder="Amount"
-              value={paidOutAmount}
-              onChange={(e) => setPaidOutAmount(e.target.value)}
-              style={{ padding: "7px", width: "120px" }}
-              required
-            />
-            <input
-              type="text"
-              placeholder="Reason (e.g. safe drop)"
-              value={paidOutReason}
-              onChange={(e) => setPaidOutReason(e.target.value)}
-              style={{ padding: "7px", flex: "1 1 180px" }}
-            />
-            <button
-              type="submit"
-              disabled={drawerLoading || !paidOutAmount}
-              style={{ padding: "7px 18px", cursor: "pointer", borderRadius: "5px" }}
-            >
-              Record Paid Out
-            </button>
-          </form>
-
-          {/* Paid outs log */}
-          {drawerPaidOuts.length > 0 && (
-            <div style={{ marginBottom: "16px" }}>
-              <strong style={{ fontSize: "13px" }}>Paid Outs This Session</strong>
-              <table border={1} cellPadding={6} style={{ width: "100%", marginTop: "6px", fontSize: "13px" }}>
-                <thead><tr><th>Time</th><th>Amount</th><th>Reason</th></tr></thead>
-                <tbody>
-                  {drawerPaidOuts.map(po => (
-                    <tr key={po.id}>
-                      <td>{new Date(po.created_at).toLocaleTimeString()}</td>
-                      <td>${Number(po.amount).toFixed(2)}</td>
-                      <td>{po.reason ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Close drawer form */}
-          <h4 style={{ margin: "0 0 8px" }}>Close Drawer</h4>
-          <form onSubmit={handleCloseDrawer} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Counted cash ($)"
-              value={closingCount}
-              onChange={(e) => setClosingCount(e.target.value)}
-              style={{ padding: "7px", width: "160px" }}
-              required
-            />
-            {closingCount && (() => {
-              const counted = Number(closingCount);
-              const totalPo = drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0);
-              const expected = Number(drawerSession.opening_float) + drawerCashSales - totalPo;
-              const os = counted - expected;
-              return (
-                <span style={{ fontWeight: "bold", color: os >= 0 ? "#15803d" : "#dc2626" }}>
-                  {os >= 0 ? `Over $${os.toFixed(2)}` : `Short $${Math.abs(os).toFixed(2)}`}
-                </span>
-              );
-            })()}
-            <button
-              type="submit"
-              disabled={drawerLoading || !closingCount}
-              style={{ padding: "7px 18px", fontWeight: "bold", background: "#b91c1c", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}
-            >
-              {drawerLoading ? "Closing…" : "Close Drawer"}
-            </button>
-          </form>
-        </div>
-      )}
-
-      <button
-        onClick={handleToggleEod}
-        style={{ marginBottom: "24px", padding: "9px 22px", cursor: "pointer", fontWeight: "bold", background: showEod ? "#333" : "#fff", color: showEod ? "#fff" : "#333", border: "1px solid #333", borderRadius: "6px" }}
-      >
-        {showEod ? "Hide Summary" : "End-of-Day Summary"}
-      </button>
-
-      {showEod && (() => {
-        const today = new Date();
-        const isToday = (d: string) => {
-          const dt = new Date(d);
-          return dt.getFullYear() === today.getFullYear() && dt.getMonth() === today.getMonth() && dt.getDate() === today.getDate();
-        };
-        const todaySales = sales.filter((s) => s.status === "completed" && isToday(s.created_at));
-        const voidedToday = sales.filter((s) => s.status === "voided" && isToday(s.created_at)).length;
-        const returnedToday = sales.filter((s) => s.status === "returned" && isToday(s.created_at)).length;
-        const grossRevenue = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
-        const avgSale = todaySales.length > 0 ? grossRevenue / todaySales.length : 0;
-        const itemsSold = eodItems.reduce((sum, i) => sum + i.quantity, 0);
-        const discountsTotal = todaySales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
-        const eodSalePayments = eodPayments.filter(p => p.payment_type !== 'refund');
-        const eodRefundPayments = eodPayments.filter(p => p.payment_type === 'refund');
-        const cashTotal = eodSalePayments.filter(p => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0);
-        const cardTotal = eodSalePayments.filter(p => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0);
-        const otherTotal = eodSalePayments.filter(p => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0);
-
-        const allTodaySaleIds = new Set(sales.filter(s => isToday(s.created_at) && (s.status === "completed" || s.status === "returned")).map(s => s.id));
-        const todayReturns = allReturnItems.filter(ri => allTodaySaleIds.has(ri.sale_id));
-        const returnedUnits = todayReturns.reduce((sum, ri) => sum + ri.quantity_returned, 0);
-        const productNameMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
-        const returnedValue = todayReturns.reduce((sum, ri) => {
-          const si = saleItems.find(s => s.sale_id === ri.sale_id && s.product_id === ri.product_id);
-          return sum + (si ? ri.quantity_returned * si.unit_price : 0);
-        }, 0);
-
-        const todayLoyalty = loyaltyTransactions.filter(lt => isToday(lt.created_at));
-        const loyaltyEarned = todayLoyalty.filter(lt => lt.type === "earn" && lt.points > 0).reduce((sum, lt) => sum + lt.points, 0);
-        const loyaltyRedeemed = todayLoyalty.filter(lt => lt.type === "redeem").reduce((sum, lt) => sum + Math.abs(lt.points), 0);
-
-        const productTotals: Record<string, { units: number; revenue: number }> = {};
-        for (const item of eodItems) {
-          if (!productTotals[item.product_id]) productTotals[item.product_id] = { units: 0, revenue: 0 };
-          productTotals[item.product_id].units += item.quantity;
-          productTotals[item.product_id].revenue += Number(item.line_total);
-        }
-        const topProducts = Object.entries(productTotals)
-          .map(([pid, v]) => ({ name: productNameMap[pid] ?? pid.slice(0, 8), ...v }))
-          .sort((a, b) => b.units - a.units);
-
-        const latestSession = drawerSession ?? (() => {
-          const closed = sales.length > 0 ? null : null;
-          return closed;
-        })();
-        const sessionPaidOuts = drawerPaidOuts.reduce((sum, p) => sum + Number(p.amount), 0);
-        const openingFloat = latestSession ? Number(latestSession.opening_float) : 0;
-        const expectedCash = openingFloat + cashTotal - sessionPaidOuts;
-
-        return (
-          <div style={{ border: "1px solid #333", borderRadius: "8px", padding: "24px", marginBottom: "32px" }}>
-            <h3 style={{ margin: "0 0 20px" }}>
-              End-of-Day Summary — {today.toLocaleDateString()}
-            </h3>
-
-            {/* Sales KPI Cards */}
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "24px" }}>
-              {[
-                { label: "Transactions", value: String(todaySales.length) },
-                { label: "Gross Revenue", value: `$${grossRevenue.toFixed(2)}`, color: "#1d4ed8" },
-                { label: "Avg Sale", value: `$${avgSale.toFixed(2)}` },
-                { label: "Items Sold", value: String(itemsSold) },
-                { label: "Discounts", value: `−$${discountsTotal.toFixed(2)}`, color: discountsTotal > 0 ? "#b45309" : "#888" },
-                { label: "Returns", value: `${returnedUnits} items (−$${returnedValue.toFixed(2)})`, color: returnedUnits > 0 ? "#dc2626" : "#888" },
-              ].map((card) => (
-                <div key={card.label} style={{ padding: "12px 18px", border: "1px solid #e5e7eb", borderRadius: "8px", minWidth: "120px", flex: 1 }}>
-                  <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
-                  <div style={{ fontSize: "22px", fontWeight: "bold", color: (card as any).color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Payment & Loyalty Cards */}
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "24px" }}>
-              {[
-                { label: "Cash Sales", value: `$${cashTotal.toFixed(2)}`, color: "#15803d" },
-                { label: "Card Sales", value: `$${cardTotal.toFixed(2)}`, color: "#1d4ed8" },
-                ...(otherTotal > 0 ? [{ label: "Other Payments", value: `$${otherTotal.toFixed(2)}`, color: "#6b7280" }] : []),
-                { label: "Loyalty Earned", value: `+${loyaltyEarned} pts`, color: loyaltyEarned > 0 ? "#15803d" : "#888" },
-                { label: "Loyalty Redeemed", value: `${loyaltyRedeemed} pts`, color: loyaltyRedeemed > 0 ? "#7c3aed" : "#888" },
-              ].map((card) => (
-                <div key={card.label} style={{ padding: "12px 18px", border: "1px solid #e5e7eb", borderRadius: "8px", minWidth: "120px", flex: 1 }}>
-                  <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
-                  <div style={{ fontSize: "22px", fontWeight: "bold", color: card.color, marginTop: "2px" }}>{card.value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Drawer Reconciliation */}
-            {latestSession && (
-              <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", marginBottom: "24px", background: "#f8fafc" }}>
-                <h4 style={{ margin: "0 0 12px" }}>Drawer Reconciliation {latestSession.status === "closed" ? "(Closed)" : "(Open)"}</h4>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  {[
-                    { label: "Opening Float", value: `$${openingFloat.toFixed(2)}` },
-                    { label: "Cash Sales", value: `+$${cashTotal.toFixed(2)}`, color: "#15803d" },
-                    { label: "Paid Outs", value: `−$${sessionPaidOuts.toFixed(2)}`, color: sessionPaidOuts > 0 ? "#dc2626" : "#888" },
-                    { label: "Expected Cash", value: `$${expectedCash.toFixed(2)}`, color: "#1d4ed8" },
-                    ...(latestSession.status === "closed" ? [
-                      { label: "Actual Cash", value: `$${Number(latestSession.closing_count ?? 0).toFixed(2)}` },
-                      { label: "Over/Short", value: (() => {
-                        const os = Number(latestSession.over_short ?? 0);
-                        return os >= 0 ? `+$${os.toFixed(2)}` : `−$${Math.abs(os).toFixed(2)}`;
-                      })(), color: Number(latestSession.over_short ?? 0) >= 0 ? "#15803d" : "#dc2626" },
-                    ] : []),
-                  ].map((card) => (
-                    <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "10px 14px", minWidth: "110px", flex: 1, background: "#fff" }}>
-                      <div style={{ fontSize: "10px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
-                      <div style={{ fontSize: "20px", fontWeight: "bold", color: (card as any).color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <h4 style={{ margin: "0 0 8px" }}>Top Products Today</h4>
-            <div style={{ overflowX: "auto", marginBottom: "20px" }}>
-              <table border={1} cellPadding={8} style={{ width: "100%" }}>
-                <thead>
-                  <tr><th>Product</th><th>Units Sold</th><th>Revenue</th></tr>
-                </thead>
-                <tbody>
-                  {topProducts.length === 0 ? (
-                    <tr><td colSpan={3}>No items sold today</td></tr>
-                  ) : (
-                    topProducts.map((p, i) => (
-                      <tr key={i}>
-                        <td>{p.name}</td>
-                        <td>{p.units}</td>
-                        <td>${p.revenue.toFixed(2)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <h4 style={{ margin: "0 0 8px" }}>Sales Breakdown</h4>
-            <div style={{ overflowX: "auto", marginBottom: "12px" }}>
-              <table border={1} cellPadding={8} style={{ width: "100%" }}>
-                <thead>
-                  <tr><th>Time</th><th>Sale ID</th><th>Total</th><th>Discount</th><th>Payment</th></tr>
-                </thead>
-                <tbody>
-                  {todaySales.length === 0 ? (
-                    <tr><td colSpan={5}>No sales today</td></tr>
-                  ) : (
-                    todaySales.map((s) => {
-                      const method = eodPayments.find((p) => p.sale_id === s.id && p.payment_type !== 'refund')?.payment_method ?? "—";
-                      const disc = Number(s.discount_amount);
-                      return (
-                        <tr key={s.id}>
-                          <td>{new Date(s.created_at).toLocaleTimeString()}</td>
-                          <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
-                          <td>${Number(s.total).toFixed(2)}</td>
-                          <td style={{ color: disc > 0 ? "#b45309" : "#ccc" }}>{disc > 0 ? `−$${disc.toFixed(2)}` : "—"}</td>
-                          <td>{method}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {employees.length > 0 && (() => {
-              const cashierMap = Object.fromEntries(employees.map(e => [e.id, e.name]));
-              const byEmployee: Record<string, { name: string; count: number; revenue: number }> = {};
-              for (const s of todaySales) {
-                const key = s.cashier_id ?? "__none__";
-                if (!byEmployee[key]) byEmployee[key] = { name: s.cashier_id ? (cashierMap[s.cashier_id] ?? s.cashier_id.slice(0, 8)) : "No cashier", count: 0, revenue: 0 };
-                byEmployee[key].count++;
-                byEmployee[key].revenue += Number(s.total);
-              }
-              const rows = Object.values(byEmployee).sort((a, b) => b.revenue - a.revenue);
-              if (rows.length === 0) return null;
-              return (
-                <>
-                  <h4 style={{ margin: "0 0 8px" }}>Cashier Breakdown</h4>
-                  <div style={{ overflowX: "auto", marginBottom: "20px" }}>
-                    <table border={1} cellPadding={8} style={{ width: "100%" }}>
-                      <thead>
-                        <tr style={{ background: "#f3f4f6" }}>
-                          <th style={{ textAlign: "left" }}>Cashier</th>
-                          <th>Sales</th>
-                          <th>Revenue</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((r, i) => (
-                          <tr key={i}>
-                            <td>{r.name}</td>
-                            <td style={{ textAlign: "center" }}>{r.count}</td>
-                            <td>${r.revenue.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
-
-            {(voidedToday > 0 || returnedToday > 0) && (
-              <p style={{ color: "#999", fontSize: "13px", margin: 0 }}>
-                {voidedToday > 0 && `${voidedToday} voided sale(s)`}
-                {voidedToday > 0 && returnedToday > 0 && ", "}
-                {returnedToday > 0 && `${returnedToday} returned sale(s)`}
-                {" "}excluded from revenue totals.
-              </p>
-            )}
-          </div>
-        );
-      })()}
-
-      </div>{/* end employees */}
-
-      {/* ── EMPLOYEES TAB ── */}
-      <div style={{ display: activeTab === 'employees' && businessId && appUnlocked ? '' : 'none' }}>
-
-      <div className="page-header">
-        <h2 className="page-title">Staff</h2>
-        <p className="page-subtitle">Manage employees, roles, and cash drawer operations</p>
-      </div>
-
-      {canManageStaff && (
-        <form onSubmit={handleAddEmployee} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
-          <input
-            type="text"
-            placeholder="Employee name *"
-            value={newEmpName}
-            onChange={(e) => setNewEmpName(e.target.value)}
-            style={{ padding: "8px", flex: "1 1 150px" }}
-            required
-          />
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="PIN (4–6 digits) *"
-            value={newEmpPin}
-            onChange={(e) => setNewEmpPin(e.target.value.replace(/\D/g, ""))}
-            maxLength={6}
-            style={{ padding: "8px", width: "140px" }}
-            required
-          />
-          <select
-            value={newEmpRole}
-            onChange={(e) => setNewEmpRole(e.target.value as "cashier" | "manager" | "inventory_clerk")}
-            style={{ padding: "8px" }}
-          >
-            <option value="cashier">Cashier</option>
-            <option value="manager">Manager</option>
-            <option value="inventory_clerk">Inventory Clerk</option>
-          </select>
-          <button
-            type="submit"
-            disabled={!newEmpName.trim() || !newEmpPin.trim()}
-            style={{ padding: "8px 20px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}
-          >
-            Add Employee
-          </button>
-        </form>
-      )}
-
-      <button
-        onClick={() => setEmployeeListOpen(!(employeeListOpen ?? (employees.length < 10)))}
-        style={{ marginBottom: "12px", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
-      >
-        <span style={{ fontSize: "16px" }}>{(employeeListOpen ?? (employees.length < 10)) ? "▼" : "▶"}</span>
-        <h3 style={{ margin: 0 }}>Employees</h3>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>({employees.length} employees)</span>
-      </button>
-      <div style={{ display: (employeeListOpen ?? (employees.length < 10)) ? '' : 'none', overflowX: "auto", marginBottom: "40px" }}>
-        <table border={1} cellPadding={10} style={{ width: "100%" }}>
-          <thead>
-            <tr style={{ background: "#f3f4f6" }}>
-              <th style={{ textAlign: "left" }}>Name</th>
-              <th>PIN</th>
-              <th>Role</th>
-              <th>Status</th>
-              {canManageStaff && <th>Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {employees.length === 0 ? (
-              <tr><td colSpan={canManageStaff ? 5 : 4} style={{ color: "#888" }}>No employees yet</td></tr>
-            ) : (
-              employees.map(emp => {
-                const rowStyle = emp.status === "inactive" ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
-                const isEditing = editingEmpId === emp.id;
-                const roleBg = emp.role === "manager" ? "#fef3c7" : emp.role === "inventory_clerk" ? "#f0fdfa" : "#dbeafe";
-                const roleColor = emp.role === "manager" ? "#92400e" : emp.role === "inventory_clerk" ? "#0d9488" : "#1e40af";
-                return (
-                  <tr key={emp.id} style={rowStyle}>
-                    <td style={{ fontWeight: "bold" }}>{emp.name}</td>
-                    <td style={{ fontFamily: "monospace", fontSize: "13px", color: "#64748b" }}>{emp.pin ? "****" : "—"}</td>
-                    <td>
-                      {isEditing ? (
-                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                          <select value={editEmpRole} onChange={(e) => setEditEmpRole(e.target.value)} style={{ padding: "4px 8px", fontSize: "13px" }}>
-                            <option value="cashier">Cashier</option>
-                            <option value="manager">Manager</option>
-                            <option value="inventory_clerk">Inventory Clerk</option>
-                          </select>
-                          <button onClick={() => handleSaveEmployeeRole(emp)} style={{ padding: "2px 10px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" }}>Save</button>
-                          <button onClick={() => setEditingEmpId(null)} style={{ padding: "2px 10px", cursor: "pointer", border: "1px solid #ccc", borderRadius: "4px", fontSize: "12px", background: "#fff" }}>Cancel</button>
-                        </div>
-                      ) : (
-                        <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "12px", background: roleBg, color: roleColor }}>{emp.role.replace('_', ' ')}</span>
-                      )}
-                    </td>
-                    <td>
-                      <span style={{
-                        padding: "2px 8px", borderRadius: "12px", fontSize: "12px",
-                        background: emp.status === "active" ? "#dcfce7" : "#f3f4f6",
-                        color: emp.status === "active" ? "#15803d" : "#6b7280",
-                      }}>{emp.status}</span>
-                    </td>
-                    {canManageStaff && (
-                      <td>
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          {!isEditing && (
-                            <button
-                              onClick={() => { setEditingEmpId(emp.id); setEditEmpRole(emp.role); }}
-                              style={{ padding: "3px 12px", cursor: "pointer", borderRadius: "4px", background: "#eff6ff", color: "#1d4ed8", border: "none", fontWeight: "bold" }}
-                            >
-                              Edit Role
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleToggleEmployeeStatus(emp)}
-                            style={{
-                              padding: "3px 12px", cursor: "pointer", borderRadius: "4px",
-                              background: emp.status === "active" ? "#fee2e2" : "#dcfce7",
-                              color: emp.status === "active" ? "#b91c1c" : "#15803d",
-                              border: "none", fontWeight: "bold",
-                            }}
-                          >
-                            {emp.status === "active" ? "Deactivate" : "Activate"}
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      </div>{/* end employees */}
+      {/* ── STAFF (EMPLOYEES) ── */}
+      <StaffPanel
+        visible={activeTab === 'employees' && !!businessId && appUnlocked}
+        canManageStaff={canManageStaff}
+        onAddEmployee={handleAddEmployee}
+        newEmpName={newEmpName}
+        setNewEmpName={setNewEmpName}
+        newEmpPin={newEmpPin}
+        setNewEmpPin={setNewEmpPin}
+        newEmpRole={newEmpRole}
+        setNewEmpRole={setNewEmpRole}
+        employeeListOpen={employeeListOpen}
+        setEmployeeListOpen={setEmployeeListOpen}
+        employees={employees}
+        editingEmpId={editingEmpId}
+        setEditingEmpId={setEditingEmpId}
+        editEmpRole={editEmpRole}
+        setEditEmpRole={setEditEmpRole}
+        onSaveEmployeeRole={handleSaveEmployeeRole}
+        onToggleEmployeeStatus={handleToggleEmployeeStatus}
+      />
 
       {/* ── SETTINGS TAB ── */}
       <SettingsTab
@@ -6434,7 +5253,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       .eq("receiving_session_id", existingSession.id)
                       .order("created_at", { ascending: true });
                     setActiveReceivingSession({ ...existingSession, invoice_number: (existingSession as { invoice_number?: string | null }).invoice_number ?? null, supplier_name: (existingSession as { supplier_name?: string | null }).supplier_name ?? null });
-                    setSessionItems((existingItems ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
+                    setSessionItems((existingItems ?? []) as SessionItem[]);
                   } else {
                     // Completed/cancelled — route to history, never activate as draft
                     setMessage({ text: `Session ${existingSession.id.slice(0, 8)} is already ${existingSession.status}. View it in Receiving History below.`, type: "success" });

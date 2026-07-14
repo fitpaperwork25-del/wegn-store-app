@@ -342,7 +342,7 @@ export function StockIntegrityPanel({
                         }
                       }}
                     >
-                      <td>{new Date(sc.completed_at).toLocaleString()}</td>
+                      <td>{new Date(sc.completed_at as string).toLocaleString()}</td>
                       <td style={{ color: "#555" }}>{sc.notes ?? "—"}</td>
                       <td style={{ textAlign: "center" }}>
                         <span style={{

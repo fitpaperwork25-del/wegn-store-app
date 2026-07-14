@@ -14,13 +14,13 @@ export type DrawerSession = {
   cashier_id: string | null;
   status: string;
   opening_float: number;
-  opened_at: string;
+  opened_at: string | null;
   closed_at: string | null;
   closing_count: number | null;
   expected_cash: number | null;
   over_short: number | null;
   notes: string | null;
-  created_at: string;
+  created_at: string | null;
 };
 
 export type DrawerPaidOut = {

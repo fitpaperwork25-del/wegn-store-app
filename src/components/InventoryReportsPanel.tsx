@@ -1,6 +1,6 @@
 import React from "react";
 import type { PurchaseOrder, Supplier } from "../lib/purchasing/types";
-import type { Sale, SaleItemRecord, ReturnRecord } from "../lib/sales/types";
+import type { Sale, SaleItemRecord, ReturnRecord, ReturnItemSummary } from "../lib/sales/types";
 import type { Customer } from "../lib/customers/types";
 import type { Employee } from "../lib/staff/types";
 import type { ProductStock } from "../lib/product/types";
@@ -13,7 +13,7 @@ type InventoryReportsPanelProps = {
   suppliers: Supplier[];
   sales: Sale[];
   saleItems: SaleItemRecord[];
-  allReturnItems: { sale_id: string; product_id: string; quantity_returned: number }[];
+  allReturnItems: ReturnItemSummary[];
   returnHistory: ReturnRecord[];
   customerMap: Record<string, Customer>;
   employeeMap: Record<string, Employee>;

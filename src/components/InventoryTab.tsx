@@ -1,6 +1,6 @@
 import React from "react";
 import type { Supplier } from "../lib/purchasing/types";
-import type { Transaction, BulkRow } from "../lib/inventory/types";
+import type { Transaction, BulkRow, SessionItem, SessionHistoryItem, SessionPayment } from "../lib/inventory/types";
 import type { ProductStock, ProductResolutionRequest } from "../lib/product/types";
 
 type ActiveReceivingSession = {
@@ -14,8 +14,6 @@ type ActiveReceivingSession = {
   invoice_number?: string | null;
   supplier_name?: string | null;
 } | null;
-
-type SessionItem = { id: string; product_id: string; quantity_received: number; unit_cost: number };
 
 type SessionHistoryEntry = {
   id: string;
@@ -37,10 +35,6 @@ type SessionHistoryEntry = {
   approved_at: string | null;
   approval_note: string | null;
 };
-
-type SessionHistoryItem = { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null };
-
-type SessionPayment = { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null };
 
 type RapidReceiveItem = { product_id: string; product_name: string; barcode: string; quantity: number };
 type RapidReceiveException = { barcode: string; reason: string };

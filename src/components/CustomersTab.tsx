@@ -1,6 +1,6 @@
 import React from "react";
 import type { Customer, LoyaltyTransaction } from "../lib/customers/types";
-import type { Sale, SaleItemRecord, EodPayment } from "../lib/sales/types";
+import type { Sale, SaleItemRecord, EodPayment, ReturnItemSummary } from "../lib/sales/types";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
 
@@ -10,7 +10,7 @@ type CustomersTabProps = {
   sales: Sale[];
   saleItems: SaleItemRecord[];
   allPayments: EodPayment[];
-  allReturnItems: { sale_id: string; product_id: string; quantity_returned: number }[];
+  allReturnItems: ReturnItemSummary[];
   products: ProductStock[];
   loyaltyTransactions: LoyaltyTransaction[];
   newCusName: string;

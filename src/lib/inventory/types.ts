@@ -56,8 +56,8 @@ export type StockCountRecord = {
   business_id: string;
   status: string;
   notes: string | null;
-  completed_at: string;
-  created_at: string;
+  completed_at: string | null;
+  created_at: string | null;
 };
 
 export type StockCountItemDetail = {
@@ -68,3 +68,12 @@ export type StockCountItemDetail = {
   variance: number;
   products: { name: string; sku: string | null } | null;
 };
+
+/** A single scanned line within an in-progress receiving session. */
+export type SessionItem = { id: string; product_id: string; quantity_received: number; unit_cost: number };
+
+/** A completed receiving session's line item, as shown in Session History. */
+export type SessionHistoryItem = { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null };
+
+/** A supplier payment recorded against a receiving session's invoice. */
+export type SessionPayment = { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null };
