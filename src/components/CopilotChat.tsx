@@ -47,11 +47,6 @@ export function CopilotChat({ visible, employeeId }: CopilotChatProps) {
 
   return (
     <div style={{ display: visible ? '' : 'none' }}>
-      <div className="page-header">
-        <h2 className="page-title">Store Manager Copilot</h2>
-        <p className="page-subtitle">Ask about products, stock, sales, or the cash drawer — read-only, this session only</p>
-      </div>
-
       <div style={{ maxWidth: "640px", display: "flex", flexDirection: "column", gap: "10px" }}>
         <div
           style={{

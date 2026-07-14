@@ -4,7 +4,8 @@ import type { Database } from "./lib/database.types";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { SettingsTab } from "./components/SettingsTab";
-import { CopilotChat } from "./components/CopilotChat";
+import { WegnAiPage } from "./components/WegnAiPage";
+import { getTodaysProfitEstimate, getPriorityAlerts } from "./lib/copilot/executiveBriefing";
 import { CustomersTab } from "./components/CustomersTab";
 import { ProductResolutionDialog } from "./components/ProductResolutionDialog";
 import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
@@ -40,7 +41,7 @@ type AppProps = {
   onSignOut: () => void;
 };
 
-function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
+function App({ userId, userEmail, onSignOut }: AppProps) {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -794,6 +795,14 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const salesTodaySummary = useMemo(
     () => getSalesTodaySummary(sales, saleItems, allPayments, products, productIdMap),
     [sales, saleItems, allPayments, products, productIdMap]
+  );
+  const todaysProfitEstimate = useMemo(
+    () => getTodaysProfitEstimate(sales, saleItems, productIdMap),
+    [sales, saleItems, productIdMap]
+  );
+  const priorityAlerts = useMemo(
+    () => getPriorityAlerts(lowStockProducts, batches),
+    [lowStockProducts, batches]
   );
   const purchasingDashboardSummary = useMemo(
     () => getPurchasingDashboardSummary(purchaseOrders),
@@ -4160,8 +4169,8 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             ['customers', 'Customers'],
             ['employees', 'Staff'],
             ['reports', 'Reports'],
+            ['copilot', '✨ Wegn AI'],
             ['settings', 'Settings'],
-            ['copilot', 'Copilot'],
           ] as [string, string][]).filter(([key]) => allowedTabs.includes(key)).map(([key, label]) => (
             <button
               key={key}
@@ -4831,9 +4840,20 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         onSave={handleSaveBusiness}
       />{/* end settings */}
 
-      {/* ── COPILOT TAB ── */}
-      <CopilotChat
+      {/* ── WEGN AI TAB ── */}
+      <WegnAiPage
         visible={activeTab === 'copilot' && !!businessId && appUnlocked}
+        isOwnerOrManager={isOwnerOrManager}
+        staffName={staffSession?.name ?? null}
+        userEmail={userEmail}
+        salesTodaySummary={salesTodaySummary}
+        todaysProfit={todaysProfitEstimate}
+        lowStockCount={lowStockProducts.length}
+        outOfStockCount={inventoryDashboardSummary.outOfStockCount}
+        drawerOpen={!!drawerSession}
+        drawerOpenedAt={drawerSession?.opened_at ?? null}
+        priorityAlerts={priorityAlerts}
+        onNavigate={setActiveTab}
         employeeId={staffSession?.id ?? null}
       />
 
