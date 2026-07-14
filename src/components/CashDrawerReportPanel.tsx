@@ -1,7 +1,7 @@
 import React from "react";
 import type { ProductStock } from "../lib/product/types";
 import type { Employee, DrawerSession, DrawerPaidOut } from "../lib/staff/types";
-import type { Sale, SaleItemRecord, EodItem, EodPayment } from "../lib/sales/types";
+import type { Sale, SaleItemRecord, EodItem, EodPayment, ReturnItemSummary } from "../lib/sales/types";
 import type { LoyaltyTransaction } from "../lib/customers/types";
 
 type CashDrawerReportPanelProps = {
@@ -30,7 +30,7 @@ type CashDrawerReportPanelProps = {
   sales: Sale[];
   eodItems: EodItem[];
   eodPayments: EodPayment[];
-  allReturnItems: { sale_id: string; product_id: string; quantity_returned: number }[];
+  allReturnItems: ReturnItemSummary[];
   products: ProductStock[];
   loyaltyTransactions: LoyaltyTransaction[];
   employees: Employee[];

@@ -27,9 +27,9 @@ import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
 import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
 import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
-import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail } from "./lib/inventory/types";
+import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail, SessionItem, SessionHistoryItem, SessionPayment } from "./lib/inventory/types";
 import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow, PoSignatures } from "./lib/purchasing/types";
-import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
+import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReturnItemSummary, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
 import type { Customer, LoyaltyTransaction } from "./lib/customers/types";
 import type { Employee, DrawerSession, DrawerPaidOut } from "./lib/staff/types";
 
@@ -78,7 +78,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [rapidReceiveExceptions, setRapidReceiveExceptions] = useState<{ barcode: string; reason: string }[]>([]);
   const [isPostingRapidReceive, setIsPostingRapidReceive] = useState(false);
   const [activeReceivingSession, setActiveReceivingSession] = useState<{ id: string; business_id: string; supplier_id: string | null; received_by: string | null; status: string; notes: string | null; created_at: string; invoice_number?: string | null; supplier_name?: string | null } | null>(null);
-  const [sessionItems, setSessionItems] = useState<{ id: string; product_id: string; quantity_received: number; unit_cost: number }[]>([]);
+  const [sessionItems, setSessionItems] = useState<SessionItem[]>([]);
   const [sessionScanInput, setSessionScanInput] = useState("");
   // ── Unified Product Resolution dialog ──
   const [productResolution, setProductResolution] = useState<ProductResolutionRequest | null>(null);
@@ -131,7 +131,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [editFreightCost, setEditFreightCost] = useState("");
   const [editAdditionalCost, setEditAdditionalCost] = useState("");
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
-  const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[]>>({});
+  const [sessionHistoryItems, setSessionHistoryItems] = useState<Record<string, SessionHistoryItem[]>>({});
   const [expandedHistorySessionId, setExpandedHistorySessionId] = useState<string | null>(null);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
@@ -139,7 +139,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
   const [supplierStatement, setSupplierStatement] = useState<SupplierStatementRow[]>([]);
   const [isLoadingStatement, setIsLoadingStatement] = useState(false);
-  const [sessionPayments, setSessionPayments] = useState<Record<string, { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[]>>({});
+  const [sessionPayments, setSessionPayments] = useState<Record<string, SessionPayment[]>>({});
   const [paymentPanelSessionId, setPaymentPanelSessionId] = useState<string | null>(null);
   const [editPaymentDate, setEditPaymentDate] = useState("");
   const [editPaymentAmount, setEditPaymentAmount] = useState("");
@@ -408,7 +408,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [posRedeemPoints, setPosRedeemPoints] = useState("");
   const [analyticsRange, setAnalyticsRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
-  const [allReturnItems, setAllReturnItems] = useState<{ sale_id: string; product_id: string; quantity_returned: number }[]>([]);
+  const [allReturnItems, setAllReturnItems] = useState<ReturnItemSummary[]>([]);
   const [allPoItems, setAllPoItems] = useState<POItem[]>([]);
   const [allPayments, setAllPayments] = useState<EodPayment[]>([]);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
@@ -1319,7 +1319,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
     const { data } = await supabase
       .from('return_items')
       .select('sale_id, product_id, quantity_returned');
-    setAllReturnItems((data as { sale_id: string; product_id: string; quantity_returned: number }[]) ?? []);
+    setAllReturnItems((data as ReturnItemSummary[]) ?? []);
   }
 
   async function loadReturnHistory() {
@@ -3091,7 +3091,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("receiving_session_id", sessionId)
       .order("created_at", { ascending: true });
     if (error) { console.error("[SupplierPayment] Load error:", error); return; }
-    setSessionPayments(prev => ({ ...prev, [sessionId]: (data ?? []) as { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }[] }));
+    setSessionPayments(prev => ({ ...prev, [sessionId]: (data ?? []) as SessionPayment[] }));
   }
 
   async function handleSavePayment(sessionId: string, supplierId: string, remaining: number) {
@@ -3122,7 +3122,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       setIsSavingPayment(false);
       return;
     }
-    setSessionPayments(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), data as { id: string; amount: number; payment_date: string; payment_method: string; reference: string | null; notes: string | null }] }));
+    setSessionPayments(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), data as SessionPayment] }));
     setPaymentPanelSessionId(null);
     setEditPaymentDate("");
     setEditPaymentAmount("");
@@ -3225,7 +3225,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("receiving_session_id", sessionId)
       .order("created_at", { ascending: true });
     if (error) { console.error("[SessionHistory] Load items error:", error); return; }
-    const items = (data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number; total_cost: number | null }[];
+    const items = (data ?? []) as SessionHistoryItem[];
     setSessionHistoryItems(prev => ({ ...prev, [sessionId]: items }));
     const session = sessionHistory.find(s => s.id === sessionId);
     if (session && session.invoice_total > 0) {
@@ -3260,7 +3260,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
       .eq("receiving_session_id", sessionId)
       .order("created_at", { ascending: true });
     if (error) { console.error("[ReceivingSession] Load items error:", error); return; }
-    setSessionItems((data ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
+    setSessionItems((data ?? []) as SessionItem[]);
   }
 
   async function handleStartReceivingSession() {
@@ -3425,7 +3425,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
               quantity_received: 1,
               unit_cost: resolved?.cost_price ?? 0,
             }).select("id, product_id, quantity_received, unit_cost").single();
-            if (!itemErr && itemData) setSessionItems(prev => [...prev, itemData as { id: string; product_id: string; quantity_received: number; unit_cost: number }]);
+            if (!itemErr && itemData) setSessionItems(prev => [...prev, itemData as SessionItem]);
           }
           playScanBeep(true);
         },
@@ -5253,7 +5253,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
                       .eq("receiving_session_id", existingSession.id)
                       .order("created_at", { ascending: true });
                     setActiveReceivingSession({ ...existingSession, invoice_number: (existingSession as { invoice_number?: string | null }).invoice_number ?? null, supplier_name: (existingSession as { supplier_name?: string | null }).supplier_name ?? null });
-                    setSessionItems((existingItems ?? []) as { id: string; product_id: string; quantity_received: number; unit_cost: number }[]);
+                    setSessionItems((existingItems ?? []) as SessionItem[]);
                   } else {
                     // Completed/cancelled — route to history, never activate as draft
                     setMessage({ text: `Session ${existingSession.id.slice(0, 8)} is already ${existingSession.status}. View it in Receiving History below.`, type: "success" });

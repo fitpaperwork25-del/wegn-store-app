@@ -52,6 +52,15 @@ export type ReturnRecord = {
   created_at: string;
 };
 
+/** Minimal projection of a return line — just enough to attribute a
+ * return back to its sale/product for EOD and reporting rollups.
+ * Distinct from ReturnRecord, which is the full return_items row. */
+export type ReturnItemSummary = {
+  sale_id: string;
+  product_id: string;
+  quantity_returned: number;
+};
+
 export type ReceiptItem = {
   product_id: string;
   quantity: number;
