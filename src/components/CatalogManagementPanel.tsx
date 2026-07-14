@@ -82,6 +82,7 @@ type CatalogManagementPanelProps = {
   canDeactivateProducts: boolean;
   onToggleProductStatus: (product: ProductStock) => void;
   onEditProduct: (e: React.FormEvent, productId: string) => void;
+  onPrintBarcodeLabel: (product: ProductStock) => void;
   editProdName: string;
   editProdSku: string;
   editProdBarcode: string;
@@ -106,7 +107,7 @@ export function CatalogManagementPanel({
   categoryFilter, setCategoryFilter, filteredProducts, editingProductId, setEditingProductId, canEditProducts,
   setEditProdName, setEditProdSku, setEditProdBarcode, setEditProdPrice, setEditProdReorder,
   setEditProdOverhead, setEditProdTargetMargin, setEditProdMinMargin, setEditProdCategory,
-  canDeactivateProducts, onToggleProductStatus, onEditProduct,
+  canDeactivateProducts, onToggleProductStatus, onEditProduct, onPrintBarcodeLabel,
   editProdName, editProdSku, editProdBarcode, editProdPrice, editProdReorder, editProdCategory,
   editProdOverhead, editProdTargetMargin, editProdMinMargin,
 }: CatalogManagementPanelProps) {
@@ -328,6 +329,7 @@ export function CatalogManagementPanel({
               <th style={{ textAlign: "left" }}>Product</th>
               <th style={{ textAlign: "left" }}>Category</th>
               <th style={{ textAlign: "left" }}>SKU</th>
+              <th style={{ textAlign: "left" }}>Barcode</th>
               <th style={{ textAlign: "right" }}>Price</th>
               <th style={{ textAlign: "right" }}>Stock</th>
               <th>Status</th>
@@ -338,7 +340,7 @@ export function CatalogManagementPanel({
           <tbody>
             {(() => {
               if (filteredProducts.length === 0) return (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
               );
               return filteredProducts.map((product) => {
               const isLowStock = product.status === 'active' && product.reorder_level !== null && product.quantity_on_hand < product.reorder_level;
@@ -351,6 +353,18 @@ export function CatalogManagementPanel({
                     <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
                     <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{(product.category_id ? categoryMap[product.category_id]?.name : null) ?? "—"}</td>
                     <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
+                    <td data-label="Barcode" style={{ fontSize: "13px" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span style={{ color: "#64748b", fontFamily: "var(--mono)" }}>{product.barcode ?? "—"}</span>
+                        <button
+                          type="button"
+                          onClick={() => onPrintBarcodeLabel(product)}
+                          disabled={!product.barcode}
+                          className="sh-btn sh-btn-print"
+                          style={{ opacity: product.barcode ? 1 : 0.5, cursor: product.barcode ? "pointer" : "not-allowed" }}
+                        >Print Barcode</button>
+                      </span>
+                    </td>
                     <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
                     <td data-label="Stock" style={{ textAlign: "right" }}>
                       <span style={{ fontWeight: 500 }}>{product.quantity_on_hand}</span>
@@ -390,7 +404,7 @@ export function CatalogManagementPanel({
                   </tr>
                   {canEditProducts && isEditing && (
                     <tr className="inv-edit-row">
-                      <td colSpan={7} style={{ background: "#f9fafb", padding: "16px" }}>
+                      <td colSpan={8} style={{ background: "#f9fafb", padding: "16px" }}>
                         <form onSubmit={(e) => onEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
                           <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Product — {product.product_name}</strong>
                           <input

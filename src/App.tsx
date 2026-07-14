@@ -8,6 +8,7 @@ import { CustomersTab } from "./components/CustomersTab";
 import { ProductResolutionDialog } from "./components/ProductResolutionDialog";
 import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
 import { POPrintModal } from "./components/POPrintModal";
+import { BarcodeLabelPrintModal, type BarcodeLabelData } from "./components/BarcodeLabelPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
 import { SupplierManagementPanel } from "./components/SupplierManagementPanel";
 import { PurchaseOrderLifecyclePanel } from "./components/PurchaseOrderLifecyclePanel";
@@ -227,6 +228,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [printPo, setPrintPo] = useState<{ po: PurchaseOrder; items: POItem[]; supplier: Supplier | null } | null>(null);
+  const [barcodeLabel, setBarcodeLabel] = useState<BarcodeLabelData | null>(null);
   const [signPoId, setSignPoId] = useState<string | null>(null);
   const [signRole, setSignRole] = useState<"manager" | "supplier">("manager");
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -4616,6 +4618,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         canDeactivateProducts={canDeactivateProducts}
         onToggleProductStatus={handleToggleProductStatus}
         onEditProduct={handleEditProduct}
+        onPrintBarcodeLabel={(product) => setBarcodeLabel({
+          productName: product.product_name,
+          sku: product.sku,
+          sellingPrice: product.selling_price,
+          barcode: product.barcode as string,
+        })}
         editProdName={editProdName}
         editProdSku={editProdSku}
         editProdBarcode={editProdBarcode}
@@ -5544,6 +5552,11 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         businessPhone={businessPhone}
         businessAddress={businessAddress}
         onClose={() => setReceipt(null)}
+      />
+
+      <BarcodeLabelPrintModal
+        label={barcodeLabel}
+        onClose={() => setBarcodeLabel(null)}
       />
     </div>
   );
