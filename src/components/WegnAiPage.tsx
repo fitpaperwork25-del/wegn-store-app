@@ -1,13 +1,16 @@
 import type { SalesTodaySummary } from "../lib/sales/salesHelpers";
 import type { PriorityAlert } from "../lib/copilot/executiveBriefing";
 import { deriveGreetingName } from "../lib/copilot/executiveBriefing";
+import type { OnboardingStepData } from "../lib/onboarding/types";
 import { CopilotChat } from "./CopilotChat";
+import { OnboardingSetupMode } from "./OnboardingSetupMode";
 
 type WegnAiPageProps = {
   visible: boolean;
   isOwnerOrManager: boolean;
   staffName: string | null;
   userEmail: string;
+  businessName: string;
   salesTodaySummary: SalesTodaySummary;
   todaysProfit: number | null;
   lowStockCount: number;
@@ -17,6 +20,14 @@ type WegnAiPageProps = {
   priorityAlerts: PriorityAlert[];
   onNavigate: (tab: string) => void;
   employeeId: string | null;
+  /** Wegn AI Onboarding Blueprint, Phase 1 (Steps 1-3). onboardingLoaded=false renders nothing yet, matching the businessLoaded guard pattern used elsewhere in App.tsx — avoids flashing the wrong mode before the state is known. */
+  onboardingLoaded: boolean;
+  onboardingCompleted: boolean;
+  onboardingCurrentStep: number;
+  onboardingStepData: OnboardingStepData;
+  onOnboardingBack: (prevStep: number) => void;
+  onOnboardingAdvance: (data: Partial<OnboardingStepData>, nextStep: number) => void;
+  onOnboardingComplete: (data: Partial<OnboardingStepData>) => void;
 };
 
 /**
@@ -32,6 +43,7 @@ export function WegnAiPage({
   isOwnerOrManager,
   staffName,
   userEmail,
+  businessName,
   salesTodaySummary,
   todaysProfit,
   lowStockCount,
@@ -41,9 +53,32 @@ export function WegnAiPage({
   priorityAlerts,
   onNavigate,
   employeeId,
+  onboardingLoaded,
+  onboardingCompleted,
+  onboardingCurrentStep,
+  onboardingStepData,
+  onOnboardingBack,
+  onOnboardingAdvance,
+  onOnboardingComplete,
 }: WegnAiPageProps) {
   const greetingName = deriveGreetingName(staffName, userEmail);
   const inventoryHealthy = lowStockCount === 0 && outOfStockCount === 0;
+
+  if (!onboardingLoaded) return <div style={{ display: visible ? '' : 'none' }} />;
+
+  if (!onboardingCompleted) {
+    return (
+      <OnboardingSetupMode
+        visible={visible}
+        businessName={businessName}
+        currentStep={onboardingCurrentStep}
+        stepData={onboardingStepData}
+        onBack={onOnboardingBack}
+        onAdvance={onOnboardingAdvance}
+        onComplete={onOnboardingComplete}
+      />
+    );
+  }
 
   return (
     <div style={{ display: visible ? '' : 'none' }}>

@@ -34,6 +34,7 @@ import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow, PoSignature
 import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReturnItemSummary, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
 import type { Customer, LoyaltyTransaction } from "./lib/customers/types";
 import type { Employee, DrawerSession, DrawerPaidOut } from "./lib/staff/types";
+import type { OnboardingStepData } from "./lib/onboarding/types";
 
 type AppProps = {
   userId: string;
@@ -73,6 +74,21 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [businessId, setBusinessId] = useState("");
   const [businessLoaded, setBusinessLoaded] = useState(false);
   const [businessError, setBusinessError] = useState("");
+  // Wegn AI Onboarding Blueprint, Phase 1 (Steps 1-3). onboardingLoaded
+  // mirrors businessLoaded's guard pattern - WegnAiPage renders nothing
+  // until this is true, so it never flashes the wrong mode. A missing row
+  // (pre-existing business, or any defensive edge case) is treated as
+  // completed=true - onboarding must be explicitly opted into via a row
+  // inserted at business-creation time, never assumed for existing users.
+  const [onboardingLoaded, setOnboardingLoaded] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(true);
+  const [onboardingCurrentStep, setOnboardingCurrentStep] = useState(1);
+  const [onboardingStepData, setOnboardingStepData] = useState<OnboardingStepData>({});
+  // Captured once at mount, before the module=activeTab sync effect can
+  // overwrite the URL - lets the auto-enter-Setup-Mode effect tell "fresh
+  // session, no explicit tab requested" apart from "user already navigated
+  // or opened a shared/reloaded URL", without racing that other effect.
+  const hadExplicitModuleParamRef = useRef(!!new URLSearchParams(window.location.search).get('module'));
   const [selectedProductId, setSelectedProductId] = useState("");
   const [receiveQuantity, setReceiveQuantity] = useState("");
   const [rapidReceiveInput, setRapidReceiveInput] = useState("");
@@ -544,7 +560,20 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     if (!businessId) return;
     loadActiveReceivingSession();
     loadSessionHistory();
+    loadOnboardingState(businessId);
   }, [businessId]);
+
+  // Wegn AI Onboarding Blueprint Phase 1, rule 2 ("Automatically enter
+  // Setup Mode"): once onboarding state is known, if it's incomplete and
+  // the session started with no explicit ?module= param (i.e. this isn't
+  // a shared/reloaded/user-navigated URL), default straight into the Wegn
+  // AI tab. Runs once per onboardingLoaded transition - never fights a
+  // user who has since clicked elsewhere.
+  useEffect(() => {
+    if (!onboardingLoaded || onboardingCompleted) return;
+    if (hadExplicitModuleParamRef.current) return;
+    setActiveTab('copilot');
+  }, [onboardingLoaded, onboardingCompleted]);
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
   useEffect(() => { loadSales(); }, [salesDateRange]);
@@ -843,6 +872,61 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setBusinessLoaded(true);
   }
 
+  // Wegn AI Onboarding Blueprint, Phase 1. A missing row means either a
+  // business that predates this feature and wasn't caught by the migration
+  // backfill, or a read error - both fail safe to completed=true, since an
+  // existing/functioning business must never be unexpectedly routed into
+  // onboarding.
+  async function loadOnboardingState(bizId: string) {
+    const { data, error } = await supabase
+      .from("business_onboarding_state")
+      .select("completed, current_step, step_data")
+      .eq("business_id", bizId)
+      .maybeSingle();
+    if (error) {
+      console.error("loadOnboardingState error:", error);
+      setOnboardingCompleted(true);
+      setOnboardingLoaded(true);
+      return;
+    }
+    if (data) {
+      setOnboardingCompleted(data.completed);
+      setOnboardingCurrentStep(data.current_step);
+      setOnboardingStepData((data.step_data ?? {}) as OnboardingStepData);
+    } else {
+      setOnboardingCompleted(true);
+    }
+    setOnboardingLoaded(true);
+  }
+
+  // Single persistence path for Back/Skip/Continue across Steps 1-3 - every
+  // navigation writes through immediately (not just on final completion),
+  // which is the resume mechanism: reloading mid-flow re-reads this same
+  // row and picks up exactly where the user left off.
+  async function persistOnboardingState(step: number, completed: boolean, dataPatch: Partial<OnboardingStepData>) {
+    const mergedData = { ...onboardingStepData, ...dataPatch };
+    setOnboardingStepData(mergedData);
+    setOnboardingCurrentStep(step);
+    setOnboardingCompleted(completed);
+    const { error } = await supabase
+      .from("business_onboarding_state")
+      .update({ current_step: step, completed, step_data: mergedData, updated_at: new Date().toISOString() })
+      .eq("business_id", businessId);
+    if (error) console.error("Failed to persist onboarding progress:", error);
+  }
+
+  function handleOnboardingBack(prevStep: number) {
+    persistOnboardingState(prevStep, false, {});
+  }
+
+  function handleOnboardingAdvance(data: Partial<OnboardingStepData>, nextStep: number) {
+    persistOnboardingState(nextStep, false, data);
+  }
+
+  function handleOnboardingComplete(data: Partial<OnboardingStepData>) {
+    persistOnboardingState(3, true, data);
+  }
+
   function handlePinLogin() {
     const pin = pinInput.trim();
     if (!pin) return;
@@ -871,15 +955,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     e.preventDefault();
     const name = editBizName.trim();
     if (!name) return;
-    const { error } = await supabase.from("businesses").insert({
+    const { data: newBusiness, error } = await supabase.from("businesses").insert({
       owner_id: userId,
       name,
       phone: editBizPhone.trim() || null,
       email: editBizEmail.trim() || null,
       address: editBizAddress.trim() || null,
       tax_rate: Math.min(100, Math.max(0, parseFloat(editBizTaxRate) || 0)),
-    });
-    if (error) { console.error(error); setMessage({ text: "Failed to create business: " + error.message, type: "error" }); return; }
+    }).select("id").single();
+    if (error || !newBusiness) { console.error(error); setMessage({ text: "Failed to create business: " + (error?.message ?? "unknown error"), type: "error" }); return; }
     setEditBizName("");
     setEditBizPhone("");
     setEditBizEmail("");
@@ -887,6 +971,25 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setEditBizTaxRate("");
     setMessage({ text: "Business created", type: "success" });
     await loadBusiness();
+
+    // Wegn AI Onboarding Blueprint, Phase 1, rules 1-2: every newly-created
+    // business starts in Setup Mode. Pre-existing businesses are backfilled
+    // to completed=true by the migration and never get this row inserted.
+    const { error: onboardingError } = await supabase.from("business_onboarding_state").insert({
+      business_id: newBusiness.id,
+      completed: false,
+      current_step: 1,
+      step_data: {},
+    });
+    if (onboardingError) {
+      console.error("Failed to initialize onboarding state:", onboardingError);
+      return;
+    }
+    setOnboardingCompleted(false);
+    setOnboardingCurrentStep(1);
+    setOnboardingStepData({});
+    setOnboardingLoaded(true);
+    setActiveTab('copilot');
   }
 
   async function handleSaveBusiness(e: React.FormEvent) {
@@ -4846,6 +4949,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         isOwnerOrManager={isOwnerOrManager}
         staffName={staffSession?.name ?? null}
         userEmail={userEmail}
+        businessName={businessName}
         salesTodaySummary={salesTodaySummary}
         todaysProfit={todaysProfitEstimate}
         lowStockCount={lowStockProducts.length}
@@ -4855,6 +4959,13 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         priorityAlerts={priorityAlerts}
         onNavigate={setActiveTab}
         employeeId={staffSession?.id ?? null}
+        onboardingLoaded={onboardingLoaded}
+        onboardingCompleted={onboardingCompleted}
+        onboardingCurrentStep={onboardingCurrentStep}
+        onboardingStepData={onboardingStepData}
+        onOnboardingBack={handleOnboardingBack}
+        onOnboardingAdvance={handleOnboardingAdvance}
+        onOnboardingComplete={handleOnboardingComplete}
       />
 
       {/* Smart Receive — Receive Inventory Modal */}

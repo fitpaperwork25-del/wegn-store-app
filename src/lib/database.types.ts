@@ -53,6 +53,36 @@ export type Database = {
         }
         Relationships: []
       }
+      business_onboarding_state: {
+        Row: {
+          business_id: string
+          completed: boolean
+          created_at: string
+          current_step: number
+          id: string
+          step_data: Json
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          completed?: boolean
+          created_at?: string
+          current_step?: number
+          id?: string
+          step_data?: Json
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          completed?: boolean
+          created_at?: string
+          current_step?: number
+          id?: string
+          step_data?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           business_id: string
