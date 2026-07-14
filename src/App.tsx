@@ -4,6 +4,7 @@ import type { Database } from "./lib/database.types";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { SettingsTab } from "./components/SettingsTab";
+import { CopilotChat } from "./components/CopilotChat";
 import { CustomersTab } from "./components/CustomersTab";
 import { ProductResolutionDialog } from "./components/ProductResolutionDialog";
 import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
@@ -497,10 +498,10 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
   const appUnlocked = !hasStaffPins || staffSession !== null || ownerBypass;
 
   const tabAccess: Record<string, string[]> = {
-    owner: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'employees', 'reports', 'settings'],
-    manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'reports', 'settings'],
-    cashier: ['dashboard', 'pos', 'customers'],
-    inventory_clerk: ['dashboard', 'inventory', 'purchasing'],
+    owner: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'employees', 'reports', 'settings', 'copilot'],
+    manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'reports', 'settings', 'copilot'],
+    cashier: ['dashboard', 'pos', 'customers', 'copilot'],
+    inventory_clerk: ['dashboard', 'inventory', 'purchasing', 'copilot'],
   };
   const allowedTabs = tabAccess[userRole] ?? tabAccess.owner;
 
@@ -4160,6 +4161,7 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
             ['employees', 'Staff'],
             ['reports', 'Reports'],
             ['settings', 'Settings'],
+            ['copilot', 'Copilot'],
           ] as [string, string][]).filter(([key]) => allowedTabs.includes(key)).map(([key, label]) => (
             <button
               key={key}
@@ -4828,6 +4830,12 @@ function App({ userId, userEmail: _userEmail, onSignOut }: AppProps) {
         userRole={userRole}
         onSave={handleSaveBusiness}
       />{/* end settings */}
+
+      {/* ── COPILOT TAB ── */}
+      <CopilotChat
+        visible={activeTab === 'copilot' && !!businessId && appUnlocked}
+        employeeId={staffSession?.id ?? null}
+      />
 
       {/* Smart Receive — Receive Inventory Modal */}
       {/* Backdrop: z-index 1099, sibling of panel */}
