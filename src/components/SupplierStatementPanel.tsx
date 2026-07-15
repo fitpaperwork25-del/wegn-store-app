@@ -36,6 +36,10 @@ type SupplierStatementPanelProps = {
   setInvPaymentNotes: (v: string) => void;
   onSaveInvoicePayment: (invoiceId: string, supplierId: string, remaining: number) => void;
   isSavingInvoicePayment: boolean;
+  // Supplier Statement Printing Phase 2 - presentation only, does not touch
+  // any payment/invoice calculation.
+  onOpenSupplierStatementPrint: (supplierId: string, supplierName: string) => void;
+  isPreparingStatementPrint: boolean;
 };
 
 export function SupplierStatementPanel({
@@ -54,12 +58,30 @@ export function SupplierStatementPanel({
   invPaymentNotes, setInvPaymentNotes,
   onSaveInvoicePayment,
   isSavingInvoicePayment,
+  onOpenSupplierStatementPrint,
+  isPreparingStatementPrint,
 }: SupplierStatementPanelProps) {
   return (
     <tr>
       <td colSpan={8} style={{ padding: "0", borderTop: "2px solid #e2e8f0" }}>
         <div style={{ padding: "16px 20px", background: "#f8fafc" }}>
-          <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "12px", color: "#0f172a" }}>Supplier Statement — {supplierName}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>Supplier Statement — {supplierName}</div>
+            {supplierStatement.length > 0 && (
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => onOpenSupplierStatementPrint(supplierId, supplierName)}
+                  disabled={isPreparingStatementPrint}
+                  style={{ padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer", background: "#fff", color: "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "5px", opacity: isPreparingStatementPrint ? 0.6 : 1 }}
+                >{isPreparingStatementPrint ? "Preparing..." : "Print Statement"}</button>
+                <button
+                  onClick={() => onOpenSupplierStatementPrint(supplierId, supplierName)}
+                  disabled={isPreparingStatementPrint}
+                  style={{ padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer", background: "#fff", color: "#15803d", border: "1px solid #86efac", borderRadius: "5px", opacity: isPreparingStatementPrint ? 0.6 : 1 }}
+                >{isPreparingStatementPrint ? "Preparing..." : "Export PDF"}</button>
+              </div>
+            )}
+          </div>
           {isLoadingStatement ? (
             <p style={{ fontSize: "13px", color: "#64748b" }}>Loading...</p>
           ) : supplierStatement.length === 0 ? (

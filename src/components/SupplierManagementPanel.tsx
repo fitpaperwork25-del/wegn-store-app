@@ -68,6 +68,9 @@ type SupplierManagementPanelProps = {
   setInvPaymentNotes: (v: string) => void;
   onSaveInvoicePayment: (invoiceId: string, supplierId: string, remaining: number) => void;
   isSavingInvoicePayment: boolean;
+  // Supplier Statement Printing Phase 2 - presentation only.
+  onOpenSupplierStatementPrint: (supplierId: string, supplierName: string) => void;
+  isPreparingStatementPrint: boolean;
 };
 
 export function SupplierManagementPanel({
@@ -113,6 +116,8 @@ export function SupplierManagementPanel({
   invPaymentNotes, setInvPaymentNotes,
   onSaveInvoicePayment,
   isSavingInvoicePayment,
+  onOpenSupplierStatementPrint,
+  isPreparingStatementPrint,
 }: SupplierManagementPanelProps) {
   return (
     <div style={{ display: visible ? '' : 'none' }}>
@@ -454,6 +459,8 @@ export function SupplierManagementPanel({
                         invPaymentNotes={invPaymentNotes} setInvPaymentNotes={setInvPaymentNotes}
                         onSaveInvoicePayment={onSaveInvoicePayment}
                         isSavingInvoicePayment={isSavingInvoicePayment}
+                        onOpenSupplierStatementPrint={onOpenSupplierStatementPrint}
+                        isPreparingStatementPrint={isPreparingStatementPrint}
                       />
                     )}
                   </React.Fragment>

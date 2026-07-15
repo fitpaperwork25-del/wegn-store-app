@@ -12,6 +12,7 @@ import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
 import { POPrintModal } from "./components/POPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
 import { SupplierManagementPanel } from "./components/SupplierManagementPanel";
+import { SupplierStatementPrintModal, type PrintableSupplierStatement } from "./components/SupplierStatementPrintModal";
 import { PurchaseOrderLifecyclePanel } from "./components/PurchaseOrderLifecyclePanel";
 import { POSCheckoutPanel } from "./components/POSCheckoutPanel";
 import { SalesHistoryPanel } from "./components/SalesHistoryPanel";
@@ -258,6 +259,12 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [printPo, setPrintPo] = useState<{ po: PurchaseOrder; items: POItem[]; supplier: Supplier | null } | null>(null);
+  // Supplier Statement Printing Phase 2 - the print-ready snapshot,
+  // including per-invoice payment history bulk-fetched on demand only when
+  // Print/Export is actually clicked (never eagerly, per requirement).
+  const [printSupplierStatement, setPrintSupplierStatement] = useState<PrintableSupplierStatement | null>(null);
+  const [isPreparingStatementPrint, setIsPreparingStatementPrint] = useState(false);
+  const [isExportingStatementPdf, setIsExportingStatementPdf] = useState(false);
   const [signPoId, setSignPoId] = useState<string | null>(null);
   const [signRole, setSignRole] = useState<"manager" | "supplier">("manager");
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -3414,6 +3421,101 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setIsSavingInvoicePayment(false);
   }
 
+  // Supplier Statement Printing Phase 2 - presentation only, does not
+  // compute or alter any invoice/payment amount. Bulk-fetches full payment
+  // history for every invoice currently in the open Supplier Statement, on
+  // demand only (never eagerly): today's interactive panel only loads
+  // payments for whichever single invoice is expanded, which isn't enough
+  // for a complete printed/exported document.
+  async function handleOpenSupplierStatementPrint(supplierId: string, supplierName: string) {
+    if (isPreparingStatementPrint) return;
+    setIsPreparingStatementPrint(true);
+
+    const rows = supplierStatement;
+    const paymentsByInvoice: Record<string, SessionPayment[]> = {};
+
+    const sessionRowIds = rows.filter(r => r.source === "receiving_session").map(r => r.session_id);
+    if (sessionRowIds.length > 0) {
+      const { data, error } = await supabase
+        .from("supplier_payments")
+        .select("id, amount, payment_date, payment_method, reference, notes, receiving_session_id")
+        .in("receiving_session_id", sessionRowIds)
+        .order("created_at", { ascending: true });
+      if (error) console.error("[StatementPrint] session payments error:", error);
+      for (const p of (data ?? [])) {
+        if (!p.receiving_session_id) continue;
+        (paymentsByInvoice[p.receiving_session_id] ??= []).push(p);
+      }
+    }
+
+    const poRowIds = rows.filter(r => r.source === "purchase_order").map(r => r.session_id);
+    if (poRowIds.length > 0) {
+      const { data, error } = await supabase
+        .from("supplier_payments")
+        .select("id, amount, payment_date, payment_method, reference, notes, supplier_invoice_id")
+        .in("supplier_invoice_id", poRowIds)
+        .order("created_at", { ascending: true });
+      if (error) console.error("[StatementPrint] invoice payments error:", error);
+      for (const p of (data ?? [])) {
+        if (!p.supplier_invoice_id) continue;
+        (paymentsByInvoice[p.supplier_invoice_id] ??= []).push(p);
+      }
+    }
+
+    setPrintSupplierStatement({ supplierId, supplierName, rows, paymentsByInvoice });
+    setIsPreparingStatementPrint(false);
+  }
+
+  async function handleExportSupplierStatementPdf() {
+    if (isExportingStatementPdf || !printSupplierStatement) return;
+    setIsExportingStatementPdf(true);
+
+    const el = document.getElementById("supplier-statement-print-content");
+    if (!el) {
+      setMessage({ text: "Failed to render statement", type: "error" });
+      setIsExportingStatementPdf(false);
+      return;
+    }
+
+    const actionsEl = document.getElementById("supplier-statement-print-actions");
+    if (actionsEl) actionsEl.style.display = "none";
+
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#fff" });
+
+    if (actionsEl) actionsEl.style.display = "";
+
+    // Paginate rather than clip (the existing PO PDF export screenshots one
+    // full-height image and simply cuts off anything past the first page -
+    // a statement with many invoices needs real pagination instead).
+    const pdf = new jsPDF("p", "mm", "letter");
+    const pdfW = pdf.internal.pageSize.getWidth();
+    const pdfH = pdf.internal.pageSize.getHeight();
+    const pxPerMm = canvas.width / pdfW;
+    const pageHeightPx = Math.floor(pdfH * pxPerMm);
+
+    const pageCanvas = document.createElement("canvas");
+    pageCanvas.width = canvas.width;
+    const pageCtx = pageCanvas.getContext("2d");
+
+    let renderedPx = 0;
+    let isFirstPage = true;
+    while (renderedPx < canvas.height) {
+      const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+      pageCanvas.height = sliceHeightPx;
+      pageCtx?.clearRect(0, 0, pageCanvas.width, sliceHeightPx);
+      pageCtx?.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+      if (!isFirstPage) pdf.addPage();
+      pdf.addImage(pageCanvas.toDataURL("image/png"), "PNG", 0, 0, pdfW, sliceHeightPx / pxPerMm);
+      isFirstPage = false;
+      renderedPx += sliceHeightPx;
+    }
+
+    const safeSupplierName = printSupplierStatement.supplierName.replace(/[^a-zA-Z0-9]+/g, "-");
+    pdf.save(`Supplier-Statement-${safeSupplierName}.pdf`);
+    setMessage({ text: "Statement PDF downloaded", type: "success" });
+    setIsExportingStatementPdf(false);
+  }
+
   async function handleLinkSessionSupplier(sessionId: string, supplierId: string) {
     setIsResolvingSupplier(true);
     const { error } = await supabase
@@ -4924,6 +5026,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         invPaymentNotes={invPaymentNotes} setInvPaymentNotes={setInvPaymentNotes}
         onSaveInvoicePayment={handleSaveInvoicePayment}
         isSavingInvoicePayment={isSavingInvoicePayment}
+        onOpenSupplierStatementPrint={handleOpenSupplierStatementPrint}
+        isPreparingStatementPrint={isPreparingStatementPrint}
       />{/* end supplier management */}
 
       {/* ── PURCHASE ORDER LIFECYCLE (Purchasing sub-domain) ── */}
@@ -5764,6 +5868,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         fmtPhone={fmtPhone}
         getPoSignatures={getPoSignatures}
         onClose={() => setPrintPo(null)}
+      />
+
+      <SupplierStatementPrintModal
+        statement={printSupplierStatement}
+        businessName={businessName}
+        businessAddress={businessAddress}
+        onClose={() => setPrintSupplierStatement(null)}
+        onExportPdf={handleExportSupplierStatementPdf}
+        isExportingPdf={isExportingStatementPdf}
       />
 
       <ReceiptPrintModal
