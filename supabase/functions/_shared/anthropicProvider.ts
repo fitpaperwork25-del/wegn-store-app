@@ -43,6 +43,15 @@ export class AnthropicProvider implements AiProvider {
     const allToolCalls: AiToolCallRequest[] = [];
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      // Force the tool on the opening turn only - a single-tool milestone
+      // has no ambiguity about which tool to force, but forcing it on every
+      // round would prevent the model from ever returning a final text
+      // answer after the tool result comes back, looping until
+      // MAX_TOOL_ROUNDS is exhausted.
+      const toolChoice = round === 0 && anthropicTools.length === 1
+        ? { type: "tool" as const, name: anthropicTools[0].name }
+        : undefined;
+
       const res = await fetch(ANTHROPIC_API_URL, {
         method: "POST",
         headers: {
@@ -56,6 +65,7 @@ export class AnthropicProvider implements AiProvider {
           system: input.systemPrompt,
           messages,
           tools: anthropicTools,
+          ...(toolChoice ? { tool_choice: toolChoice } : {}),
         }),
       });
 
