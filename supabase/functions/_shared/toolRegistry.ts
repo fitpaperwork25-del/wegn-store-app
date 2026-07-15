@@ -4,6 +4,7 @@ import type { CopilotRole } from "./resolveRole.ts";
 import { searchProducts, createSupabaseProductSearchExecutor } from "./tools/searchProducts.ts";
 import { getSupplierBalances, fetchSupplierBalancesRawData } from "./tools/getSupplierBalances.ts";
 import { getSupplierPaymentHistory, fetchSupplierPaymentHistoryRawData } from "./tools/getSupplierPaymentHistory.ts";
+import { getPurchaseOrders, fetchPurchaseOrdersRawData } from "./tools/getPurchaseOrders.ts";
 
 /**
  * Controlled tool registry. Adding a tool means adding one entry here - it
@@ -63,6 +64,24 @@ const GET_SUPPLIER_PAYMENT_HISTORY_INPUT_SCHEMA: JsonSchema = {
   additionalProperties: false,
 };
 
+const GET_PURCHASE_ORDERS_INPUT_SCHEMA: JsonSchema = {
+  type: "object",
+  properties: {
+    poNumber: { type: "string", description: "Exact or partial PO number to look up, e.g. \"PO-20260715-131913\"." },
+    supplierName: { type: "string", description: "Optional supplier name (or partial name) to filter to one supplier's purchase orders." },
+    status: {
+      type: "string",
+      enum: ["draft", "ordered", "partially_received", "received", "cancelled", "open", "all"],
+      description: "Optional. Defaults to 'all'. 'open' means draft, ordered, or partially_received combined. 'ordered' means awaiting delivery.",
+    },
+    productName: { type: "string", description: "Optional product name (or partial name) - returns only purchase orders containing a matching line item." },
+    minSubtotal: { type: "number", minimum: 0, description: "Optional inclusive lower bound on the PO's subtotal dollar amount." },
+    maxSubtotal: { type: "number", minimum: 0, description: "Optional inclusive upper bound on the PO's subtotal dollar amount." },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
 export const TOOL_REGISTRY: ToolRegistryEntry[] = [
   {
     name: "search_products",
@@ -107,6 +126,21 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     allowedRoles: ["owner", "manager"],
     execute: async (rawInput, ctx) => {
       const result = await getSupplierPaymentHistory(rawInput, { businessId: ctx.businessId }, (businessId) => fetchSupplierPaymentHistoryRawData(ctx.supabase, businessId));
+      if (!result.ok) return { ok: false, error: result.error };
+      return { ok: true, value: result.value };
+    },
+  },
+  {
+    name: "get_purchase_orders",
+    mode: "read",
+    description:
+      "Look up this store's purchase orders - by status (draft, ordered/awaiting delivery, partially received, received, cancelled, or open = draft+ordered+partially_received combined), by supplier, by PO number, by a product it contains, or by subtotal dollar range. Returns exact, already-computed counts and totals. " +
+      "Use this for questions like: \"Show open purchase orders\", \"Which purchase orders are awaiting delivery?\", \"Show draft purchase orders\", \"Show purchase orders for CBA Supplies\", \"Which purchase order contains Milk 1 Liter?\", \"Show PO-20260715-131913\", \"What is the status of PO-20260715-131913?\", \"Show cancelled purchase orders\", \"Show purchase orders over $500\". " +
+      "This tool has no reliable way to determine WHEN a purchase order's status last changed - only its CURRENT status and creation date. Do not use it, and do not guess, for questions like \"which purchase orders were received/cancelled/ordered today\" - if asked, say plainly that this isn't something you can determine reliably. This tool is read-only and cannot create, edit, approve, cancel, receive, or delete purchase orders.",
+    inputSchema: GET_PURCHASE_ORDERS_INPUT_SCHEMA,
+    allowedRoles: ["owner", "manager"],
+    execute: async (rawInput, ctx) => {
+      const result = await getPurchaseOrders(rawInput, { businessId: ctx.businessId }, (businessId, filter) => fetchPurchaseOrdersRawData(ctx.supabase, businessId, filter));
       if (!result.ok) return { ok: false, error: result.error };
       return { ok: true, value: result.value };
     },
