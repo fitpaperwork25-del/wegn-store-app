@@ -41,7 +41,10 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
   {
     name: "search_products",
     mode: "read",
-    description: "Search the store's product catalog by name, SKU, or barcode. Returns basic product and stock info - no cost, margin, or profit data.",
+    description:
+      "Search the store's live product catalog by name, SKU, or barcode. Returns basic product and stock info (name, SKU, barcode, selling price, quantity on hand, status) for matching products - no cost, margin, or profit data. " +
+      "Use this whenever the user asks about specific products, current stock/inventory levels, or pricing for this store - for example: \"What products are in stock?\", \"Do we have Sunflower Seeds?\", \"How much is SKU 00123?\", \"Search for barcode 012345678901\", \"What's our stock of oat milk?\". " +
+      "Do not use this for questions that aren't about this store's actual catalog data - general/educational questions (e.g. \"Explain FIFO inventory\"), greetings or small talk (e.g. \"Hello\", \"What can you do?\"), or requests this tool cannot fulfill (it searches by name/SKU/barcode text and does not return a total product count, cost/margin data, sales history, or supplier/employee/customer data).",
     inputSchema: SEARCH_PRODUCTS_INPUT_SCHEMA,
     // No allowedRoles restriction - every Copilot-eligible role may search
     // products; the output itself never contains restricted fields.
