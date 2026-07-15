@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getPoItemReceiptStatus } from "./purchasingHelpers.ts";
+import { getPoItemReceiptStatus, getSupplierInvoiceStatus, computePaymentRunningBalance } from "./purchasingHelpers.ts";
 
 test("getPoItemReceiptStatus reflects a full receipt as fully received with nothing remaining", () => {
   // Regression: a PO ordered for 20, fully received, must show Received: 20 /
@@ -17,4 +17,40 @@ test("getPoItemReceiptStatus treats a null quantity_received as 0 received, full
 test("getPoItemReceiptStatus reflects a partial receipt", () => {
   const status = getPoItemReceiptStatus({ quantity: 20, quantity_received: 12 });
   assert.deepEqual(status, { received: 12, remaining: 8 });
+});
+
+test("getSupplierInvoiceStatus is outstanding when nothing has been paid", () => {
+  assert.equal(getSupplierInvoiceStatus(100, 0), "outstanding");
+});
+
+test("getSupplierInvoiceStatus is partial when some but not all has been paid", () => {
+  assert.equal(getSupplierInvoiceStatus(100, 40), "partial");
+});
+
+test("getSupplierInvoiceStatus is paid once the balance reaches zero", () => {
+  assert.equal(getSupplierInvoiceStatus(100, 100), "paid");
+});
+
+test("getSupplierInvoiceStatus treats a rounding-tolerant overpayment as paid, not negative", () => {
+  assert.equal(getSupplierInvoiceStatus(100, 100.004), "paid");
+});
+
+test("computePaymentRunningBalance reduces the balance after each payment in order", () => {
+  const entries = computePaymentRunningBalance(100, [
+    { id: "p1", amount: 40 },
+    { id: "p2", amount: 25 },
+  ]);
+  assert.deepEqual(entries, [
+    { paymentId: "p1", amount: 40, balanceAfter: 60 },
+    { paymentId: "p2", amount: 25, balanceAfter: 35 },
+  ]);
+});
+
+test("computePaymentRunningBalance reaches exactly zero on a final full payment", () => {
+  const entries = computePaymentRunningBalance(50, [{ id: "p1", amount: 50 }]);
+  assert.deepEqual(entries, [{ paymentId: "p1", amount: 50, balanceAfter: 0 }]);
+});
+
+test("computePaymentRunningBalance returns an empty list for an unpaid invoice", () => {
+  assert.deepEqual(computePaymentRunningBalance(100, []), []);
 });

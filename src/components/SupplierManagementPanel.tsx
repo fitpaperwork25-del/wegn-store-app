@@ -1,6 +1,7 @@
 import React from "react";
 import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow } from "../lib/purchasing/types";
 import type { ProductStock } from "../lib/product/types";
+import type { SessionPayment } from "../lib/inventory/types";
 import { SupplierStatementPanel } from "./SupplierStatementPanel";
 
 type SupplierManagementPanelProps = {
@@ -49,6 +50,24 @@ type SupplierManagementPanelProps = {
   getPrefQty: (productId: string) => number | null;
   savePrefQty: (productId: string, qty: number) => void;
   onCreateCatalogPO: (supplierId: string) => void;
+  // Supplier Accounts Payable Phase 1 - Record Payment / Payment History,
+  // scoped to source: "purchase_order" statement rows only.
+  paymentPanelInvoiceId: string | null;
+  setPaymentPanelInvoiceId: (v: string | null) => void;
+  invoicePayments: Record<string, SessionPayment[]>;
+  onLoadInvoicePayments: (invoiceId: string) => void;
+  invPaymentDate: string;
+  setInvPaymentDate: (v: string) => void;
+  invPaymentAmount: string;
+  setInvPaymentAmount: (v: string) => void;
+  invPaymentMethod: string;
+  setInvPaymentMethod: (v: string) => void;
+  invPaymentReference: string;
+  setInvPaymentReference: (v: string) => void;
+  invPaymentNotes: string;
+  setInvPaymentNotes: (v: string) => void;
+  onSaveInvoicePayment: (invoiceId: string, supplierId: string, remaining: number) => void;
+  isSavingInvoicePayment: boolean;
 };
 
 export function SupplierManagementPanel({
@@ -84,6 +103,16 @@ export function SupplierManagementPanel({
   getPrefQty,
   savePrefQty,
   onCreateCatalogPO,
+  paymentPanelInvoiceId, setPaymentPanelInvoiceId,
+  invoicePayments,
+  onLoadInvoicePayments,
+  invPaymentDate, setInvPaymentDate,
+  invPaymentAmount, setInvPaymentAmount,
+  invPaymentMethod, setInvPaymentMethod,
+  invPaymentReference, setInvPaymentReference,
+  invPaymentNotes, setInvPaymentNotes,
+  onSaveInvoicePayment,
+  isSavingInvoicePayment,
 }: SupplierManagementPanelProps) {
   return (
     <div style={{ display: visible ? '' : 'none' }}>
@@ -410,9 +439,21 @@ export function SupplierManagementPanel({
                     )}
                     {statementSupplierId === s.id && (
                       <SupplierStatementPanel
+                        supplierId={s.id}
                         supplierName={s.name}
                         isLoadingStatement={isLoadingStatement}
                         supplierStatement={supplierStatement}
+                        paymentPanelInvoiceId={paymentPanelInvoiceId}
+                        setPaymentPanelInvoiceId={setPaymentPanelInvoiceId}
+                        invoicePayments={invoicePayments}
+                        onLoadInvoicePayments={onLoadInvoicePayments}
+                        invPaymentDate={invPaymentDate} setInvPaymentDate={setInvPaymentDate}
+                        invPaymentAmount={invPaymentAmount} setInvPaymentAmount={setInvPaymentAmount}
+                        invPaymentMethod={invPaymentMethod} setInvPaymentMethod={setInvPaymentMethod}
+                        invPaymentReference={invPaymentReference} setInvPaymentReference={setInvPaymentReference}
+                        invPaymentNotes={invPaymentNotes} setInvPaymentNotes={setInvPaymentNotes}
+                        onSaveInvoicePayment={onSaveInvoicePayment}
+                        isSavingInvoicePayment={isSavingInvoicePayment}
                       />
                     )}
                   </React.Fragment>

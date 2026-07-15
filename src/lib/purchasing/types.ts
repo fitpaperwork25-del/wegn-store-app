@@ -32,12 +32,15 @@ export type POItem = {
 };
 
 /**
- * One invoiced-and-deduplicated line of a Supplier Statement. This is a
- * Purchasing-domain view, but it is assembled entirely from Inventory-owned
- * data: `receiving_sessions` (invoice_number/invoice_date/invoice_total)
- * joined against `supplier_payments` (aggregated into `paid`) — both tables
- * are written exclusively by Inventory's Receiving Session History feature,
- * never by anything in Purchasing itself. See loadSupplierStatement() in
+ * One invoiced-and-deduplicated line of a Supplier Statement, merged from
+ * two sources: `receiving_sessions`-backed invoices (Inventory's Receiving
+ * Session History feature — invoice_number/invoice_date/invoice_total) and,
+ * as of Supplier Accounts Payable Phase 1, `supplier_invoices` rows
+ * auto-created on Purchase Order receipt (Purchasing-owned). `session_id`
+ * holds whichever row's own id regardless of source (a receiving_sessions.id
+ * or a supplier_invoices.id) — it is only ever used as a stable row key and,
+ * for source: "purchase_order" rows, as the id passed to the new
+ * Record Payment/Payment History actions. See loadSupplierStatement() in
  * App.tsx.
  */
 export type SupplierStatementRow = {
@@ -46,6 +49,7 @@ export type SupplierStatementRow = {
   invoice_date: string | null;
   invoice_total: number;
   paid: number;
+  source: "receiving_session" | "purchase_order";
 };
 
 /** A PO's manager and/or supplier signature, keyed by role. Backed by the

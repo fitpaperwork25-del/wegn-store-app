@@ -165,6 +165,19 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [editPaymentReference, setEditPaymentReference] = useState("");
   const [editPaymentNotes, setEditPaymentNotes] = useState("");
   const [isSavingPayment, setIsSavingPayment] = useState(false);
+  // Supplier Accounts Payable Phase 1 - fully separate state from the
+  // receiving_session payment form above, deliberately not reused: both
+  // panels can be mounted simultaneously (Inventory and Purchasing tabs stay
+  // mounted, just hidden, per this app's sibling-tab convention), so sharing
+  // form state would let one panel's in-progress input bleed into the other.
+  const [invoicePayments, setInvoicePayments] = useState<Record<string, SessionPayment[]>>({});
+  const [paymentPanelInvoiceId, setPaymentPanelInvoiceId] = useState<string | null>(null);
+  const [invPaymentDate, setInvPaymentDate] = useState("");
+  const [invPaymentAmount, setInvPaymentAmount] = useState("");
+  const [invPaymentMethod, setInvPaymentMethod] = useState("cash");
+  const [invPaymentReference, setInvPaymentReference] = useState("");
+  const [invPaymentNotes, setInvPaymentNotes] = useState("");
+  const [isSavingInvoicePayment, setIsSavingInvoicePayment] = useState(false);
   const [resolvingSupplierSessionId, setResolvingSupplierSessionId] = useState<string | null>(null);
   const [resolveSupplierPickId, setResolveSupplierPickId] = useState("");
   const [resolveNewSupplierName, setResolveNewSupplierName] = useState("");
@@ -1838,6 +1851,10 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     try {
       const receiveNotes: string[] = [];
       const exceptionParts: string[] = [];
+      // Supplier Accounts Payable Phase 1: the dollar value of what's
+      // actually received in this action (not the whole PO), since a PO can
+      // be delivered/invoiced across multiple partial receipts.
+      let receivedAmountTotal = 0;
 
       for (const item of receivingItems) {
         const receiveQty = Number(receiveQtys[item.id] ?? 0);
@@ -1901,6 +1918,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
         const productName = product.product_name;
         receiveNotes.push(`${productName}: +${clampedQty} (${newReceived}/${item.quantity})`);
+        receivedAmountTotal += clampedQty * receivedUnitCost;
       }
 
       if (receiveNotes.length === 0) {
@@ -1937,6 +1955,22 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         .eq("id", receivingPoId);
 
       if (statusError) { console.error(statusError); setMessage({ text: "Failed to update PO status", type: "error" }); return; }
+
+      // Supplier Accounts Payable Phase 1: auto-create a supplier invoice for
+      // the value received in this action. Fail-open - an invoice-creation
+      // error must never block a receive that has already succeeded, same
+      // tolerance already applied to avgCostError/txError above.
+      if (receivedAmountTotal > 0) {
+        const { error: invoiceCreateError } = await supabase.from("supplier_invoices").insert({
+          business_id: businessId,
+          supplier_id: po.supplier_id,
+          purchase_order_id: po.id,
+          invoice_number: `${po.po_number}-${Date.now()}`,
+          invoice_date: new Date().toISOString().slice(0, 10),
+          original_amount: Math.round(receivedAmountTotal * 100) / 100,
+        });
+        if (invoiceCreateError) console.error("Failed to auto-create supplier invoice:", invoiceCreateError);
+      }
 
       const statusLabel = newStatus === "received" ? "fully received" : "partially received";
       setReceivingPoId("");
@@ -3211,32 +3245,68 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     // number appears in both result sets (edge case: same invoice received twice, once
     // linked and once unlinked).
     const allSessions = [...(linked ?? []), ...(byName ?? [])];
-    if (allSessions.length === 0) { setIsLoadingStatement(false); return; }
-    // Deduplicate by invoice_number (Supabase REST has no DISTINCT ON).
-    // Payments are aggregated across ALL session IDs sharing an invoice_number so the
-    // paid total is accurate even when a payment was recorded against a duplicate session.
-    const byInvoice = new Map<string, typeof allSessions[0]>();
-    const sessionToInvoice: Record<string, string> = {};
-    for (const s of allSessions) {
-      if (!byInvoice.has(s.invoice_number)) byInvoice.set(s.invoice_number, s);
-      sessionToInvoice[s.id] = s.invoice_number;
+    let sessionRows: SupplierStatementRow[] = [];
+    if (allSessions.length > 0) {
+      // Deduplicate by invoice_number (Supabase REST has no DISTINCT ON).
+      // Payments are aggregated across ALL session IDs sharing an invoice_number so the
+      // paid total is accurate even when a payment was recorded against a duplicate session.
+      const byInvoice = new Map<string, typeof allSessions[0]>();
+      const sessionToInvoice: Record<string, string> = {};
+      for (const s of allSessions) {
+        if (!byInvoice.has(s.invoice_number)) byInvoice.set(s.invoice_number, s);
+        sessionToInvoice[s.id] = s.invoice_number;
+      }
+      const { data: payments } = await supabase
+        .from("supplier_payments")
+        .select("receiving_session_id, amount")
+        .in("receiving_session_id", allSessions.map(s => s.id));
+      const paidByInvoice: Record<string, number> = {};
+      for (const p of (payments ?? [])) {
+        const inv = p.receiving_session_id ? sessionToInvoice[p.receiving_session_id] : undefined;
+        if (inv) paidByInvoice[inv] = (paidByInvoice[inv] ?? 0) + Number(p.amount);
+      }
+      sessionRows = [...byInvoice.values()].map(s => ({
+        session_id: s.id,
+        invoice_number: s.invoice_number,
+        invoice_date: s.invoice_date,
+        invoice_total: Number(s.invoice_total),
+        paid: Math.round((paidByInvoice[s.invoice_number] ?? 0) * 100) / 100,
+        source: "receiving_session" as const,
+      }));
     }
-    const { data: payments } = await supabase
-      .from("supplier_payments")
-      .select("receiving_session_id, amount")
-      .in("receiving_session_id", allSessions.map(s => s.id));
-    const paidByInvoice: Record<string, number> = {};
-    for (const p of (payments ?? [])) {
-      const inv = p.receiving_session_id ? sessionToInvoice[p.receiving_session_id] : undefined;
-      if (inv) paidByInvoice[inv] = (paidByInvoice[inv] ?? 0) + Number(p.amount);
+
+    // Supplier Accounts Payable Phase 1: supplier_invoices rows, auto-created
+    // on Purchase Order receipt (handleConfirmReceive). Independent of the
+    // receiving_sessions query above - a supplier can have either, both, or
+    // neither kind of invoice.
+    const { data: poInvoices, error: poInvError } = await supabase
+      .from("supplier_invoices")
+      .select("id, invoice_number, invoice_date, original_amount")
+      .eq("business_id", businessId)
+      .eq("supplier_id", supplierId)
+      .order("invoice_date", { ascending: false });
+    if (poInvError) console.error("[Statement] supplier_invoices error:", poInvError);
+    let poInvoiceRows: SupplierStatementRow[] = [];
+    if (poInvoices && poInvoices.length > 0) {
+      const { data: invoicePaymentsData } = await supabase
+        .from("supplier_payments")
+        .select("supplier_invoice_id, amount")
+        .in("supplier_invoice_id", poInvoices.map(i => i.id));
+      const paidByInvoiceId: Record<string, number> = {};
+      for (const p of (invoicePaymentsData ?? [])) {
+        if (p.supplier_invoice_id) paidByInvoiceId[p.supplier_invoice_id] = (paidByInvoiceId[p.supplier_invoice_id] ?? 0) + Number(p.amount);
+      }
+      poInvoiceRows = poInvoices.map(inv => ({
+        session_id: inv.id,
+        invoice_number: inv.invoice_number,
+        invoice_date: inv.invoice_date,
+        invoice_total: Number(inv.original_amount),
+        paid: Math.round((paidByInvoiceId[inv.id] ?? 0) * 100) / 100,
+        source: "purchase_order" as const,
+      }));
     }
-    setSupplierStatement([...byInvoice.values()].map(s => ({
-      session_id: s.id,
-      invoice_number: s.invoice_number,
-      invoice_date: s.invoice_date,
-      invoice_total: Number(s.invoice_total),
-      paid: Math.round((paidByInvoice[s.invoice_number] ?? 0) * 100) / 100,
-    })));
+
+    setSupplierStatement([...poInvoiceRows, ...sessionRows]);
     setIsLoadingStatement(false);
   }
 
@@ -3287,6 +3357,61 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setEditPaymentNotes("");
     setMessage({ text: `Payment of $${amount.toFixed(2)} recorded`, type: "success" });
     setIsSavingPayment(false);
+  }
+
+  // Supplier Accounts Payable Phase 1 - mirrors loadSessionPayments/
+  // handleSavePayment exactly, but targets supplier_invoices (Purchase
+  // Order-sourced) via supplier_invoice_id instead of receiving_session_id.
+  async function loadInvoicePayments(invoiceId: string) {
+    const { data, error } = await supabase
+      .from("supplier_payments")
+      .select("id, amount, payment_date, payment_method, reference, notes")
+      .eq("supplier_invoice_id", invoiceId)
+      .order("created_at", { ascending: true });
+    if (error) { console.error("[SupplierInvoicePayment] Load error:", error); return; }
+    setInvoicePayments(prev => ({ ...prev, [invoiceId]: (data ?? []) as SessionPayment[] }));
+  }
+
+  async function handleSaveInvoicePayment(invoiceId: string, supplierId: string, remaining: number) {
+    if (isSavingInvoicePayment) return;
+    const amount = parseFloat(invPaymentAmount) || 0;
+    if (amount <= 0 || !invPaymentDate || !invPaymentMethod) {
+      setMessage({ text: "Payment date, amount, and method are required", type: "error" });
+      return;
+    }
+    if (amount > remaining + 0.01) {
+      setMessage({ text: `Payment amount ($${amount.toFixed(2)}) exceeds remaining balance ($${remaining.toFixed(2)})`, type: "error" });
+      return;
+    }
+    setIsSavingInvoicePayment(true);
+    const { data, error } = await supabase.from("supplier_payments").insert({
+      business_id: businessId,
+      supplier_id: supplierId,
+      supplier_invoice_id: invoiceId,
+      payment_date: invPaymentDate,
+      amount,
+      payment_method: invPaymentMethod,
+      reference: invPaymentReference.trim() || null,
+      notes: invPaymentNotes.trim() || null,
+    }).select("id, amount, payment_date, payment_method, reference, notes").single();
+    if (error) {
+      console.error("[SupplierInvoicePayment] Save error:", error);
+      setMessage({ text: "Failed to record payment: " + error.message, type: "error" });
+      setIsSavingInvoicePayment(false);
+      return;
+    }
+    setInvoicePayments(prev => ({ ...prev, [invoiceId]: [...(prev[invoiceId] ?? []), data as SessionPayment] }));
+    setSupplierStatement(prev => prev.map(row =>
+      row.session_id === invoiceId ? { ...row, paid: Math.round((row.paid + amount) * 100) / 100 } : row
+    ));
+    setPaymentPanelInvoiceId(null);
+    setInvPaymentDate("");
+    setInvPaymentAmount("");
+    setInvPaymentMethod("cash");
+    setInvPaymentReference("");
+    setInvPaymentNotes("");
+    setMessage({ text: `Payment of $${amount.toFixed(2)} recorded`, type: "success" });
+    setIsSavingInvoicePayment(false);
   }
 
   async function handleLinkSessionSupplier(sessionId: string, supplierId: string) {
@@ -4788,6 +4913,17 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         getPrefQty={getPrefQty}
         savePrefQty={savePrefQty}
         onCreateCatalogPO={handleCreateCatalogPO}
+        paymentPanelInvoiceId={paymentPanelInvoiceId}
+        setPaymentPanelInvoiceId={setPaymentPanelInvoiceId}
+        invoicePayments={invoicePayments}
+        onLoadInvoicePayments={loadInvoicePayments}
+        invPaymentDate={invPaymentDate} setInvPaymentDate={setInvPaymentDate}
+        invPaymentAmount={invPaymentAmount} setInvPaymentAmount={setInvPaymentAmount}
+        invPaymentMethod={invPaymentMethod} setInvPaymentMethod={setInvPaymentMethod}
+        invPaymentReference={invPaymentReference} setInvPaymentReference={setInvPaymentReference}
+        invPaymentNotes={invPaymentNotes} setInvPaymentNotes={setInvPaymentNotes}
+        onSaveInvoicePayment={handleSaveInvoicePayment}
+        isSavingInvoicePayment={isSavingInvoicePayment}
       />{/* end supplier management */}
 
       {/* ── PURCHASE ORDER LIFECYCLE (Purchasing sub-domain) ── */}

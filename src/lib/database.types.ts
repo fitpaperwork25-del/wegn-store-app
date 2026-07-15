@@ -1459,6 +1459,61 @@ export type Database = {
           },
         ]
       }
+      supplier_invoices: {
+        Row: {
+          id: string
+          business_id: string
+          supplier_id: string
+          purchase_order_id: string
+          invoice_number: string
+          invoice_date: string
+          original_amount: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          supplier_id: string
+          purchase_order_id: string
+          invoice_number: string
+          invoice_date: string
+          original_amount?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          business_id?: string
+          supplier_id?: string
+          purchase_order_id?: string
+          invoice_number?: string
+          invoice_date?: string
+          original_amount?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_invoices_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoices_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoices_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_payments: {
         Row: {
           amount: number
@@ -1469,6 +1524,7 @@ export type Database = {
           payment_date: string
           payment_method: string
           receiving_session_id: string | null
+          supplier_invoice_id: string | null
           reference: string | null
           supplier_id: string
         }
@@ -1481,6 +1537,7 @@ export type Database = {
           payment_date: string
           payment_method: string
           receiving_session_id?: string | null
+          supplier_invoice_id?: string | null
           reference?: string | null
           supplier_id: string
         }
@@ -1493,6 +1550,7 @@ export type Database = {
           payment_date?: string
           payment_method?: string
           receiving_session_id?: string | null
+          supplier_invoice_id?: string | null
           reference?: string | null
           supplier_id?: string
         }
@@ -1509,6 +1567,13 @@ export type Database = {
             columns: ["receiving_session_id"]
             isOneToOne: false
             referencedRelation: "receiving_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_payments_supplier_invoice_id_fkey"
+            columns: ["supplier_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_invoices"
             referencedColumns: ["id"]
           },
           {
