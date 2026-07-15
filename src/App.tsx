@@ -1949,12 +1949,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       setReceiveLineNotes({});
       setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated`, type: "success" });
       await Promise.all([loadProducts(), loadPurchaseOrders(), loadAllPoItems(), loadTransactions()]);
-      // poItems (the PO detail view's own line-item snapshot, loaded once when
-      // the PO was selected) is a separate state slice from allPoItems above -
-      // without this, the detail view kept showing pre-receive Received/
-      // Remaining values even though the underlying row and every other view
-      // were already correct.
-      if (selectedPoId === receivingPoId) await loadPOItems(receivingPoId);
+      // poItems (the PO detail view's own line-item snapshot) is a separate
+      // state slice from allPoItems above - without reloading it here, the
+      // detail view kept showing pre-receive Received/Remaining values even
+      // though the underlying row and every other view were already correct.
+      // Unconditional: "Receive" is reachable independently of "View" (they're
+      // sibling UI paths, not nested), so gating this behind selectedPoId ===
+      // receivingPoId silently skipped the reload whenever a PO was received
+      // without first being selected.
+      await loadPOItems(receivingPoId);
     } catch (err) {
       console.error(err);
       setMessage({ text: "Receive failed unexpectedly", type: "error" });
