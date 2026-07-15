@@ -5040,6 +5040,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         onCreatePO={handleCreatePO}
         poListOpen={poListOpen} setPoListOpen={setPoListOpen}
         purchaseOrders={purchaseOrders}
+        poItemsByPoId={poItemsByPoId}
         poStatusFilter={poStatusFilter} setPoStatusFilter={setPoStatusFilter}
         showAllPOs={showAllPOs} setShowAllPOs={setShowAllPOs}
         selectedPoId={selectedPoId}

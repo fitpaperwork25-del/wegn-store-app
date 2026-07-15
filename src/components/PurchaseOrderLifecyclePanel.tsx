@@ -16,6 +16,11 @@ type PurchaseOrderLifecyclePanelProps = {
   poListOpen: boolean | null;
   setPoListOpen: (v: boolean | null) => void;
   purchaseOrders: PurchaseOrder[];
+  /** Every PO's line items, keyed by purchase_order_id - the same memo
+   *  App.tsx already computes for SupplierManagementPanel. Used to tell an
+   *  Ordered PO with zero items (still editable) apart from one with items
+   *  (locked to Receive/Cancel only) without a per-row database query. */
+  poItemsByPoId: Map<string, POItem[]>;
   poStatusFilter: "all" | "draft" | "ordered" | "partially_received" | "received" | "cancelled";
   setPoStatusFilter: (v: "all" | "draft" | "ordered" | "partially_received" | "received" | "cancelled") => void;
   showAllPOs: boolean;
@@ -68,6 +73,7 @@ export function PurchaseOrderLifecyclePanel({
   onCreatePO,
   poListOpen, setPoListOpen,
   purchaseOrders,
+  poItemsByPoId,
   poStatusFilter, setPoStatusFilter,
   showAllPOs, setShowAllPOs,
   selectedPoId,
@@ -232,6 +238,13 @@ export function PurchaseOrderLifecyclePanel({
                     const isPartiallyReceived = po.status === "partially_received";
                     const isCancelled = po.status === "cancelled";
                     const isReceived = po.status === "received";
+                    const itemCount = (poItemsByPoId.get(po.id) ?? []).length;
+                    // An Ordered PO with no items yet is still correctable (Edit
+                    // + Cancel); once it has any items, editing locks and only
+                    // Receive/Cancel remain. Partially Received never gets
+                    // Cancel - inventory has already moved.
+                    const canEditItems = isDraft || (isOrdered && itemCount === 0);
+                    const canCancel = isDraft || isOrdered;
                     const isSelected = selectedPoId === po.id;
                     const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isPartiallyReceived ? "#fef9c3" : isCancelled ? "#e5e7eb" : "#dcfce7";
                     const badgeColor = isDraft ? "#92400e" : isOrdered ? "#1e40af" : isPartiallyReceived ? "#a16207" : isCancelled ? "#6b7280" : "#15803d";
@@ -258,7 +271,7 @@ export function PurchaseOrderLifecyclePanel({
                           )}
                           {!isCancelled && (
                             <button onClick={() => onSelectPO(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer" }}>
-                              {isSelected ? "Close" : isDraft ? "View/Edit" : "View"}
+                              {isSelected ? "Close" : canEditItems ? "View/Edit" : "View"}
                             </button>
                           )}
                           {/* Primary: Mark Ordered (draft only) */}
@@ -267,8 +280,10 @@ export function PurchaseOrderLifecyclePanel({
                               Mark Ordered
                             </button>
                           )}
-                          {/* Primary: Receive (ordered/partial) */}
-                          {(isOrdered || isPartiallyReceived) && (
+                          {/* Primary: Receive (ordered-with-items/partial only - an
+                              Ordered PO with zero items has nothing to receive yet;
+                              it gets Edit + Cancel instead, not a dead-end button) */}
+                          {((isOrdered && itemCount > 0) || isPartiallyReceived) && (
                             <button onClick={() => onOpenReceive(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: receivingPoId === po.id ? "#d1fae5" : "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "4px" }}>
                               {receivingPoId === po.id ? "Cancel" : isPartiallyReceived ? "Receive More" : "Receive"}
                             </button>
@@ -302,7 +317,7 @@ export function PurchaseOrderLifecyclePanel({
                                   {(isDraft || isOrdered || isPartiallyReceived) && (
                                     <button onClick={() => { setSignPoId(po.id); setSignRole("manager"); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#15803d" }}>Sign PO</button>
                                   )}
-                                  {isDraft && (
+                                  {canCancel && (
                                     <button onClick={() => { onCancelPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#dc2626" }}>Cancel PO</button>
                                   )}
                                   {isReceived && (
@@ -326,7 +341,7 @@ export function PurchaseOrderLifecyclePanel({
                               }}>{po.status === "partially_received" ? "partial" : po.status}</span>
                             </strong>
 
-                            {isDraftPO && (
+                            {canEditItems && (
                               <form
                                 onSubmit={onAddPOItem}
                                 style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "16px" }}
@@ -371,18 +386,18 @@ export function PurchaseOrderLifecyclePanel({
                                 <tr>
                                   <th>Product</th>
                                   <th>Ordered</th>
-                                  {!isDraftPO && <th>Received</th>}
-                                  {!isDraftPO && <th>Remaining</th>}
+                                  {!canEditItems && <th>Received</th>}
+                                  {!canEditItems && <th>Remaining</th>}
                                   <th>Unit Cost</th>
                                   <th>Line Total</th>
-                                  {isDraftPO && <th></th>}
-                                  {!isDraftPO && poItems.some(i => i.receive_notes) && <th>Notes</th>}
+                                  {canEditItems && <th></th>}
+                                  {!canEditItems && poItems.some(i => i.receive_notes) && <th>Notes</th>}
                                 </tr>
                               </thead>
                               <tbody>
                                 {poItems.length === 0 ? (
                                   <tr>
-                                    <td colSpan={isDraftPO ? 5 : (poItems.some(i => i.receive_notes) ? 7 : 6)}>No items yet</td>
+                                    <td colSpan={canEditItems ? 5 : (poItems.some(i => i.receive_notes) ? 7 : 6)}>No items yet</td>
                                   </tr>
                                 ) : (
                                   poItems.map((item) => {
@@ -391,15 +406,15 @@ export function PurchaseOrderLifecyclePanel({
                                       <tr key={item.id}>
                                         <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
                                         <td>{item.quantity}</td>
-                                        {!isDraftPO && <td>{rcvd}</td>}
-                                        {!isDraftPO && (
+                                        {!canEditItems && <td>{rcvd}</td>}
+                                        {!canEditItems && (
                                           <td style={{ fontWeight: rem > 0 ? "bold" : "normal", color: rem > 0 ? "#b45309" : "#15803d" }}>
                                             {rem}
                                           </td>
                                         )}
                                         <td>${Number(item.unit_cost).toFixed(2)}</td>
                                         <td>${Number(item.line_total).toFixed(2)}</td>
-                                        {isDraftPO && (
+                                        {canEditItems && (
                                           <td>
                                             <button
                                               onClick={() => onRemovePOItem(item.id)}
@@ -409,7 +424,7 @@ export function PurchaseOrderLifecyclePanel({
                                             </button>
                                           </td>
                                         )}
-                                        {!isDraftPO && poItems.some(i => i.receive_notes) && (
+                                        {!canEditItems && poItems.some(i => i.receive_notes) && (
                                           <td style={{ color: "#6b7280", fontSize: "12px" }}>{item.receive_notes ?? ""}</td>
                                         )}
                                       </tr>
