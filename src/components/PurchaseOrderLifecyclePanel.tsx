@@ -2,6 +2,7 @@ import React from "react";
 import type { Supplier, PurchaseOrder, POItem } from "../lib/purchasing/types";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
+import { getPoItemReceiptStatus } from "../lib/purchasing/purchasingHelpers";
 
 type PurchaseOrderLifecyclePanelProps = {
   visible: boolean;
@@ -385,8 +386,7 @@ export function PurchaseOrderLifecyclePanel({
                                   </tr>
                                 ) : (
                                   poItems.map((item) => {
-                                    const rcvd = item.quantity_received ?? 0;
-                                    const rem = item.quantity - rcvd;
+                                    const { received: rcvd, remaining: rem } = getPoItemReceiptStatus(item);
                                     return (
                                       <tr key={item.id}>
                                         <td>{productItemMap[item.product_id] ?? "Unknown"}</td>

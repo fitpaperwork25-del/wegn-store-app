@@ -20,3 +20,15 @@ export function getPurchasingDashboardSummary(purchaseOrders: PurchaseOrder[]): 
   const receivablePOs = purchaseOrders.filter(po => po.status === 'ordered' || po.status === 'partially_received');
   return { openPoCount, receivablePOs };
 }
+
+export type PoItemReceiptStatus = { received: number; remaining: number };
+
+/**
+ * Received/Remaining figures for a single PO line item, used by the PO
+ * detail view. quantity_received defaults to 0 (never null in the display),
+ * matching how every PO-item loader in App.tsx already normalizes it.
+ */
+export function getPoItemReceiptStatus(item: { quantity: number; quantity_received: number | null }): PoItemReceiptStatus {
+  const received = item.quantity_received ?? 0;
+  return { received, remaining: item.quantity - received };
+}
