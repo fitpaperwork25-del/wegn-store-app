@@ -387,15 +387,6 @@ export function PurchaseOrderLifecyclePanel({
                                 ) : (
                                   poItems.map((item) => {
                                     const { received: rcvd, remaining: rem } = getPoItemReceiptStatus(item);
-                                    // TEMPORARY DEBUG - remove after PO receiving diagnosis is complete
-                                    console.log("[PO-DETAIL-DEBUG]", {
-                                      purchase_order_id: item.purchase_order_id,
-                                      product_id: item.product_id,
-                                      quantity: item.quantity,
-                                      quantity_received: item.quantity_received,
-                                      remaining: rem,
-                                      full_item: item,
-                                    });
                                     return (
                                       <tr key={item.id}>
                                         <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
