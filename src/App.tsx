@@ -1073,9 +1073,9 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       .select('product_id, quantity_returned')
       .eq('sale_id', sale.id);
     const priorMap: Record<string, number> = {};
-    (prior ?? []).forEach((r: any) => { priorMap[r.product_id] = (priorMap[r.product_id] ?? 0) + r.quantity_returned; });
+    (prior ?? []).forEach((r) => { priorMap[r.product_id] = (priorMap[r.product_id] ?? 0) + r.quantity_returned; });
     const lines: ReturnLineItem[] = items
-      .map((i: any) => ({
+      .map((i) => ({
         product_id: i.product_id,
         product_name: productMap[i.product_id] ?? i.product_id,
         original_qty: i.quantity,
@@ -1490,7 +1490,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     const { data } = await supabase
       .from('purchase_order_items')
       .select('id, purchase_order_id, product_id, quantity, quantity_received, unit_cost, line_total, created_at, receive_notes');
-    const items = (data || []).map((item: any) => ({
+    const items = (data || []).map((item) => ({
       ...item,
       quantity_received: item.quantity_received ?? 0,
     }));
@@ -1696,7 +1696,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       return;
     }
 
-    const items = (data || []).map((item: any) => ({
+    const items = (data || []).map((item) => ({
       ...item,
       quantity_received: item.quantity_received ?? 0,
     }));
@@ -1754,7 +1754,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     }
 
     const newSubtotal = (freshItems || []).reduce(
-      (sum, item: any) => sum + Number(item.line_total),
+      (sum, item) => sum + Number(item.line_total),
       0
     );
 
@@ -1799,7 +1799,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       return;
     }
 
-    const items = (data || []).map((item: any) => ({
+    const items = (data || []).map((item) => ({
       ...item,
       quantity_received: item.quantity_received ?? 0,
     })) as POItem[];
@@ -2906,7 +2906,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     }
 
     const formatted =
-      data?.map((item: any) => ({
+      data?.map((item) => ({
         inventory_id: item.id,
         business_id: item.business_id,
         product_id: item.product_id,
@@ -2954,10 +2954,10 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       .select("id, name");
 
     const productMap = Object.fromEntries(
-      (productData || []).map((p: any) => [p.id, p.name])
+      (productData || []).map((p) => [p.id, p.name])
     );
 
-    const merged = (txData || []).map((tx: any) => ({
+    const merged = (txData || []).map((tx) => ({
       ...tx,
       products: { name: productMap[tx.product_id] ?? "Unknown" },
     }));
@@ -3483,7 +3483,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       osc.start();
       osc.stop(ctx.currentTime + (success ? 0.1 : 0.25));
       osc.onended = () => ctx.close();
-    } catch (_) { /* audio not available */ }
+    } catch { /* audio not available */ }
   }
 
   function openProductResolution(req: ProductResolutionRequest) {

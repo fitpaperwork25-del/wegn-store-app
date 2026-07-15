@@ -264,17 +264,17 @@ export function CashDrawerReportPanel({
 
             {/* Sales KPI Cards */}
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "24px" }}>
-              {[
+              {([
                 { label: "Transactions", value: String(todaySales.length) },
                 { label: "Gross Revenue", value: `$${grossRevenue.toFixed(2)}`, color: "#1d4ed8" },
                 { label: "Avg Sale", value: `$${avgSale.toFixed(2)}` },
                 { label: "Items Sold", value: String(itemsSold) },
                 { label: "Discounts", value: `−$${discountsTotal.toFixed(2)}`, color: discountsTotal > 0 ? "#b45309" : "#888" },
                 { label: "Returns", value: `${returnedUnits} items (−$${returnedValue.toFixed(2)})`, color: returnedUnits > 0 ? "#dc2626" : "#888" },
-              ].map((card) => (
+              ] as { label: string; value: string; color?: string }[]).map((card) => (
                 <div key={card.label} style={{ padding: "12px 18px", border: "1px solid #e5e7eb", borderRadius: "8px", minWidth: "120px", flex: 1 }}>
                   <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
-                  <div style={{ fontSize: "22px", fontWeight: "bold", color: (card as any).color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
+                  <div style={{ fontSize: "22px", fontWeight: "bold", color: card.color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
                 </div>
               ))}
             </div>
@@ -300,7 +300,7 @@ export function CashDrawerReportPanel({
               <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", marginBottom: "24px", background: "#f8fafc" }}>
                 <h4 style={{ margin: "0 0 12px" }}>Drawer Reconciliation {latestSession.status === "closed" ? "(Closed)" : "(Open)"}</h4>
                 <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  {[
+                  {([
                     { label: "Opening Float", value: `$${openingFloat.toFixed(2)}` },
                     { label: "Cash Sales", value: `+$${cashTotal.toFixed(2)}`, color: "#15803d" },
                     { label: "Paid Outs", value: `−$${sessionPaidOuts.toFixed(2)}`, color: sessionPaidOuts > 0 ? "#dc2626" : "#888" },
@@ -312,10 +312,10 @@ export function CashDrawerReportPanel({
                         return os >= 0 ? `+$${os.toFixed(2)}` : `−$${Math.abs(os).toFixed(2)}`;
                       })(), color: Number(latestSession.over_short ?? 0) >= 0 ? "#15803d" : "#dc2626" },
                     ] : []),
-                  ].map((card) => (
+                  ] as { label: string; value: string; color?: string }[]).map((card) => (
                     <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "10px 14px", minWidth: "110px", flex: 1, background: "#fff" }}>
                       <div style={{ fontSize: "10px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
-                      <div style={{ fontSize: "20px", fontWeight: "bold", color: (card as any).color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
+                      <div style={{ fontSize: "20px", fontWeight: "bold", color: card.color ?? "#0f172a", marginTop: "2px" }}>{card.value}</div>
                     </div>
                   ))}
                 </div>
