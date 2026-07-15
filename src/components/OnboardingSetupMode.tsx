@@ -1,15 +1,24 @@
 import React, { useState } from "react";
 import type { OnboardingStepData } from "../lib/onboarding/types";
-import { getOnboardingProgress, normalizeTeamSize, normalizeIndustry, INDUSTRY_OPTIONS } from "../lib/onboarding/onboardingHelpers";
+import {
+  getOnboardingProgress, normalizeTeamSize, normalizeIndustry, INDUSTRY_OPTIONS,
+  normalizeTaxRateInput, normalizeCurrency, CURRENCY_OPTIONS,
+} from "../lib/onboarding/onboardingHelpers";
 
 type OnboardingSetupModeProps = {
   visible: boolean;
   businessName: string;
-  currentStep: number; // 1, 2, or 3 — Phase 1 only
+  currentStep: number; // 1-5 — Phase 1 only
   stepData: OnboardingStepData;
+  businessPhone: string;
+  businessEmail: string;
+  businessAddress: string;
+  businessTaxRate: number;
   onBack: (prevStep: number) => void;
   onAdvance: (data: Partial<OnboardingStepData>, nextStep: number) => void;
   onComplete: (data: Partial<OnboardingStepData>) => void;
+  onSaveBusinessProfile: (fields: { phone: string; email: string; address: string }) => void;
+  onSaveTaxRate: (taxRate: number) => void;
 };
 
 const cardStyle: React.CSSProperties = {
@@ -53,14 +62,18 @@ function ProgressIndicator({ step }: { step: number }) {
 }
 
 /**
- * Wegn AI Onboarding — Phase 1 (Steps 1-3 of the approved Onboarding
- * Blueprint: Welcome, Business Discovery, Industry Detection). Renders in
- * place of the Executive Briefing inside WegnAiPage whenever a business
- * has not yet completed onboarding. Steps 4-15 are not implemented -
- * finishing Step 3 marks onboarding complete and hands off directly to the
- * normal Executive Briefing.
+ * Wegn AI Onboarding — Phase 1 (Steps 1-5 of the approved Onboarding
+ * Blueprint: Welcome, Business Discovery, Industry Detection, Business
+ * Profile, Tax and Currency). Renders in place of the Executive Briefing
+ * inside WegnAiPage whenever a business has not yet completed onboarding.
+ * Steps 6-15 are not implemented - finishing Step 5 marks onboarding
+ * complete and hands off directly to the normal Executive Briefing.
  */
-export function OnboardingSetupMode({ visible, businessName, currentStep, stepData, onBack, onAdvance, onComplete }: OnboardingSetupModeProps) {
+export function OnboardingSetupMode({
+  visible, businessName, currentStep, stepData,
+  businessPhone, businessEmail, businessAddress, businessTaxRate,
+  onBack, onAdvance, onComplete, onSaveBusinessProfile, onSaveTaxRate,
+}: OnboardingSetupModeProps) {
   return (
     <div style={{ display: visible ? '' : 'none' }}>
       <div className="page-header">
@@ -73,7 +86,19 @@ export function OnboardingSetupMode({ visible, businessName, currentStep, stepDa
         <ProgressIndicator step={currentStep} />
         {currentStep === 1 && <WelcomeStep businessName={businessName} onAdvance={onAdvance} />}
         {currentStep === 2 && <BusinessDiscoveryStep stepData={stepData} onBack={onBack} onAdvance={onAdvance} />}
-        {currentStep === 3 && <IndustryDetectionStep businessName={businessName} stepData={stepData} onBack={onBack} onComplete={onComplete} />}
+        {currentStep === 3 && <IndustryDetectionStep businessName={businessName} stepData={stepData} onBack={onBack} onAdvance={onAdvance} />}
+        {currentStep === 4 && (
+          <BusinessProfileStep
+            businessPhone={businessPhone} businessEmail={businessEmail} businessAddress={businessAddress}
+            onBack={onBack} onAdvance={onAdvance} onSaveBusinessProfile={onSaveBusinessProfile}
+          />
+        )}
+        {currentStep === 5 && (
+          <TaxCurrencyStep
+            businessTaxRate={businessTaxRate} stepData={stepData}
+            onBack={onBack} onComplete={onComplete} onSaveTaxRate={onSaveTaxRate}
+          />
+        )}
       </div>
     </div>
   );
@@ -175,21 +200,21 @@ function BusinessDiscoveryStep({
 }
 
 function IndustryDetectionStep({
-  businessName, stepData, onBack, onComplete,
+  businessName, stepData, onBack, onAdvance,
 }: {
   businessName: string;
   stepData: OnboardingStepData;
   onBack: (prevStep: number) => void;
-  onComplete: (data: Partial<OnboardingStepData>) => void;
+  onAdvance: (data: Partial<OnboardingStepData>, nextStep: number) => void;
 }) {
   const [industry, setIndustry] = useState<string | null>(stepData.industry ?? null);
 
-  function handleFinish() {
-    onComplete({ industry: normalizeIndustry(industry) });
+  function handleContinue() {
+    onAdvance({ industry: normalizeIndustry(industry) }, 4);
   }
 
   function handleSkip() {
-    onComplete({ industry: normalizeIndustry(null) });
+    onAdvance({ industry: normalizeIndustry(null) }, 4);
   }
 
   return (
@@ -221,6 +246,131 @@ function IndustryDetectionStep({
       <div style={buttonRowStyle}>
         <button type="button" style={textBtnStyle} onClick={handleSkip}>Skip</button>
         <button type="button" style={secondaryBtnStyle} onClick={() => onBack(2)}>Back</button>
+        <button type="button" style={primaryBtnStyle} onClick={handleContinue}>Continue</button>
+      </div>
+    </div>
+  );
+}
+
+function BusinessProfileStep({
+  businessPhone, businessEmail, businessAddress, onBack, onAdvance, onSaveBusinessProfile,
+}: {
+  businessPhone: string;
+  businessEmail: string;
+  businessAddress: string;
+  onBack: (prevStep: number) => void;
+  onAdvance: (data: Partial<OnboardingStepData>, nextStep: number) => void;
+  onSaveBusinessProfile: (fields: { phone: string; email: string; address: string }) => void;
+}) {
+  const [phone, setPhone] = useState(businessPhone);
+  const [email, setEmail] = useState(businessEmail);
+  const [address, setAddress] = useState(businessAddress);
+
+  function handleContinue() {
+    onSaveBusinessProfile({ phone, email, address });
+    onAdvance({}, 5);
+  }
+
+  return (
+    <div>
+      <p style={{ margin: "0 0 16px", fontSize: "16px", color: "#0f172a", lineHeight: 1.6 }}>
+        Now let's get your business profile set up properly — this is what shows up on your receipts and purchase
+        orders. Can you give me your business address, a phone number customers or suppliers can reach you at, and
+        an email if you'd like one on file?
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <input
+          type="text" placeholder="Business address (optional)" value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          style={{ ...fieldStyle, boxSizing: "border-box" }}
+        />
+        <input
+          type="text" placeholder="Phone number (optional)" value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          style={{ ...fieldStyle, boxSizing: "border-box" }}
+        />
+        <input
+          type="email" placeholder="Email (optional)" value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ ...fieldStyle, boxSizing: "border-box" }}
+        />
+      </div>
+
+      <div style={buttonRowStyle}>
+        <button type="button" style={secondaryBtnStyle} onClick={() => onBack(3)}>Back</button>
+        <button type="button" style={primaryBtnStyle} onClick={handleContinue}>Continue</button>
+      </div>
+    </div>
+  );
+}
+
+function TaxCurrencyStep({
+  businessTaxRate, stepData, onBack, onComplete, onSaveTaxRate,
+}: {
+  businessTaxRate: number;
+  stepData: OnboardingStepData;
+  onBack: (prevStep: number) => void;
+  onComplete: (data: Partial<OnboardingStepData>) => void;
+  onSaveTaxRate: (taxRate: number) => void;
+}) {
+  const [taxRateInput, setTaxRateInput] = useState(String(businessTaxRate));
+  const [currency, setCurrency] = useState<string | null>(stepData.currency ?? null);
+
+  function handleFinish() {
+    const taxRate = normalizeTaxRateInput(taxRateInput);
+    onSaveTaxRate(taxRate);
+    onComplete({ currency: normalizeCurrency(currency) });
+  }
+
+  function handleSkip() {
+    onSaveTaxRate(0);
+    onComplete({ currency: normalizeCurrency(null) });
+  }
+
+  return (
+    <div>
+      <p style={{ margin: "0 0 16px", fontSize: "16px", color: "#0f172a", lineHeight: 1.6 }}>
+        What tax rate should I apply at checkout — for example, 8.5%? And what currency are you pricing in — US
+        dollars, or something else?
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <div>
+          <label style={{ display: "block", fontSize: "13px", color: "#64748b", marginBottom: "6px" }}>Tax rate (%)</label>
+          <input
+            type="number" min="0" max="100" step="0.01" placeholder="0"
+            value={taxRateInput} onChange={(e) => setTaxRateInput(e.target.value)}
+            style={{ ...fieldStyle, width: "150px" }}
+          />
+        </div>
+
+        <div>
+          <label style={{ display: "block", fontSize: "13px", color: "#64748b", marginBottom: "6px" }}>Currency</label>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {CURRENCY_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setCurrency(opt.key)}
+                style={{
+                  padding: "8px 16px", borderRadius: "20px", fontSize: "14px", cursor: "pointer",
+                  border: currency === opt.key ? "1px solid #1d4ed8" : "1px solid #d1d5db",
+                  background: currency === opt.key ? "#eff6ff" : "#fff",
+                  color: currency === opt.key ? "#1d4ed8" : "#334155",
+                  fontWeight: currency === opt.key ? 600 : 400,
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={buttonRowStyle}>
+        <button type="button" style={textBtnStyle} onClick={handleSkip}>Skip</button>
+        <button type="button" style={secondaryBtnStyle} onClick={() => onBack(4)}>Back</button>
         <button type="button" style={primaryBtnStyle} onClick={handleFinish}>Finish Setup</button>
       </div>
     </div>

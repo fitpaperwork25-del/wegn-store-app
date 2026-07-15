@@ -20,14 +20,20 @@ type WegnAiPageProps = {
   priorityAlerts: PriorityAlert[];
   onNavigate: (tab: string) => void;
   employeeId: string | null;
-  /** Wegn AI Onboarding Blueprint, Phase 1 (Steps 1-3). onboardingLoaded=false renders nothing yet, matching the businessLoaded guard pattern used elsewhere in App.tsx — avoids flashing the wrong mode before the state is known. */
+  /** Wegn AI Onboarding Blueprint, Phase 1 (Steps 1-5). onboardingLoaded=false renders nothing yet, matching the businessLoaded guard pattern used elsewhere in App.tsx — avoids flashing the wrong mode before the state is known. */
   onboardingLoaded: boolean;
   onboardingCompleted: boolean;
   onboardingCurrentStep: number;
   onboardingStepData: OnboardingStepData;
+  businessPhone: string;
+  businessEmail: string;
+  businessAddress: string;
+  businessTaxRate: number;
   onOnboardingBack: (prevStep: number) => void;
   onOnboardingAdvance: (data: Partial<OnboardingStepData>, nextStep: number) => void;
   onOnboardingComplete: (data: Partial<OnboardingStepData>) => void;
+  onOnboardingSaveBusinessProfile: (fields: { phone: string; email: string; address: string }) => void;
+  onOnboardingSaveTaxRate: (taxRate: number) => void;
 };
 
 /**
@@ -57,9 +63,15 @@ export function WegnAiPage({
   onboardingCompleted,
   onboardingCurrentStep,
   onboardingStepData,
+  businessPhone,
+  businessEmail,
+  businessAddress,
+  businessTaxRate,
   onOnboardingBack,
   onOnboardingAdvance,
   onOnboardingComplete,
+  onOnboardingSaveBusinessProfile,
+  onOnboardingSaveTaxRate,
 }: WegnAiPageProps) {
   const greetingName = deriveGreetingName(staffName, userEmail);
   const inventoryHealthy = lowStockCount === 0 && outOfStockCount === 0;
@@ -73,9 +85,15 @@ export function WegnAiPage({
         businessName={businessName}
         currentStep={onboardingCurrentStep}
         stepData={onboardingStepData}
+        businessPhone={businessPhone}
+        businessEmail={businessEmail}
+        businessAddress={businessAddress}
+        businessTaxRate={businessTaxRate}
         onBack={onOnboardingBack}
         onAdvance={onOnboardingAdvance}
         onComplete={onOnboardingComplete}
+        onSaveBusinessProfile={onOnboardingSaveBusinessProfile}
+        onSaveTaxRate={onOnboardingSaveTaxRate}
       />
     );
   }

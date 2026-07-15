@@ -1,5 +1,5 @@
 /**
- * Pure, stateless helpers for Wegn AI Onboarding — Phase 1 (Steps 1-3
+ * Pure, stateless helpers for Wegn AI Onboarding — Phase 1 (Steps 1-5
  * only). Same convention as every other lib/<domain>/*Helpers.ts module in
  * this codebase: no Supabase, no React state.
  */
@@ -75,4 +75,34 @@ export function normalizeIndustry(key: string | null | undefined): string {
 
 export function industryLabel(key: string): string {
   return INDUSTRY_OPTIONS.find((opt) => opt.key === key)?.label ?? "General Retail";
+}
+
+/**
+ * Tax and Currency (Step 5) tax-rate validation rule from the approved
+ * blueprint: "numeric, 0-100... rejects negative values or anything over
+ * 100 with a plain explanation." Clamped rather than rejected outright,
+ * matching the exact bound already used by handleCreateBusiness/
+ * handleSaveBusiness in App.tsx - never blocks, always resolves to a valid
+ * rate, defaulting to 0 (tax-exempt) when empty or unparseable.
+ */
+export function normalizeTaxRateInput(raw: string): number {
+  const parsed = parseFloat(raw);
+  return Math.min(100, Math.max(0, Number.isFinite(parsed) ? parsed : 0));
+}
+
+export type CurrencyOption = { key: string; label: string };
+
+export const CURRENCY_OPTIONS: CurrencyOption[] = [
+  { key: "USD", label: "US Dollar (USD)" },
+  { key: "EUR", label: "Euro (EUR)" },
+  { key: "GBP", label: "British Pound (GBP)" },
+  { key: "CAD", label: "Canadian Dollar (CAD)" },
+];
+
+export const DEFAULT_CURRENCY = "USD";
+
+/** Currency default rule, matching the industry pattern: unrecognized/skipped answers map to USD. */
+export function normalizeCurrency(key: string | null | undefined): string {
+  if (!key) return DEFAULT_CURRENCY;
+  return CURRENCY_OPTIONS.some((opt) => opt.key === key) ? key : DEFAULT_CURRENCY;
 }

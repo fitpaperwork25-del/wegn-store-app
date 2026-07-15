@@ -1,7 +1,8 @@
 /**
- * Wegn AI Onboarding — Phase 1 data shapes only (Steps 1-3: Welcome,
- * Business Discovery, Industry Detection). Extended as later phases of the
- * approved Onboarding Blueprint are implemented.
+ * Wegn AI Onboarding — Phase 1 data shapes only (Steps 1-5: Welcome,
+ * Business Discovery, Industry Detection, Business Profile, Tax and
+ * Currency). Extended as later phases of the approved Onboarding Blueprint
+ * are implemented.
  */
 
 export type OnboardingStepData = {
@@ -9,6 +10,10 @@ export type OnboardingStepData = {
   priorSystem?: string | null;
   teamSize?: number;
   industry?: string;
+  /** Step 5 only. Not yet backed by a real businesses.currency column - see
+   *  the blueprint's grounding note. Recorded here, same as the other
+   *  fields above, until a real column exists. */
+  currency?: string;
 };
 
 export type OnboardingState = {

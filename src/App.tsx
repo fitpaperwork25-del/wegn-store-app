@@ -899,7 +899,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setOnboardingLoaded(true);
   }
 
-  // Single persistence path for Back/Skip/Continue across Steps 1-3 - every
+  // Single persistence path for Back/Skip/Continue across Steps 1-5 - every
   // navigation writes through immediately (not just on final completion),
   // which is the resume mechanism: reloading mid-flow re-reads this same
   // row and picks up exactly where the user left off.
@@ -924,7 +924,41 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   }
 
   function handleOnboardingComplete(data: Partial<OnboardingStepData>) {
-    persistOnboardingState(3, true, data);
+    persistOnboardingState(5, true, data);
+  }
+
+  // Step 4 (Business Profile) writes straight to the real businesses
+  // record - unlike businessType/teamSize/industry, phone/email/address
+  // are real, already-existing columns the rest of the app (Settings,
+  // receipts) reads from, so onboarding must update them directly rather
+  // than staging them in step_data where the rest of the app would never
+  // see them. Scoped to just these three fields, same update pattern as
+  // handleSaveBusiness.
+  async function handleOnboardingSaveBusinessProfile(fields: { phone: string; email: string; address: string }) {
+    const { error } = await supabase
+      .from("businesses")
+      .update({
+        phone: fields.phone.trim() || null,
+        email: fields.email.trim() || null,
+        address: fields.address.trim() || null,
+      })
+      .eq("id", businessId);
+    if (error) { console.error("Failed to save business profile:", error); return; }
+    setBusinessPhone(fields.phone.trim());
+    setBusinessEmail(fields.email.trim());
+    setBusinessAddress(fields.address.trim());
+  }
+
+  // Step 5 (Tax and Currency) tax-rate half - same reasoning as above,
+  // businesses.tax_rate is a real column the POS checkout math already
+  // reads from.
+  async function handleOnboardingSaveTaxRate(taxRate: number) {
+    const { error } = await supabase
+      .from("businesses")
+      .update({ tax_rate: taxRate })
+      .eq("id", businessId);
+    if (error) { console.error("Failed to save tax rate:", error); return; }
+    setBusinessTaxRate(taxRate);
   }
 
   function handlePinLogin() {
@@ -4963,9 +4997,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         onboardingCompleted={onboardingCompleted}
         onboardingCurrentStep={onboardingCurrentStep}
         onboardingStepData={onboardingStepData}
+        businessPhone={businessPhone}
+        businessEmail={businessEmail}
+        businessAddress={businessAddress}
+        businessTaxRate={businessTaxRate}
         onOnboardingBack={handleOnboardingBack}
         onOnboardingAdvance={handleOnboardingAdvance}
         onOnboardingComplete={handleOnboardingComplete}
+        onOnboardingSaveBusinessProfile={handleOnboardingSaveBusinessProfile}
+        onOnboardingSaveTaxRate={handleOnboardingSaveTaxRate}
       />
 
       {/* Smart Receive — Receive Inventory Modal */}

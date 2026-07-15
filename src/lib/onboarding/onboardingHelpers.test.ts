@@ -7,6 +7,9 @@ import {
   industryLabel,
   DEFAULT_INDUSTRY,
   TOTAL_ONBOARDING_STEPS,
+  normalizeTaxRateInput,
+  normalizeCurrency,
+  DEFAULT_CURRENCY,
 } from "./onboardingHelpers.ts";
 
 test("getOnboardingProgress maps steps 1-3 to Phase 1", () => {
@@ -62,4 +65,25 @@ test("normalizeIndustry defaults unrecognized or missing input to General Retail
 test("industryLabel resolves known keys and falls back for unknown ones", () => {
   assert.equal(industryLabel("restaurant_cafe"), "Restaurant / Café");
   assert.equal(industryLabel("bogus"), "General Retail");
+});
+
+test("normalizeTaxRateInput clamps to 0-100 and defaults empty/unparseable input to 0", () => {
+  assert.equal(normalizeTaxRateInput("8.5"), 8.5);
+  assert.equal(normalizeTaxRateInput("0"), 0);
+  assert.equal(normalizeTaxRateInput("100"), 100);
+  assert.equal(normalizeTaxRateInput("150"), 100);
+  assert.equal(normalizeTaxRateInput("-5"), 0);
+  assert.equal(normalizeTaxRateInput(""), 0);
+  assert.equal(normalizeTaxRateInput("not a number"), 0);
+});
+
+test("normalizeCurrency passes through a recognized key", () => {
+  assert.equal(normalizeCurrency("EUR"), "EUR");
+});
+
+test("normalizeCurrency defaults unrecognized or missing input to USD", () => {
+  assert.equal(normalizeCurrency("not_a_real_currency"), DEFAULT_CURRENCY);
+  assert.equal(normalizeCurrency(null), DEFAULT_CURRENCY);
+  assert.equal(normalizeCurrency(undefined), DEFAULT_CURRENCY);
+  assert.equal(normalizeCurrency(""), DEFAULT_CURRENCY);
 });
