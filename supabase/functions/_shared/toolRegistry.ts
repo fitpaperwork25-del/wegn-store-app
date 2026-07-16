@@ -5,6 +5,9 @@ import { searchProducts, createSupabaseProductSearchExecutor } from "./tools/sea
 import { getSupplierBalances, fetchSupplierBalancesRawData } from "./tools/getSupplierBalances.ts";
 import { getSupplierPaymentHistory, fetchSupplierPaymentHistoryRawData } from "./tools/getSupplierPaymentHistory.ts";
 import { getPurchaseOrders, fetchPurchaseOrdersRawData } from "./tools/getPurchaseOrders.ts";
+import { getSalesSummary, fetchSalesSummaryRawData } from "./tools/getSalesSummary.ts";
+import { getReturnsAndRefunds, fetchReturnsRawData } from "./tools/getReturnsAndRefunds.ts";
+import { getProductSalesVelocity, fetchProductSalesVelocityRawData } from "./tools/getProductSalesVelocity.ts";
 
 /**
  * Controlled tool registry. Adding a tool means adding one entry here - it
@@ -82,6 +85,37 @@ const GET_PURCHASE_ORDERS_INPUT_SCHEMA: JsonSchema = {
   additionalProperties: false,
 };
 
+const GET_SALES_SUMMARY_INPUT_SCHEMA: JsonSchema = {
+  type: "object",
+  properties: {
+    dateRange: { type: "string", enum: ["today", "7d", "30d", "all"], description: "Optional. Defaults to 'today'." },
+    cashierName: { type: "string", description: "Optional employee name (or partial name) to filter to one cashier's sales." },
+    minTotal: { type: "number", minimum: 0, description: "Optional inclusive lower bound on a sale's total dollar amount." },
+    maxTotal: { type: "number", minimum: 0, description: "Optional inclusive upper bound on a sale's total dollar amount." },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
+const GET_RETURNS_AND_REFUNDS_INPUT_SCHEMA: JsonSchema = {
+  type: "object",
+  properties: {
+    dateRange: { type: "string", enum: ["today", "7d", "30d", "all"], description: "Optional. Defaults to 'today'. Filters by when the RETURN was processed, not the original sale's date." },
+    cashierName: { type: "string", description: "Optional employee name (or partial name) who processed the return." },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
+const GET_PRODUCT_SALES_VELOCITY_INPUT_SCHEMA: JsonSchema = {
+  type: "object",
+  properties: {
+    limit: { type: "integer", minimum: 1, maximum: 50, description: "Maximum products to return in the top-sellers list (default 15)." },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
 export const TOOL_REGISTRY: ToolRegistryEntry[] = [
   {
     name: "search_products",
@@ -141,6 +175,51 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     allowedRoles: ["owner", "manager"],
     execute: async (rawInput, ctx) => {
       const result = await getPurchaseOrders(rawInput, { businessId: ctx.businessId }, (businessId, filter) => fetchPurchaseOrdersRawData(ctx.supabase, businessId, filter));
+      if (!result.ok) return { ok: false, error: result.error };
+      return { ok: true, value: result.value };
+    },
+  },
+  {
+    name: "get_sales_summary",
+    mode: "read",
+    description:
+      "Look up this store's completed sales - totals, cash/card/other payment split, largest sale, average sale, per-cashier breakdown, and top-selling products - for a time window (defaults to today), optionally filtered by cashier or by a sale's dollar-total range. Returns exact, already-computed totals - never estimate or add up figures yourself. " +
+      "Use this for questions like: \"What were today's total sales?\", \"What sold today?\", \"Show today's transactions\", \"What were cash sales today?\", \"What were card sales today?\", \"What are today's top-selling products?\", \"What was the largest sale today?\", \"Which cashier processed the most sales today?\", \"Show sales for cashier Alice\", \"Show transactions over $100\", \"What was the average sale amount today?\". " +
+      "Do not use this for returns/refunds (use get_returns_and_refunds instead) or for which products are dormant/trending over the last week or month (use get_product_sales_velocity instead). This tool is read-only and cannot create, edit, or void sales.",
+    inputSchema: GET_SALES_SUMMARY_INPUT_SCHEMA,
+    allowedRoles: ["owner", "manager"],
+    execute: async (rawInput, ctx) => {
+      const result = await getSalesSummary(rawInput, { businessId: ctx.businessId }, (businessId, filter) => fetchSalesSummaryRawData(ctx.supabase, businessId, filter));
+      if (!result.ok) return { ok: false, error: result.error };
+      return { ok: true, value: result.value };
+    },
+  },
+  {
+    name: "get_returns_and_refunds",
+    mode: "read",
+    description:
+      "Look up this store's processed returns and refunds - per-product return lines with reason, refund amount, and who processed them - for a time window (defaults to today, based on when the RETURN happened, not the original sale's date), optionally filtered by which cashier processed it. Returns exact, already-computed totals. " +
+      "Use this for questions like: \"What were today's returns?\", \"Show today's refunds\". " +
+      "Do not use this for sales totals (use get_sales_summary instead). This tool is read-only and cannot create, edit, or process returns.",
+    inputSchema: GET_RETURNS_AND_REFUNDS_INPUT_SCHEMA,
+    allowedRoles: ["owner", "manager"],
+    execute: async (rawInput, ctx) => {
+      const result = await getReturnsAndRefunds(rawInput, { businessId: ctx.businessId }, (businessId, filter) => fetchReturnsRawData(ctx.supabase, businessId, filter));
+      if (!result.ok) return { ok: false, error: result.error };
+      return { ok: true, value: result.value };
+    },
+  },
+  {
+    name: "get_product_sales_velocity",
+    mode: "read",
+    description:
+      "Look up which active products have NOT sold in the last 30 days (dormant) and which products are selling the most by quantity in the last 7 days (top sellers this week). Fixed windows only - not a general date-range sales tool. " +
+      "Use this for questions like: \"Which products have not sold in the last 30 days?\", \"Which products are selling fastest this week?\". " +
+      "Do not use this for today's sales totals or transaction-level questions (use get_sales_summary instead). This tool is read-only.",
+    inputSchema: GET_PRODUCT_SALES_VELOCITY_INPUT_SCHEMA,
+    allowedRoles: ["owner", "manager"],
+    execute: async (rawInput, ctx) => {
+      const result = await getProductSalesVelocity(rawInput, { businessId: ctx.businessId }, (businessId) => fetchProductSalesVelocityRawData(ctx.supabase, businessId));
       if (!result.ok) return { ok: false, error: result.error };
       return { ok: true, value: result.value };
     },
