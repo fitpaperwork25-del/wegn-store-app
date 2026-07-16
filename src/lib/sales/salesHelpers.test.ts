@@ -87,6 +87,40 @@ test("getSalesTodaySummary avgSale is 0 when there are no sales today", () => {
   assert.equal(summary.txnCount, 0);
 });
 
+test("getSalesTodaySummary keeps a fully-returned sale in today's txnCount but nets its revenue to $0", () => {
+  const sales = [
+    makeSale({ id: "s1", total: 10, status: "returned", created_at: todayAt(9) }),
+  ];
+  const payments: EodPayment[] = [
+    { sale_id: "s1", payment_method: "cash", amount: 10, payment_type: "refund" },
+  ];
+  const summary = getSalesTodaySummary(sales, [], payments, [], {});
+  assert.equal(summary.revenueToday, 0);
+  assert.equal(summary.txnCount, 1);
+  assert.equal(summary.avgSale, 0);
+});
+
+test("getSalesTodaySummary nets a partial return against today's revenue without excluding the sale", () => {
+  const sales = [
+    makeSale({ id: "s1", total: 30, status: "completed", created_at: todayAt(9) }),
+  ];
+  const payments: EodPayment[] = [
+    { sale_id: "s1", payment_method: "cash", amount: 10, payment_type: "refund" },
+  ];
+  const summary = getSalesTodaySummary(sales, [], payments, [], {});
+  assert.equal(summary.revenueToday, 20);
+  assert.equal(summary.txnCount, 1);
+});
+
+test("getSalesTodaySummary still excludes voided sales from today's activity", () => {
+  const sales = [
+    makeSale({ id: "s1", total: 999, status: "voided", created_at: todayAt(9) }),
+  ];
+  const summary = getSalesTodaySummary(sales, [], [], [], {});
+  assert.equal(summary.revenueToday, 0);
+  assert.equal(summary.txnCount, 0);
+});
+
 test("getSalesTodaySummary computes yesterday's revenue, count, and profit from COGS", () => {
   const sales = [makeSale({ id: "y1", total: 100, created_at: yesterdayAt(10) })];
   const saleItems = [makeSaleItem({ sale_id: "y1", product_id: "p1", quantity: 5 })];

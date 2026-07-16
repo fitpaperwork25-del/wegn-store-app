@@ -30,14 +30,30 @@ export function getSalesTodaySummary(
   productIdMap: Record<string, ProductStock>
 ): SalesTodaySummary {
   const today = new Date();
+  // "Today's activity" is every sale that occurred today, whether it's
+  // still completed or has since been fully returned - a return is a
+  // separate business event from the sale itself, and must not make the
+  // sale disappear from the day's activity. Voided sales (never a
+  // legitimate completed transaction) remain excluded, matching every
+  // other sales-status filter in the app (Analytics, Sales History, etc.).
   const todaySales = sales.filter(s => {
     const d = new Date(s.created_at);
-    return s.status === 'completed' &&
+    return (s.status === 'completed' || s.status === 'returned') &&
       d.getFullYear() === today.getFullYear() &&
       d.getMonth() === today.getMonth() &&
       d.getDate() === today.getDate();
   });
-  const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
+  const todaySaleIds = new Set(todaySales.map(s => s.id));
+  // Net revenue, consistent with how cash/card/other totals are already
+  // computed elsewhere (App.tsx's analyticsData): gross sale totals minus
+  // any refund payments recorded against those sales, whether the return
+  // was partial or full. A fully-returned sale nets to $0 rather than
+  // vanishing from the total.
+  const todayGrossRevenue = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
+  const todayRefunds = allPayments
+    .filter(p => p.payment_type === 'refund' && todaySaleIds.has(p.sale_id))
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const revenueToday = todayGrossRevenue - todayRefunds;
   const txnCount = todaySales.length;
   const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
 

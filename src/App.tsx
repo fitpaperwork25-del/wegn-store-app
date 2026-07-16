@@ -734,7 +734,10 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
   const recentSales = useMemo(() =>
     [...sales]
-      .filter(s => s.status === 'completed')
+      // Include fully-returned sales so a return doesn't erase the sale from
+      // the Dashboard's activity/history - matches getSalesTodaySummary's
+      // status filter (see salesHelpers.ts). Voided sales stay excluded.
+      .filter(s => s.status === 'completed' || s.status === 'returned')
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 5),
     [sales]
