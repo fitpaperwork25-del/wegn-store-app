@@ -8,6 +8,7 @@ import { getPurchaseOrders, fetchPurchaseOrdersRawData } from "./tools/getPurcha
 import { getSalesSummary, fetchSalesSummaryRawData } from "./tools/getSalesSummary.ts";
 import { getReturnsAndRefunds, fetchReturnsRawData } from "./tools/getReturnsAndRefunds.ts";
 import { getProductSalesVelocity, fetchProductSalesVelocityRawData } from "./tools/getProductSalesVelocity.ts";
+import { getLowStockProducts, fetchLowStockProductsRawData } from "./tools/getLowStockProducts.ts";
 
 /**
  * Controlled tool registry. Adding a tool means adding one entry here - it
@@ -111,6 +112,15 @@ const GET_PRODUCT_SALES_VELOCITY_INPUT_SCHEMA: JsonSchema = {
   type: "object",
   properties: {
     limit: { type: "integer", minimum: 1, maximum: 50, description: "Maximum products to return in the top-sellers list (default 15)." },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
+const GET_LOW_STOCK_PRODUCTS_INPUT_SCHEMA: JsonSchema = {
+  type: "object",
+  properties: {
+    supplierName: { type: "string", description: "Optional supplier name (or partial name) to filter to one supplier's low-stock products." },
   },
   required: [],
   additionalProperties: false,
@@ -220,6 +230,21 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     allowedRoles: ["owner", "manager"],
     execute: async (rawInput, ctx) => {
       const result = await getProductSalesVelocity(rawInput, { businessId: ctx.businessId }, (businessId) => fetchProductSalesVelocityRawData(ctx.supabase, businessId));
+      if (!result.ok) return { ok: false, error: result.error };
+      return { ok: true, value: result.value };
+    },
+  },
+  {
+    name: "get_low_stock_products",
+    mode: "read",
+    description:
+      "Look up this store's active products that are below their reorder level - current stock, reorder level, supplier, and a suggested reorder quantity based on recent sales velocity (the same calculation the Purchasing tab's AI Smart Reorder already uses) - optionally filtered to one supplier. No cost, margin, or profit data. " +
+      "Use this for questions like: \"What's low on stock?\", \"What needs reordering?\", \"Which products are below reorder level?\", \"What should I reorder from CBA Supplies?\". " +
+      "The suggested quantity is informational only - this tool is read-only and cannot create purchase orders.",
+    inputSchema: GET_LOW_STOCK_PRODUCTS_INPUT_SCHEMA,
+    allowedRoles: ["owner", "manager"],
+    execute: async (rawInput, ctx) => {
+      const result = await getLowStockProducts(rawInput, { businessId: ctx.businessId }, (businessId) => fetchLowStockProductsRawData(ctx.supabase, businessId));
       if (!result.ok) return { ok: false, error: result.error };
       return { ok: true, value: result.value };
     },
