@@ -9,6 +9,7 @@ import { getSalesSummary, fetchSalesSummaryRawData } from "./tools/getSalesSumma
 import { getReturnsAndRefunds, fetchReturnsRawData } from "./tools/getReturnsAndRefunds.ts";
 import { getProductSalesVelocity, fetchProductSalesVelocityRawData } from "./tools/getProductSalesVelocity.ts";
 import { getLowStockProducts, fetchLowStockProductsRawData } from "./tools/getLowStockProducts.ts";
+import { getProductDetails, fetchProductDetailsRawData } from "./tools/getProductDetails.ts";
 
 /**
  * Controlled tool registry. Adding a tool means adding one entry here - it
@@ -245,6 +246,21 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     allowedRoles: ["owner", "manager"],
     execute: async (rawInput, ctx) => {
       const result = await getLowStockProducts(rawInput, { businessId: ctx.businessId }, (businessId) => fetchLowStockProductsRawData(ctx.supabase, businessId));
+      if (!result.ok) return { ok: false, error: result.error };
+      return { ok: true, value: result.value };
+    },
+  },
+  {
+    name: "get_product_details",
+    mode: "read",
+    description:
+      "Look up detailed pricing/economics for a specific product by name, SKU, or barcode - cost price, average cost, supplier, category, break-even price, minimum safe price, target price, and the current margin the listed selling price actually achieves. This is the ONLY tool that returns cost/margin/profit data - search_products deliberately never does. " +
+      "Use this for questions like: \"What's our cost on Milk 1 Liter?\", \"What margin are we making on SKU 00123?\", \"What's the break-even price for barcode 012345678901?\", \"What should we sell this for to hit our target margin?\". " +
+      "Do not use this for basic stock/price lookups with no cost or margin question (use search_products instead) or for reorder suggestions (use get_low_stock_products instead). This tool is read-only and cannot change prices or pricing policy.",
+    inputSchema: SEARCH_PRODUCTS_INPUT_SCHEMA,
+    allowedRoles: ["owner", "manager"],
+    execute: async (rawInput, ctx) => {
+      const result = await getProductDetails(rawInput, { businessId: ctx.businessId }, (businessId, input) => fetchProductDetailsRawData(ctx.supabase, businessId, input));
       if (!result.ok) return { ok: false, error: result.error };
       return { ok: true, value: result.value };
     },
