@@ -485,6 +485,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [salesSearchQuery, setSalesSearchQuery] = useState("");
   const [salesDateRange, setSalesDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [productActionsOpenId, setProductActionsOpenId] = useState<string | null>(null);
   const [editProdName, setEditProdName] = useState("");
   const [editProdSku, setEditProdSku] = useState("");
   const [editProdBarcode, setEditProdBarcode] = useState("");
@@ -5093,6 +5094,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
           sellingPrice: product.selling_price,
           barcode: product.barcode ?? "",
         })}
+        productActionsOpenId={productActionsOpenId}
+        setProductActionsOpenId={setProductActionsOpenId}
         editProdName={editProdName}
         editProdSku={editProdSku}
         editProdBarcode={editProdBarcode}

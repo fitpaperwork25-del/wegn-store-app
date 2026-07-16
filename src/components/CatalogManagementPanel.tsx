@@ -87,6 +87,11 @@ type CatalogManagementPanelProps = {
   onToggleProductStatus: (product: ProductStock) => void;
   onEditProduct: (e: React.FormEvent, productId: string) => void;
   onPrintBarcodeLabel: (product: ProductStock) => void;
+  /** Row-level "···" Actions menu, keyed by product_id. Houses Edit / Print
+   *  Barcode / Deactivate today; structured so Reprint Barcode, Generate
+   *  Barcode, and Archive can be added as menu items later. */
+  productActionsOpenId: string | null;
+  setProductActionsOpenId: (v: string | null) => void;
   editProdName: string;
   editProdSku: string;
   editProdBarcode: string;
@@ -115,6 +120,7 @@ export function CatalogManagementPanel({
   setEditProdName, setEditProdSku, setEditProdBarcode, setEditProdPrice, setEditProdReorder,
   setEditProdOverhead, setEditProdTargetMargin, setEditProdMinMargin, setEditProdCategory, setEditProdTrackExpiration,
   canDeactivateProducts, onToggleProductStatus, onEditProduct, onPrintBarcodeLabel,
+  productActionsOpenId, setProductActionsOpenId,
   editProdName, editProdSku, editProdBarcode, editProdPrice, editProdReorder, editProdCategory,
   editProdOverhead, editProdTargetMargin, editProdMinMargin, editProdTrackExpiration,
 }: CatalogManagementPanelProps) {
@@ -340,7 +346,6 @@ export function CatalogManagementPanel({
               <th style={{ textAlign: "left" }}>Product</th>
               <th style={{ textAlign: "left" }}>Category</th>
               <th style={{ textAlign: "left" }}>SKU</th>
-              <th style={{ textAlign: "left" }}>Barcode</th>
               <th style={{ textAlign: "right" }}>Price</th>
               <th style={{ textAlign: "right" }}>Stock</th>
               <th>Status</th>
@@ -351,31 +356,20 @@ export function CatalogManagementPanel({
           <tbody>
             {(() => {
               if (filteredProducts.length === 0) return (
-                <tr><td colSpan={8} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No products match your search.</td></tr>
               );
               return filteredProducts.map((product) => {
               const isLowStock = product.status === 'active' && product.reorder_level !== null && product.quantity_on_hand < product.reorder_level;
               const isOutOfStock = product.status === 'active' && product.quantity_on_hand === 0;
               const inactive = product.status !== "active";
               const isEditing = editingProductId === product.product_id;
+              const actionsOpen = productActionsOpenId === product.product_id;
               return (
                 <React.Fragment key={product.product_id}>
                   <tr className={inactive ? "inv-row-inactive" : ""}>
                     <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
                     <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{(product.category_id ? categoryMap[product.category_id]?.name : null) ?? "—"}</td>
                     <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
-                    <td data-label="Barcode" style={{ fontSize: "13px" }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                        <span style={{ color: "#64748b", fontFamily: "var(--mono)" }}>{product.barcode ?? "—"}</span>
-                        <button
-                          type="button"
-                          onClick={() => onPrintBarcodeLabel(product)}
-                          disabled={!product.barcode}
-                          className="sh-btn sh-btn-print"
-                          style={{ opacity: product.barcode ? 1 : 0.5, cursor: product.barcode ? "pointer" : "not-allowed" }}
-                        >Print Barcode</button>
-                      </span>
-                    </td>
                     <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
                     <td data-label="Stock" style={{ textAlign: "right" }}>
                       <span style={{ fontWeight: 500 }}>{product.quantity_on_hand}</span>
@@ -390,33 +384,55 @@ export function CatalogManagementPanel({
                       <span className={`inv-badge ${inactive ? "inv-badge-muted" : "inv-badge-success"}`}>{product.status}</span>
                     </td>
                     <td data-label="Actions" style={{ whiteSpace: "nowrap" }}>
-                      {canEditProducts && <button
-                        onClick={() => {
-                          if (isEditing) { setEditingProductId(null); return; }
-                          setEditingProductId(product.product_id);
-                          setEditProdName(product.product_name);
-                          setEditProdSku(product.sku ?? "");
-                          setEditProdBarcode(product.barcode ?? "");
-                          setEditProdPrice(product.selling_price.toString());
-                          setEditProdReorder(product.reorder_level?.toString() ?? "");
-                          setEditProdOverhead(product.estimated_overhead_pct?.toString() ?? "0");
-                          setEditProdTargetMargin(product.target_margin_percent?.toString() ?? "");
-                          setEditProdMinMargin(product.minimum_margin_percent?.toString() ?? "");
-                          setEditProdCategory(product.category_id ?? "");
-                          setEditProdTrackExpiration(product.tracking_mode === "expiration_batch");
-                        }}
-                        className="sh-btn sh-btn-print"
-                      >{isEditing ? "Cancel" : "Edit"}</button>}
-                      {canDeactivateProducts && <button
-                        onClick={() => onToggleProductStatus(product)}
-                        className={`sh-btn ${inactive ? "sh-btn-return" : "sh-btn-void"}`}
-                        style={{ marginLeft: "6px" }}
-                      >{inactive ? "Activate" : "Deactivate"}</button>}
+                      <span style={{ position: "relative", display: "inline-block" }}>
+                        <button
+                          type="button"
+                          onClick={() => setProductActionsOpenId(actionsOpen ? null : product.product_id)}
+                          style={{ padding: "4px 8px", fontSize: "13px", cursor: "pointer", background: actionsOpen ? "#e5e7eb" : undefined }}
+                        >···</button>
+                        {actionsOpen && (
+                          <div style={{ position: "absolute", right: 0, top: "100%", zIndex: 10, background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: "160px", padding: "4px 0" }}>
+                            {canEditProducts && (
+                              <button
+                                onClick={() => {
+                                  setProductActionsOpenId(null);
+                                  if (isEditing) { setEditingProductId(null); return; }
+                                  setEditingProductId(product.product_id);
+                                  setEditProdName(product.product_name);
+                                  setEditProdSku(product.sku ?? "");
+                                  setEditProdBarcode(product.barcode ?? "");
+                                  setEditProdPrice(product.selling_price.toString());
+                                  setEditProdReorder(product.reorder_level?.toString() ?? "");
+                                  setEditProdOverhead(product.estimated_overhead_pct?.toString() ?? "0");
+                                  setEditProdTargetMargin(product.target_margin_percent?.toString() ?? "");
+                                  setEditProdMinMargin(product.minimum_margin_percent?.toString() ?? "");
+                                  setEditProdCategory(product.category_id ?? "");
+                                  setEditProdTrackExpiration(product.tracking_mode === "expiration_batch");
+                                }}
+                                style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px" }}
+                              >{isEditing ? "Cancel Edit" : "Edit"}</button>
+                            )}
+                            <button
+                              onClick={() => { onPrintBarcodeLabel(product); setProductActionsOpenId(null); }}
+                              disabled={!product.barcode}
+                              style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: product.barcode ? "pointer" : "not-allowed", fontSize: "13px", opacity: product.barcode ? 1 : 0.5 }}
+                            >Print Barcode</button>
+                            {/* Reserved for future actions: Reprint Barcode, Generate Barcode, Archive.
+                                Not implemented yet - structure only. */}
+                            {canDeactivateProducts && (
+                              <button
+                                onClick={() => { onToggleProductStatus(product); setProductActionsOpenId(null); }}
+                                style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: inactive ? "#15803d" : "#dc2626" }}
+                              >{inactive ? "Activate" : "Deactivate"}</button>
+                            )}
+                          </div>
+                        )}
+                      </span>
                     </td>
                   </tr>
                   {canEditProducts && isEditing && (
                     <tr className="inv-edit-row">
-                      <td colSpan={8} style={{ background: "#f9fafb", padding: "16px" }}>
+                      <td colSpan={7} style={{ background: "#f9fafb", padding: "16px" }}>
                         <form onSubmit={(e) => onEditProduct(e, product.product_id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
                           <strong style={{ width: "100%", marginBottom: "4px" }}>Edit Product — {product.product_name}</strong>
                           <input
