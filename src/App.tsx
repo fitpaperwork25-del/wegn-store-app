@@ -1809,6 +1809,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setItemUnitCost("");
     await loadPOItems(selectedPoId);
     await loadPurchaseOrders();
+    await loadAllPoItems();
   }
 
   async function handleOpenReceive(po: PurchaseOrder) {
@@ -2897,6 +2898,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); setReceiveLineNotes({}); setReceiveBatchNumbers({}); setReceiveExpirationDates({}); setReceiveManufacturedDates({}); }
     setMessage({ text: `PO ${po.po_number} cancelled`, type: "success" });
     await loadPurchaseOrders();
+    await loadAllPoItems();
   }
 
   async function handleMarkOrdered(po: PurchaseOrder) {
@@ -2907,6 +2909,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     if (error) { console.error(error); setMessage({ text: "Failed to mark as ordered: " + error.message, type: "error" }); return; }
     setMessage({ text: `PO ${po.po_number} marked as ordered`, type: "success" });
     await loadPurchaseOrders();
+    await loadAllPoItems();
   }
 
   async function handleRemovePOItem(itemId: string) {
@@ -2921,6 +2924,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     const newSubtotal = remaining.reduce((sum, i) => sum + Number(i.line_total), 0);
     await supabase.from("purchase_orders").update({ subtotal: newSubtotal }).eq("id", selectedPoId);
     await loadPurchaseOrders();
+    await loadAllPoItems();
   }
 
   async function loadSuppliers() {
