@@ -10,6 +10,7 @@ import { getReturnsAndRefunds, fetchReturnsRawData } from "./tools/getReturnsAnd
 import { getProductSalesVelocity, fetchProductSalesVelocityRawData } from "./tools/getProductSalesVelocity.ts";
 import { getLowStockProducts, fetchLowStockProductsRawData } from "./tools/getLowStockProducts.ts";
 import { getProductDetails, fetchProductDetailsRawData } from "./tools/getProductDetails.ts";
+import { getCashDrawerStatus, fetchCashDrawerStatusRawData } from "./tools/getCashDrawerStatus.ts";
 
 /**
  * Controlled tool registry. Adding a tool means adding one entry here - it
@@ -261,6 +262,21 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     allowedRoles: ["owner", "manager"],
     execute: async (rawInput, ctx) => {
       const result = await getProductDetails(rawInput, { businessId: ctx.businessId }, (businessId, input) => fetchProductDetailsRawData(ctx.supabase, businessId, input));
+      if (!result.ok) return { ok: false, error: result.error };
+      return { ok: true, value: result.value };
+    },
+  },
+  {
+    name: "get_cash_drawer_status",
+    mode: "read",
+    description:
+      "Look up whether a cash drawer is currently open, and if so: who opened it, when, the opening float, cash sales recorded since it opened, paid-outs recorded, and the CURRENT EXPECTED cash position (opening float + cash sales - paid-outs). " +
+      "Use this for questions like: \"Is the drawer open?\", \"What's the cash drawer status?\", \"How much cash should be in the drawer right now?\", \"What paid-outs have been recorded today?\". " +
+      "This tool never reports an over/short figure - that only exists after a physical cash count at drawer close, which this tool has no way to know. It also does not report on past, already-closed drawer sessions - only the current one, if open. This tool is read-only and cannot open, close, or modify a drawer session.",
+    inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
+    allowedRoles: ["owner", "manager", "cashier"],
+    execute: async (rawInput, ctx) => {
+      const result = await getCashDrawerStatus(rawInput, { businessId: ctx.businessId }, (businessId) => fetchCashDrawerStatusRawData(ctx.supabase, businessId));
       if (!result.ok) return { ok: false, error: result.error };
       return { ok: true, value: result.value };
     },
