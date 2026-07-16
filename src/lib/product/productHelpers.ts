@@ -68,6 +68,18 @@ export function getTotalInventoryValue(products: ProductStock[]): number {
   return products.reduce((sum, p) => sum + p.quantity_on_hand * p.average_cost, 0);
 }
 
+/**
+ * Generates a candidate internal "Wegn" barcode for a product with no
+ * manufacturer barcode: "WGN" + 10 random digits (e.g. "WGN8729755354").
+ * Pure and stateless - does not check uniqueness itself, since that requires
+ * a database round-trip. Callers must verify the candidate doesn't already
+ * exist and regenerate on collision (see handleAddProduct in App.tsx).
+ */
+export function generateWegnBarcode(): string {
+  const digits = Array.from({ length: 10 }, () => Math.floor(Math.random() * 10)).join("");
+  return `WGN${digits}`;
+}
+
 export type CategoryChip = { key: string; label: string; count: number };
 
 /** Category filter-chip list (All / Uncategorized / each category) with product counts. */

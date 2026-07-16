@@ -10,6 +10,7 @@ import { CustomersTab } from "./components/CustomersTab";
 import { ProductResolutionDialog } from "./components/ProductResolutionDialog";
 import { ReceiptPrintModal } from "./components/ReceiptPrintModal";
 import { POPrintModal } from "./components/POPrintModal";
+import { BarcodeLabelPrintModal, type BarcodeLabelData } from "./components/BarcodeLabelPrintModal";
 import { PurchasingTab } from "./components/PurchasingTab";
 import { SupplierManagementPanel } from "./components/SupplierManagementPanel";
 import { SupplierStatementPrintModal, type PrintableSupplierStatement } from "./components/SupplierStatementPrintModal";
@@ -25,7 +26,7 @@ import { Dashboard } from "./components/Dashboard";
 import { SalesAnalyticsReport } from "./components/SalesAnalyticsReport";
 import { InventoryReportsPanel } from "./components/InventoryReportsPanel";
 import type { ProductStock, Category, ProductResolutionRequest } from "./lib/product/types";
-import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips } from "./lib/product/productHelpers";
+import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips, generateWegnBarcode } from "./lib/product/productHelpers";
 import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
 import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
@@ -246,6 +247,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [negotiatePrice, setNegotiatePrice] = useState("");
   const [negotiateReason, setNegotiateReason] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeLabel, setBarcodeLabel] = useState<BarcodeLabelData | null>(null);
   const [cartProductId, setCartProductId] = useState("");
   const [cartQty, setCartQty] = useState("1");
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -2079,15 +2081,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     }
   }
 
-  function handleBarcodeSubmit(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    const code = barcodeInput.trim();
-    setBarcodeInput("");
-    if (!code) return;
-
-    const product = products.find((p) => String(p.barcode || "").trim() === code);
-    if (!product) { setUnmatchedBarcode(code); setLinkBarcodeMode(false); setLinkBarcodeProductId(""); setMessage({ text: `Scanner worked. Barcode not found in catalog: ${code}`, type: "error" }); return; }
+  function addProductToCart(product: ProductStock) {
     if (product.status !== "active") { setMessage({ text: "Product is inactive and cannot be sold.", type: "error" }); return; }
     if (product.quantity_on_hand <= 0) { setMessage({ text: `${product.product_name} is out of stock`, type: "error" }); return; }
 
@@ -2118,6 +2112,84 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     }
     setMessage({ text: `${product.product_name} added to cart`, type: "success" });
     setUnmatchedBarcode("");
+  }
+
+  async function handleBarcodeSubmit(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const code = barcodeInput.trim();
+    setBarcodeInput("");
+    if (!code) return;
+
+    // Proven manufacturer-barcode lookup — unchanged.
+    const product = products.find((p) => String(p.barcode || "").trim() === code);
+    if (product) {
+      addProductToCart(product);
+      return;
+    }
+
+    // Local cache miss only: the in-memory `products` array can be stale relative to the
+    // database (e.g. a barcode was assigned in another session since this session's last
+    // load) with no local signal that it happened, so a miss here isn't conclusive on its
+    // own. One additional exact-match query against the live database, using the same
+    // normalized `code` value as the lookup above, before falling back to "not found".
+    try {
+      const { data: freshProductRow, error: freshProductErr } = await supabase
+        .from("products")
+        .select("id, business_id, name, sku, barcode, selling_price, reorder_level, status, average_cost, cost_price, estimated_overhead_pct, target_margin_percent, minimum_margin_percent, supplier_id, category_id, tracking_mode")
+        .eq("barcode", code)
+        .maybeSingle();
+
+      if (freshProductErr) throw freshProductErr;
+
+      if (freshProductRow) {
+        const { data: freshInvRow, error: freshInvErr } = await supabase
+          .from("inventory")
+          .select("id, quantity_on_hand")
+          .eq("product_id", freshProductRow.id)
+          .maybeSingle();
+
+        if (freshInvErr) throw freshInvErr;
+
+        if (freshInvRow) {
+          const freshProduct: ProductStock = {
+            inventory_id: freshInvRow.id,
+            business_id: freshProductRow.business_id,
+            product_id: freshProductRow.id,
+            product_name: freshProductRow.name,
+            sku: freshProductRow.sku,
+            barcode: freshProductRow.barcode,
+            selling_price: freshProductRow.selling_price,
+            quantity_on_hand: freshInvRow.quantity_on_hand,
+            reorder_level: freshProductRow.reorder_level,
+            status: freshProductRow.status,
+            average_cost: freshProductRow.average_cost ?? 0,
+            cost_price: freshProductRow.cost_price ?? null,
+            estimated_overhead_pct: freshProductRow.estimated_overhead_pct,
+            target_margin_percent: freshProductRow.target_margin_percent,
+            minimum_margin_percent: freshProductRow.minimum_margin_percent,
+            supplier_id: freshProductRow.supplier_id,
+            category_id: freshProductRow.category_id,
+            tracking_mode: (freshProductRow.tracking_mode ?? "none") as ProductStock["tracking_mode"],
+          };
+          setProducts((prev) => {
+            const exists = prev.some((existingP) => existingP.product_id === freshProduct.product_id);
+            return exists
+              ? prev.map((existingP) => (existingP.product_id === freshProduct.product_id ? freshProduct : existingP))
+              : [...prev, freshProduct];
+          });
+          addProductToCart(freshProduct);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    setUnmatchedBarcode(code);
+    setLinkBarcodeMode(false);
+    setLinkBarcodeProductId("");
+    setMessage({ text: `Scanner worked. Barcode not found in catalog: ${code}`, type: "error" });
   }
 
   async function handleLinkBarcode() {
@@ -3106,6 +3178,29 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       if (conflict) { setMessage({ text: `Barcode already assigned to ${conflict.product_name}`, type: "error" }); return; }
     }
 
+    // If no barcode was entered, generate a unique internal "Wegn" barcode so
+    // the product is scannable at POS immediately. A manually-entered barcode
+    // is preserved exactly as the original code stored it (newBarcode, not
+    // the trimmed `barcode` above) - untouched, not even whitespace-trimmed.
+    let finalBarcode: string | null = newBarcode || null;
+    if (!finalBarcode) {
+      const MAX_GENERATION_ATTEMPTS = 5;
+      for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
+        const candidate = generateWegnBarcode();
+        const { data: existing, error: checkErr } = await supabase
+          .from("products")
+          .select("id")
+          .eq("barcode", candidate)
+          .maybeSingle();
+        if (checkErr) { console.error(checkErr); break; }
+        if (!existing) { finalBarcode = candidate; break; }
+      }
+      if (!finalBarcode) {
+        setMessage({ text: "Could not generate a unique barcode. Product was not created — please retry.", type: "error" });
+        return;
+      }
+    }
+
     const initialStock = Number(newInitialStock);
 
     const costPrice = newCostPrice ? Number(newCostPrice) : 0;
@@ -3116,7 +3211,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         business_id: businessId,
         name: newName,
         sku: newSku || null,
-        barcode: newBarcode || null,
+        barcode: finalBarcode,
         cost_price: (costPrice || null) as number,
         selling_price: Number(newSellingPrice),
         reorder_level: newReorderLevel ? Number(newReorderLevel) : 10,
@@ -4992,6 +5087,12 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         canDeactivateProducts={canDeactivateProducts}
         onToggleProductStatus={handleToggleProductStatus}
         onEditProduct={handleEditProduct}
+        onPrintBarcodeLabel={(product) => setBarcodeLabel({
+          productName: product.product_name,
+          sku: product.sku,
+          sellingPrice: product.selling_price,
+          barcode: product.barcode ?? "",
+        })}
         editProdName={editProdName}
         editProdSku={editProdSku}
         editProdBarcode={editProdBarcode}
@@ -5978,6 +6079,11 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         businessPhone={businessPhone}
         businessAddress={businessAddress}
         onClose={() => setReceipt(null)}
+      />
+
+      <BarcodeLabelPrintModal
+        label={barcodeLabel}
+        onClose={() => setBarcodeLabel(null)}
       />
     </div>
   );
