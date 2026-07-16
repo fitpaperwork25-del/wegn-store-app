@@ -1,3 +1,5 @@
+import type { TrackingMode } from "../inventory/trackingCapture";
+
 export type ProductStock = {
   inventory_id: string;
   business_id: string;
@@ -16,6 +18,7 @@ export type ProductStock = {
   minimum_margin_percent: number | null;
   supplier_id: string | null;
   category_id: string | null;
+  tracking_mode: TrackingMode;
 };
 
 export type Category = {

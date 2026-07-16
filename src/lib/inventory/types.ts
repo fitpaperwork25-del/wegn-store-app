@@ -26,6 +26,8 @@ export type InventoryBatch = {
   product_id: string;
   receiving_session_id: string | null;
   receiving_session_item_id: string | null;
+  purchase_order_id: string | null;
+  purchase_order_item_id: string | null;
   supplier_id: string | null;
   supplier_name: string | null;
   batch_number: string | null;

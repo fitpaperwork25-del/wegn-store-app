@@ -30,6 +30,7 @@ import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
 import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
 import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
+import { validateExpirationBatchCapture, buildTrackingRecord, type InventoryBatchInsertRow } from "./lib/inventory/trackingCapture";
 import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail, SessionItem, SessionHistoryItem, SessionPayment } from "./lib/inventory/types";
 import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow, PoSignatures } from "./lib/purchasing/types";
 import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReturnItemSummary, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
@@ -63,6 +64,12 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [receiveExpiredQtys, setReceiveExpiredQtys] = useState<Record<string, string>>({});
   const [receiveRejectedQtys, setReceiveRejectedQtys] = useState<Record<string, string>>({});
   const [receiveLineNotes, setReceiveLineNotes] = useState<Record<string, string>>({});
+  // Generic inventory tracking pipeline - only rendered/required for lines
+  // whose product has tracking_mode "expiration_batch" (see
+  // src/lib/inventory/trackingCapture.ts).
+  const [receiveBatchNumbers, setReceiveBatchNumbers] = useState<Record<string, string>>({});
+  const [receiveExpirationDates, setReceiveExpirationDates] = useState<Record<string, string>>({});
+  const [receiveManufacturedDates, setReceiveManufacturedDates] = useState<Record<string, string>>({});
   const [isConfirmingReceive, setIsConfirmingReceive] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poNotes, setPoNotes] = useState("");
@@ -217,6 +224,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [newOverhead, setNewOverhead] = useState("");
   const [newTargetMargin, setNewTargetMargin] = useState("");
   const [newMinMargin, setNewMinMargin] = useState("");
+  // Single user-facing toggle; persisted as tracking_mode "expiration_batch"/"none" (src/lib/inventory/trackingCapture.ts).
+  const [newTrackExpiration, setNewTrackExpiration] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [movementFilter, setMovementFilter] = useState("all");
   const [txDateRange, setTxDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
@@ -490,6 +499,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [editProdOverhead, setEditProdOverhead] = useState("");
   const [editProdTargetMargin, setEditProdTargetMargin] = useState("");
   const [editProdMinMargin, setEditProdMinMargin] = useState("");
+  const [editProdTrackExpiration, setEditProdTrackExpiration] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [productSearch, setProductSearch] = useState("");
   const [debouncedProductSearch, setDebouncedProductSearch] = useState("");
@@ -1805,6 +1815,9 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       setReceiveExpiredQtys({});
       setReceiveRejectedQtys({});
       setReceiveLineNotes({});
+      setReceiveBatchNumbers({});
+      setReceiveExpirationDates({});
+      setReceiveManufacturedDates({});
       return;
     }
 
@@ -1832,6 +1845,9 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     const expired: Record<string, string> = {};
     const rejected: Record<string, string> = {};
     const notes: Record<string, string> = {};
+    const batchNumbers: Record<string, string> = {};
+    const expirationDates: Record<string, string> = {};
+    const manufacturedDates: Record<string, string> = {};
     items.forEach((item) => {
       const remaining = item.quantity - (item.quantity_received ?? 0);
       qtys[item.id] = String(Math.max(0, remaining));
@@ -1840,6 +1856,9 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       expired[item.id] = "0";
       rejected[item.id] = "0";
       notes[item.id] = item.receive_notes ?? "";
+      batchNumbers[item.id] = "";
+      expirationDates[item.id] = "";
+      manufacturedDates[item.id] = "";
     });
     setReceiveQtys(qtys);
     setReceiveUnitCosts(costs);
@@ -1847,6 +1866,9 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setReceiveExpiredQtys(expired);
     setReceiveRejectedQtys(rejected);
     setReceiveLineNotes(notes);
+    setReceiveBatchNumbers(batchNumbers);
+    setReceiveExpirationDates(expirationDates);
+    setReceiveManufacturedDates(manufacturedDates);
   }
 
   async function handleConfirmReceive() {
@@ -1858,6 +1880,11 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     try {
       const receiveNotes: string[] = [];
       const exceptionParts: string[] = [];
+      const validationErrors: string[] = [];
+      const batchInserts: InventoryBatchInsertRow[] = [];
+      // Generic inventory tracking pipeline (src/lib/inventory/trackingCapture.ts) -
+      // resolved once; used only for lines whose product has tracking_mode "expiration_batch".
+      const poSupplierName = suppliers.find((s) => s.id === po.supplier_id)?.name ?? null;
       // Supplier Accounts Payable Phase 1: the dollar value of what's
       // actually received in this action (not the whole PO), since a PO can
       // be delivered/invoiced across multiple partial receipts.
@@ -1871,6 +1898,23 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
         const product = products.find((p) => p.product_id === item.product_id);
         if (!product) continue;
+
+        // Generic inventory tracking pipeline: validate BEFORE any write for
+        // this line, so a tracked product with missing required fields never
+        // partially receives. Untracked products (the common case) never
+        // enter this branch at all.
+        let expirationBatchCapture: { batchNumber: string; expirationDate: string; manufacturedDate: string | null } | null = null;
+        if (product.tracking_mode === "expiration_batch") {
+          const batchNumber = (receiveBatchNumbers[item.id] ?? "").trim();
+          const expirationDate = (receiveExpirationDates[item.id] ?? "").trim();
+          const manufacturedDate = (receiveManufacturedDates[item.id] ?? "").trim();
+          const validation = validateExpirationBatchCapture({ batchNumber, expirationDate });
+          if (!validation.ok) {
+            validationErrors.push(`${product.product_name}: ${validation.error}`);
+            continue;
+          }
+          expirationBatchCapture = { batchNumber, expirationDate, manufacturedDate: manufacturedDate || null };
+        }
 
         const damagedQty = Math.max(0, Number(receiveDamagedQtys[item.id] ?? 0));
         const expiredQty = Math.max(0, Number(receiveExpiredQtys[item.id] ?? 0));
@@ -1890,6 +1934,22 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         const newAvgCost = (quantityBefore + clampedQty) > 0
           ? ((quantityBefore * oldAvgCost) + (clampedQty * receivedUnitCost)) / (quantityBefore + clampedQty)
           : receivedUnitCost;
+
+        if (expirationBatchCapture) {
+          const record = buildTrackingRecord(
+            {
+              mode: "expiration_batch",
+              batchNumber: expirationBatchCapture.batchNumber,
+              expirationDate: expirationBatchCapture.expirationDate,
+              manufacturedDate: expirationBatchCapture.manufacturedDate,
+              quantityReceived: clampedQty,
+              unitCost: receivedUnitCost,
+            },
+            { kind: "purchase_order", purchaseOrderId: po.id, purchaseOrderItemId: item.id },
+            { businessId: product.business_id, productId: item.product_id, supplierId: po.supplier_id, supplierName: poSupplierName }
+          );
+          if (record) batchInserts.push(record);
+        }
 
         // Phase 1: inventory gate — must succeed before remaining writes fire
         const { error: invError } = await supabase
@@ -1928,8 +1988,16 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         receivedAmountTotal += clampedQty * receivedUnitCost;
       }
 
+      if (batchInserts.length > 0) {
+        const { error: batchErr } = await supabase.from("inventory_batches").insert(batchInserts);
+        if (batchErr) { console.error("[Receive] inventory_batches insert error:", batchErr); }
+      }
+
       if (receiveNotes.length === 0) {
-        setMessage({ text: "No quantities to receive", type: "error" });
+        const text = validationErrors.length > 0
+          ? `Nothing received — ${validationErrors.join("; ")}`
+          : "No quantities to receive";
+        setMessage({ text, type: "error" });
         return;
       }
 
@@ -1988,7 +2056,11 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       setReceiveExpiredQtys({});
       setReceiveRejectedQtys({});
       setReceiveLineNotes({});
-      setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated`, type: "success" });
+      setReceiveBatchNumbers({});
+      setReceiveExpirationDates({});
+      setReceiveManufacturedDates({});
+      const skippedNote = validationErrors.length > 0 ? ` — skipped: ${validationErrors.join("; ")}` : "";
+      setMessage({ text: `${po.po_number} ${statusLabel} — inventory updated${skippedNote}`, type: validationErrors.length > 0 ? "error" : "success" });
       await Promise.all([loadProducts(), loadPurchaseOrders(), loadAllPoItems(), loadTransactions()]);
       // poItems (the PO detail view's own line-item snapshot) is a separate
       // state slice from allPoItems above - without reloading it here, the
@@ -2733,7 +2805,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (poError) { console.error(poError); setMessage({ text: "Failed to delete purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); setReceiveLineNotes({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); setReceiveLineNotes({}); setReceiveBatchNumbers({}); setReceiveExpirationDates({}); setReceiveManufacturedDates({}); }
     setMessage({ text: `PO ${po.po_number} deleted`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -2746,7 +2818,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       .eq("id", po.id);
     if (error) { console.error(error); setMessage({ text: "Failed to cancel purchase order", type: "error" }); return; }
     if (selectedPoId === po.id) { setSelectedPoId(""); setPoItems([]); }
-    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); setReceiveLineNotes({}); }
+    if (receivingPoId === po.id) { setReceivingPoId(""); setReceivingItems([]); setReceiveQtys({}); setReceiveUnitCosts({}); setReceiveDamagedQtys({}); setReceiveExpiredQtys({}); setReceiveRejectedQtys({}); setReceiveLineNotes({}); setReceiveBatchNumbers({}); setReceiveExpirationDates({}); setReceiveManufacturedDates({}); }
     setMessage({ text: `PO ${po.po_number} cancelled`, type: "success" });
     await loadPurchaseOrders();
   }
@@ -2937,7 +3009,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
           target_margin_percent,
           minimum_margin_percent,
           supplier_id,
-          category_id
+          category_id,
+          tracking_mode
         )
       `);
 
@@ -2965,6 +3038,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         minimum_margin_percent: item.products?.minimum_margin_percent ?? null,
         supplier_id: item.products?.supplier_id ?? null,
         category_id: item.products?.category_id ?? null,
+        tracking_mode: (item.products?.tracking_mode ?? "none") as ProductStock["tracking_mode"],
       })) || [];
 
     setProducts(formatted);
@@ -3052,6 +3126,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         minimum_margin_percent: newMinMargin ? Number(newMinMargin) : null,
         status: "active",
         category_id: newProductCategory || null,
+        tracking_mode: newTrackExpiration ? "expiration_batch" : "none",
       })
       .select("id")
       .single();
@@ -3114,6 +3189,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setNewTargetMargin("");
     setNewMinMargin("");
     setNewProductCategory("");
+    setNewTrackExpiration(false);
     setBarcodeAutoFill("");
     setMessage({ text: "Product added successfully", type: "success" });
   }
@@ -3139,6 +3215,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         target_margin_percent: editProdTargetMargin ? Number(editProdTargetMargin) : null,
         minimum_margin_percent: editProdMinMargin ? Number(editProdMinMargin) : null,
         category_id: editProdCategory || null,
+        tracking_mode: editProdTrackExpiration ? "expiration_batch" : "none",
       })
       .eq("id", productId);
     if (error) { console.error(error); setMessage({ text: "Failed to update product: " + error.message, type: "error" }); return; }
@@ -4218,28 +4295,36 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         .eq("receiving_session_id", session.id);
       if (createdItems && createdItems.length > 0) {
         const batchTransfer: Record<string, { batch_number: string; lot_number: string; manufactured_date: string; expiration_date: string }> = {};
-        const batchInserts: { business_id: string; product_id: string; receiving_session_id: string; receiving_session_item_id: string; supplier_id: string | null; supplier_name: string | null; batch_number: string | null; lot_number: string | null; manufactured_date: string | null; expiration_date: string | null; quantity_received: number; quantity_remaining: number; unit_cost: number; status: string }[] = [];
+        // Generic inventory tracking pipeline (src/lib/inventory/trackingCapture.ts) -
+        // same builder Purchase Order receiving uses, just with a receiving_session
+        // source instead of a purchase_order one. Smart Receive keeps its own,
+        // more lenient "any field present" rule (AI extraction may only find
+        // some fields) rather than the PO Receive UI's required-field rule.
+        const batchInserts: InventoryBatchInsertRow[] = [];
         itemsWithIdx.forEach(({ item, matchId, origIdx }) => {
           const bf = smartReceiveItemBatch[origIdx];
           const ri = createdItems.find(r => r.product_id === matchId);
           if (ri && bf && (bf.expiration_date || bf.lot_number || bf.batch_number || bf.manufactured_date)) {
             batchTransfer[ri.id] = bf;
-            batchInserts.push({
-              business_id: businessId,
-              product_id: ri.product_id,
-              receiving_session_id: session.id,
-              receiving_session_item_id: ri.id,
-              supplier_id: (session as { supplier_id?: string | null }).supplier_id ?? null,
-              supplier_name: (session as { supplier_name?: string | null }).supplier_name ?? null,
-              batch_number: bf.batch_number || null,
-              lot_number: bf.lot_number || null,
-              manufactured_date: bf.manufactured_date || null,
-              expiration_date: bf.expiration_date || null,
-              quantity_received: item.quantity,
-              quantity_remaining: item.quantity,
-              unit_cost: item.unitCost,
-              status: "active",
-            });
+            const record = buildTrackingRecord(
+              {
+                mode: "expiration_batch",
+                batchNumber: bf.batch_number || "",
+                lotNumber: bf.lot_number || null,
+                manufacturedDate: bf.manufactured_date || null,
+                expirationDate: bf.expiration_date || "",
+                quantityReceived: item.quantity,
+                unitCost: item.unitCost,
+              },
+              { kind: "receiving_session", receivingSessionId: session.id, receivingSessionItemId: ri.id },
+              {
+                businessId,
+                productId: ri.product_id,
+                supplierId: (session as { supplier_id?: string | null }).supplier_id ?? null,
+                supplierName: (session as { supplier_name?: string | null }).supplier_name ?? null,
+              }
+            );
+            if (record) batchInserts.push(record);
           }
         });
         if (batchInserts.length > 0) {
@@ -4873,6 +4958,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         newOverhead={newOverhead} setNewOverhead={setNewOverhead}
         newTargetMargin={newTargetMargin} setNewTargetMargin={setNewTargetMargin}
         newMinMargin={newMinMargin} setNewMinMargin={setNewMinMargin}
+        newTrackExpiration={newTrackExpiration} setNewTrackExpiration={setNewTrackExpiration}
         newInitialStock={newInitialStock} setNewInitialStock={setNewInitialStock}
         barcodeAutoFill={barcodeAutoFill}
         canManageCategories={canManageCategories}
@@ -4902,6 +4988,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         setEditProdTargetMargin={setEditProdTargetMargin}
         setEditProdMinMargin={setEditProdMinMargin}
         setEditProdCategory={setEditProdCategory}
+        setEditProdTrackExpiration={setEditProdTrackExpiration}
         canDeactivateProducts={canDeactivateProducts}
         onToggleProductStatus={handleToggleProductStatus}
         onEditProduct={handleEditProduct}
@@ -4914,6 +5001,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         editProdOverhead={editProdOverhead}
         editProdTargetMargin={editProdTargetMargin}
         editProdMinMargin={editProdMinMargin}
+        editProdTrackExpiration={editProdTrackExpiration}
       />{/* end catalog management */}
 
       {/* ── STOCK INTEGRITY (Inventory sub-domain) ── */}
@@ -5068,6 +5156,9 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         receiveRejectedQtys={receiveRejectedQtys} setReceiveRejectedQtys={setReceiveRejectedQtys}
         receiveUnitCosts={receiveUnitCosts} setReceiveUnitCosts={setReceiveUnitCosts}
         receiveLineNotes={receiveLineNotes} setReceiveLineNotes={setReceiveLineNotes}
+        receiveBatchNumbers={receiveBatchNumbers} setReceiveBatchNumbers={setReceiveBatchNumbers}
+        receiveExpirationDates={receiveExpirationDates} setReceiveExpirationDates={setReceiveExpirationDates}
+        receiveManufacturedDates={receiveManufacturedDates} setReceiveManufacturedDates={setReceiveManufacturedDates}
         onConfirmReceive={handleConfirmReceive}
         isConfirmingReceive={isConfirmingReceive}
       />{/* end purchase order lifecycle */}

@@ -357,6 +357,8 @@ export type Database = {
           lot_number: string | null
           manufactured_date: string | null
           product_id: string
+          purchase_order_id: string | null
+          purchase_order_item_id: string | null
           quantity_received: number
           quantity_remaining: number
           receiving_session_id: string | null
@@ -375,6 +377,8 @@ export type Database = {
           lot_number?: string | null
           manufactured_date?: string | null
           product_id: string
+          purchase_order_id?: string | null
+          purchase_order_item_id?: string | null
           quantity_received?: number
           quantity_remaining?: number
           receiving_session_id?: string | null
@@ -393,6 +397,8 @@ export type Database = {
           lot_number?: string | null
           manufactured_date?: string | null
           product_id?: string
+          purchase_order_id?: string | null
+          purchase_order_item_id?: string | null
           quantity_received?: number
           quantity_remaining?: number
           receiving_session_id?: string | null
@@ -415,6 +421,20 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_batches_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_batches_purchase_order_item_id_fkey"
+            columns: ["purchase_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_order_items"
             referencedColumns: ["id"]
           },
           {
@@ -748,6 +768,7 @@ export type Database = {
           status: string
           supplier_id: string | null
           target_margin_percent: number | null
+          tracking_mode: string
           updated_at: string
         }
         Insert: {
@@ -767,6 +788,7 @@ export type Database = {
           status?: string
           supplier_id?: string | null
           target_margin_percent?: number | null
+          tracking_mode?: string
           updated_at?: string
         }
         Update: {
@@ -786,6 +808,7 @@ export type Database = {
           status?: string
           supplier_id?: string | null
           target_margin_percent?: number | null
+          tracking_mode?: string
           updated_at?: string
         }
         Relationships: [

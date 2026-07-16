@@ -36,6 +36,9 @@ type CatalogManagementPanelProps = {
   setNewTargetMargin: (v: string) => void;
   newMinMargin: string;
   setNewMinMargin: (v: string) => void;
+  /** Single user-facing toggle; persisted as products.tracking_mode "expiration_batch"/"none" (src/lib/inventory/trackingCapture.ts). */
+  newTrackExpiration: boolean;
+  setNewTrackExpiration: (v: boolean) => void;
   newInitialStock: string;
   setNewInitialStock: (v: string) => void;
   barcodeAutoFill: string;
@@ -79,6 +82,7 @@ type CatalogManagementPanelProps = {
   setEditProdTargetMargin: (v: string) => void;
   setEditProdMinMargin: (v: string) => void;
   setEditProdCategory: (v: string) => void;
+  setEditProdTrackExpiration: (v: boolean) => void;
   canDeactivateProducts: boolean;
   onToggleProductStatus: (product: ProductStock) => void;
   onEditProduct: (e: React.FormEvent, productId: string) => void;
@@ -91,6 +95,7 @@ type CatalogManagementPanelProps = {
   editProdOverhead: string;
   editProdTargetMargin: string;
   editProdMinMargin: string;
+  editProdTrackExpiration: boolean;
 };
 
 export function CatalogManagementPanel({
@@ -98,17 +103,19 @@ export function CatalogManagementPanel({
   canAddProducts, onAddProduct, newName, setNewName, newSku, setNewSku, newBarcode, setNewBarcode,
   setBarcodeAutoFill, onBarcodeLookup, newCostPrice, setNewCostPrice, newSellingPrice, setNewSellingPrice,
   newReorderLevel, setNewReorderLevel, newProductCategory, setNewProductCategory, newOverhead, setNewOverhead,
-  newTargetMargin, setNewTargetMargin, newMinMargin, setNewMinMargin, newInitialStock, setNewInitialStock, barcodeAutoFill,
+  newTargetMargin, setNewTargetMargin, newMinMargin, setNewMinMargin,
+  newTrackExpiration, setNewTrackExpiration,
+  newInitialStock, setNewInitialStock, barcodeAutoFill,
   canManageCategories, onAddCategory, newCatName, setNewCatName, newCatDesc, setNewCatDesc,
   editingCatId, setEditingCatId, onEditCategory, editCatName, setEditCatName, editCatDesc, setEditCatDesc,
   onToggleCategoryStatus, onDeleteCategory,
   productsTableOpen, setProductsTableOpen, productSearchRef, productSearch, setProductSearch, categoryChips,
   categoryFilter, setCategoryFilter, filteredProducts, editingProductId, setEditingProductId, canEditProducts,
   setEditProdName, setEditProdSku, setEditProdBarcode, setEditProdPrice, setEditProdReorder,
-  setEditProdOverhead, setEditProdTargetMargin, setEditProdMinMargin, setEditProdCategory,
+  setEditProdOverhead, setEditProdTargetMargin, setEditProdMinMargin, setEditProdCategory, setEditProdTrackExpiration,
   canDeactivateProducts, onToggleProductStatus, onEditProduct,
   editProdName, editProdSku, editProdBarcode, editProdPrice, editProdReorder, editProdCategory,
-  editProdOverhead, editProdTargetMargin, editProdMinMargin,
+  editProdOverhead, editProdTargetMargin, editProdMinMargin, editProdTrackExpiration,
 }: CatalogManagementPanelProps) {
   return (
     <div style={{ display: visible ? '' : 'none' }}>
@@ -176,6 +183,10 @@ export function CatalogManagementPanel({
           <input type="number" min="0" placeholder="Overhead %" value={newOverhead} onChange={(e) => setNewOverhead(e.target.value)} step="0.1" style={{ flex: "1 1 100px", padding: "8px" }} />
           <input type="number" min="0" placeholder="Target Margin %" value={newTargetMargin} onChange={(e) => setNewTargetMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
           <input type="number" min="0" placeholder="Min Margin %" value={newMinMargin} onChange={(e) => setNewMinMargin(e.target.value)} step="0.1" style={{ flex: "1 1 110px", padding: "8px" }} />
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", flex: "1 1 180px" }}>
+            <input type="checkbox" checked={newTrackExpiration} onChange={(e) => setNewTrackExpiration(e.target.checked)} />
+            Track Expiration / Batch
+          </label>
           <input
             type="number"
             min="0"
@@ -378,6 +389,7 @@ export function CatalogManagementPanel({
                           setEditProdTargetMargin(product.target_margin_percent?.toString() ?? "");
                           setEditProdMinMargin(product.minimum_margin_percent?.toString() ?? "");
                           setEditProdCategory(product.category_id ?? "");
+                          setEditProdTrackExpiration(product.tracking_mode === "expiration_batch");
                         }}
                         className="sh-btn sh-btn-print"
                       >{isEditing ? "Cancel" : "Edit"}</button>}
@@ -447,6 +459,10 @@ export function CatalogManagementPanel({
                             <input type="number" placeholder="Overhead %" value={editProdOverhead} onChange={(e) => setEditProdOverhead(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 100px", padding: "7px" }} />
                             <input type="number" placeholder="Target Margin %" value={editProdTargetMargin} onChange={(e) => setEditProdTargetMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
                             <input type="number" placeholder="Min Margin %" value={editProdMinMargin} onChange={(e) => setEditProdMinMargin(e.target.value)} min="0" step="0.1" style={{ flex: "1 1 110px", padding: "7px" }} />
+                            <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", flex: "1 1 180px" }}>
+                              <input type="checkbox" checked={editProdTrackExpiration} onChange={(e) => setEditProdTrackExpiration(e.target.checked)} />
+                              Track Expiration / Batch
+                            </label>
                           </div>
                           {(() => {
                             const avgCost = product.average_cost;

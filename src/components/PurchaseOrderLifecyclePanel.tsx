@@ -60,6 +60,14 @@ type PurchaseOrderLifecyclePanelProps = {
   setReceiveUnitCosts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   receiveLineNotes: Record<string, string>;
   setReceiveLineNotes: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  /** Generic inventory tracking pipeline (src/lib/inventory/trackingCapture.ts) -
+   *  only rendered/required for lines whose product has tracking_mode "expiration_batch". */
+  receiveBatchNumbers: Record<string, string>;
+  setReceiveBatchNumbers: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  receiveExpirationDates: Record<string, string>;
+  setReceiveExpirationDates: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  receiveManufacturedDates: Record<string, string>;
+  setReceiveManufacturedDates: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onConfirmReceive: () => void;
   isConfirmingReceive: boolean;
 };
@@ -101,6 +109,9 @@ export function PurchaseOrderLifecyclePanel({
   receiveRejectedQtys, setReceiveRejectedQtys,
   receiveUnitCosts, setReceiveUnitCosts,
   receiveLineNotes, setReceiveLineNotes,
+  receiveBatchNumbers, setReceiveBatchNumbers,
+  receiveExpirationDates, setReceiveExpirationDates,
+  receiveManufacturedDates, setReceiveManufacturedDates,
   onConfirmReceive,
   isConfirmingReceive,
 }: PurchaseOrderLifecyclePanelProps) {
@@ -442,7 +453,14 @@ export function PurchaseOrderLifecyclePanel({
                           </td>
                         </tr>
                       )}
-                      {receivingPoId === po.id && (
+                      {receivingPoId === po.id && (() => {
+                        // Generic inventory tracking pipeline: the extra Batch/Lot/Expiration/
+                        // Manufacture columns only render at all when at least one line on
+                        // this PO is for a product with tracking_mode "expiration_batch" -
+                        // an untracked PO's receive experience is unchanged from before.
+                        const anyTracked = receivingItems.some((item) => products.find((p) => p.product_id === item.product_id)?.tracking_mode === "expiration_batch");
+                        const columnCount = anyTracked ? 13 : 10;
+                        return (
                         <tr>
                           <td colSpan={6} style={{ background: "#f0fdf4", padding: "16px", border: "2px solid #16a34a" }}>
                             <strong style={{ display: "block", marginBottom: "12px", color: "#15803d" }}>
@@ -462,17 +480,22 @@ export function PurchaseOrderLifecyclePanel({
                                   <th style={{ color: "#6b7280" }}>Rejected</th>
                                   <th>Unit Cost</th>
                                   <th>Notes</th>
+                                  {anyTracked && <th>Batch / Lot #*</th>}
+                                  {anyTracked && <th>Expiration Date*</th>}
+                                  {anyTracked && <th>Mfg Date</th>}
                                 </tr>
                               </thead>
                               <tbody>
                                 {receivingItems.length === 0 ? (
                                   <tr>
-                                    <td colSpan={10}>No line items on this PO</td>
+                                    <td colSpan={columnCount}>No line items on this PO</td>
                                   </tr>
                                 ) : (
                                   receivingItems.map((item) => {
                                     const alreadyReceived = item.quantity_received ?? 0;
                                     const remaining = item.quantity - alreadyReceived;
+                                    const itemProduct = products.find((p) => p.product_id === item.product_id);
+                                    const isTracked = itemProduct?.tracking_mode === "expiration_batch";
                                     return (
                                       <tr key={item.id} style={{ background: remaining <= 0 ? "#f0fdf4" : undefined }}>
                                         <td>{productItemMap[item.product_id] ?? "Unknown"}</td>
@@ -563,12 +586,61 @@ export function PurchaseOrderLifecyclePanel({
                                             item.receive_notes ? <span style={{ color: "#6b7280", fontSize: "12px" }}>{item.receive_notes}</span> : <span style={{ color: "#94a3b8" }}>—</span>
                                           )}
                                         </td>
+                                        {anyTracked && (
+                                          <td>
+                                            {remaining > 0 && isTracked ? (
+                                              <input
+                                                type="text"
+                                                placeholder="Required"
+                                                value={receiveBatchNumbers[item.id] ?? ""}
+                                                onChange={(e) => setReceiveBatchNumbers((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                                style={{ width: "110px", padding: "4px" }}
+                                              />
+                                            ) : (
+                                              <span style={{ color: "#94a3b8" }}>—</span>
+                                            )}
+                                          </td>
+                                        )}
+                                        {anyTracked && (
+                                          <td>
+                                            {remaining > 0 && isTracked ? (
+                                              <input
+                                                type="date"
+                                                value={receiveExpirationDates[item.id] ?? ""}
+                                                onChange={(e) => setReceiveExpirationDates((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                                style={{ width: "140px", padding: "4px" }}
+                                              />
+                                            ) : (
+                                              <span style={{ color: "#94a3b8" }}>—</span>
+                                            )}
+                                          </td>
+                                        )}
+                                        {anyTracked && (
+                                          <td>
+                                            {remaining > 0 && isTracked ? (
+                                              <input
+                                                type="date"
+                                                value={receiveManufacturedDates[item.id] ?? ""}
+                                                onChange={(e) => setReceiveManufacturedDates((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                                style={{ width: "140px", padding: "4px" }}
+                                              />
+                                            ) : (
+                                              <span style={{ color: "#94a3b8" }}>—</span>
+                                            )}
+                                          </td>
+                                        )}
                                       </tr>
                                     );
                                   })
                                 )}
                               </tbody>
                             </table>
+
+                            {anyTracked && (
+                              <p style={{ fontSize: "12px", color: "#64748b", marginTop: "-8px", marginBottom: "12px" }}>
+                                * Required for products with expiration/batch tracking enabled.
+                              </p>
+                            )}
 
                             <button
                               onClick={onConfirmReceive}
@@ -579,7 +651,8 @@ export function PurchaseOrderLifecyclePanel({
                             </button>
                           </td>
                         </tr>
-                      )}
+                        );
+                      })()}
                       </React.Fragment>
                     );
                   })
