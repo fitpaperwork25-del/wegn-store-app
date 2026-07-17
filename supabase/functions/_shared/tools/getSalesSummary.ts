@@ -5,10 +5,15 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
  *
  * Covers the transaction-level questions (totals, cash/card split, largest
  * sale, per-cashier breakdown, top products, amount-range filtering) in one
- * tool, mirroring getSalesTodaySummary()'s "completed sales only" rule and
- * loadSales()'s server-side date-range filtering - both in src/App.tsx /
- * src/lib/sales/salesHelpers.ts, not importable from a Deno edge function,
- * so the same business rules are reimplemented here rather than shared.
+ * tool, mirroring src/lib/sales/salesHelpers.ts's shared reporting rule:
+ * a sale counts once it's 'completed' and STAYS counted if later fully
+ * refunded ('returned') rather than disappearing, and revenue/cash/card/
+ * other totals are always net of refund payments (REPORT-007 - this tool
+ * previously used a stale, narrower "completed sales only, refunds never
+ * fetched" rule that had drifted from the corrected frontend behavior).
+ * salesHelpers.ts isn't importable from this Deno edge function, so the
+ * rule is reimplemented here rather than shared - see salesHelpers.ts's
+ * REPORTABLE_SALE_STATUSES/computeNetRevenue for the canonical version.
  */
 
 export type SalesSummaryDateRange = "today" | "7d" | "30d" | "all";
@@ -93,28 +98,39 @@ function round2(n: number): number {
 
 export type RawEmployeeRow = { id: string; name: string };
 export type RawSaleRow = { id: string; cashier_id: string | null; total: number; created_at: string };
-export type RawPaymentRow = { sale_id: string; payment_method: string; amount: number };
+export type RawPaymentRow = { sale_id: string; payment_method: string; amount: number; payment_type?: string };
 export type RawSaleItemProductRow = { sale_id: string; product_id: string; product_name: string; quantity: number; line_total: number };
 
 export type SalesSummaryRawData = {
   employees: RawEmployeeRow[];
-  /** Already server-filtered: business_id, status='completed', dateRange, cashier (if resolved), min/maxTotal. */
+  /** Already server-filtered: business_id, status IN ('completed','returned'), dateRange, cashier (if resolved), min/maxTotal. */
   sales: RawSaleRow[];
-  /** Payments for the candidate sales, payment_type != 'refund' only (actual sale payments). */
+  /** Every payment (including refunds) for the candidate sales - refunds are netted out below, not excluded at the query level. */
   payments: RawPaymentRow[];
   /** sale_items joined to products.name for the candidate sales. */
   saleItemProducts: RawSaleItemProductRow[];
 };
 
+function isRefund(p: RawPaymentRow): boolean {
+  return p.payment_type === "refund";
+}
+
 /** Pure aggregation - no I/O, fully unit-testable. */
 export function computeSalesSummary(raw: SalesSummaryRawData): SalesSummaryOutput {
   const cashierNameById = new Map(raw.employees.map((e) => [e.id, e.name]));
 
+  const salePayments = raw.payments.filter((p) => !isRefund(p));
+  const refundPayments = raw.payments.filter(isRefund);
+
   const paymentsBySale = new Map<string, RawPaymentRow[]>();
-  for (const p of raw.payments) {
+  for (const p of salePayments) {
     const list = paymentsBySale.get(p.sale_id) ?? [];
     list.push(p);
     paymentsBySale.set(p.sale_id, list);
+  }
+  const refundBySale = new Map<string, number>();
+  for (const p of refundPayments) {
+    refundBySale.set(p.sale_id, (refundBySale.get(p.sale_id) ?? 0) + p.amount);
   }
 
   const sortedSales = [...raw.sales].sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -127,25 +143,29 @@ export function computeSalesSummary(raw: SalesSummaryRawData): SalesSummaryOutpu
   }));
 
   const count = raw.sales.length;
-  const revenue = round2(raw.sales.reduce((sum, s) => sum + s.total, 0));
+  const grossRevenue = raw.sales.reduce((sum, s) => sum + s.total, 0);
+  const totalRefunds = refundPayments.reduce((sum, p) => sum + p.amount, 0);
+  const revenue = round2(grossRevenue - totalRefunds);
   const avg_sale = count > 0 ? round2(revenue / count) : 0;
   const largest_sale = raw.sales.reduce((max, s) => Math.max(max, s.total), 0);
 
-  let cash_total = 0;
-  let card_total = 0;
-  let other_total = 0;
-  for (const p of raw.payments) {
-    if (p.payment_method === "cash") cash_total += p.amount;
-    else if (p.payment_method === "card") card_total += p.amount;
-    else other_total += p.amount;
+  function netByMethod(method: "cash" | "card" | "other"): number {
+    const matches = (p: RawPaymentRow) =>
+      method === "other" ? p.payment_method !== "cash" && p.payment_method !== "card" : p.payment_method === method;
+    const inAmt = salePayments.filter(matches).reduce((sum, p) => sum + p.amount, 0);
+    const outAmt = refundPayments.filter(matches).reduce((sum, p) => sum + p.amount, 0);
+    return inAmt - outAmt;
   }
+  const cash_total = netByMethod("cash");
+  const card_total = netByMethod("card");
+  const other_total = netByMethod("other");
 
   const byCashierMap = new Map<string, { sale_count: number; revenue: number }>();
   for (const s of raw.sales) {
     const name = s.cashier_id ? cashierNameById.get(s.cashier_id) ?? "Unknown" : "Unassigned";
     const entry = byCashierMap.get(name) ?? { sale_count: 0, revenue: 0 };
     entry.sale_count += 1;
-    entry.revenue = round2(entry.revenue + s.total);
+    entry.revenue = round2(entry.revenue + s.total - (refundBySale.get(s.id) ?? 0));
     byCashierMap.set(name, entry);
   }
   const by_cashier = [...byCashierMap.entries()].map(([cashier_name, v]) => ({ cashier_name, ...v })).sort((a, b) => b.revenue - a.revenue);
@@ -215,7 +235,10 @@ export async function fetchSalesSummaryRawData(supabase: SupabaseClient, busines
     if (cashierIdFilter.length === 0) return { employees, sales: [], payments: [], saleItemProducts: [] };
   }
 
-  let query = supabase.from("sales").select("id, cashier_id, total, created_at").eq("business_id", businessId).eq("status", "completed");
+  // REPORT-007 fix: include 'returned' alongside 'completed' - a fully
+  // refunded sale must stay counted (netted to reflect its refund below),
+  // not vanish from totals, matching salesHelpers.ts's shared rule.
+  let query = supabase.from("sales").select("id, cashier_id, total, created_at").eq("business_id", businessId).in("status", ["completed", "returned"]);
 
   const rangeStart = rangeStartFor(filter.dateRange ?? "today");
   if (rangeStart) query = query.gte("created_at", rangeStart);
@@ -231,9 +254,13 @@ export async function fetchSalesSummaryRawData(supabase: SupabaseClient, busines
 
   const saleIds = sales.map((s) => s.id);
 
-  const paymentsRes = await supabase.from("payments").select("sale_id, payment_method, amount, payment_type").eq("business_id", businessId).in("sale_id", saleIds).neq("payment_type", "refund");
+  // Refunds are fetched too (not excluded via .neq here) so
+  // computeSalesSummary can net them out of revenue/cash/card/other -
+  // previously refunds were excluded at the query level entirely, so
+  // there was no way to net them even if the aggregation had wanted to.
+  const paymentsRes = await supabase.from("payments").select("sale_id, payment_method, amount, payment_type").eq("business_id", businessId).in("sale_id", saleIds);
   if (paymentsRes.error) throw paymentsRes.error;
-  const payments = ((paymentsRes.data ?? []) as { sale_id: string; payment_method: string; amount: number }[]).map((p) => ({ sale_id: p.sale_id, payment_method: p.payment_method, amount: p.amount }));
+  const payments = (paymentsRes.data ?? []) as RawPaymentRow[];
 
   const itemsRes = await supabase.from("sale_items").select("sale_id, product_id, quantity, line_total, products(name)").in("sale_id", saleIds);
   if (itemsRes.error) throw itemsRes.error;

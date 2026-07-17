@@ -45,9 +45,9 @@ test("cash_sales_since_open is cash-in minus cash-refunds (mirrors drawerCashSal
   const raw = rawData({
     session: { id: "d1", cashier_id: null, opening_float: 100, opened_at: "2026-07-16T08:00:00Z" },
     cashPayments: [
-      { sale_id: "s1", amount: 50, payment_type: "sale" },
-      { sale_id: "s2", amount: 30, payment_type: "sale" },
-      { sale_id: "s2", amount: 10, payment_type: "refund" },
+      { sale_id: "s1", amount: 50, payment_type: "sale", created_at: "2026-07-16T09:00:00Z" },
+      { sale_id: "s2", amount: 30, payment_type: "sale", created_at: "2026-07-16T09:30:00Z" },
+      { sale_id: "s2", amount: 10, payment_type: "refund", created_at: "2026-07-16T10:00:00Z" },
     ],
   });
   const result = computeCashDrawerStatus(raw);
@@ -57,13 +57,25 @@ test("cash_sales_since_open is cash-in minus cash-refunds (mirrors drawerCashSal
 test("expected_cash_now = opening_float + cash_sales_since_open - total_paid_outs (mirrors handleCloseDrawer exactly)", () => {
   const raw = rawData({
     session: { id: "d1", cashier_id: null, opening_float: 100, opened_at: "2026-07-16T08:00:00Z" },
-    cashPayments: [{ sale_id: "s1", amount: 80, payment_type: "sale" }],
+    cashPayments: [{ sale_id: "s1", amount: 80, payment_type: "sale", created_at: "2026-07-16T09:00:00Z" }],
     paidOuts: [{ amount: 20, reason: "Supplies", created_at: "2026-07-16T09:00:00Z" }],
   });
   const result = computeCashDrawerStatus(raw);
   // 100 + 80 - 20 = 160
   assert.equal(result.session!.expected_cash_now, 160);
   assert.equal(result.session!.total_paid_outs, 20);
+});
+
+test("REPORT-004: a cash refund against a sale from before this session still reduces expected cash", () => {
+  const raw = rawData({
+    session: { id: "d1", cashier_id: null, opening_float: 100, opened_at: "2026-07-16T08:00:00Z" },
+    // The refund is dated during this session even though it belongs to
+    // a sale that isn't in salesSinceOpen at all (older/returned).
+    cashPayments: [{ sale_id: "s-old", amount: 25, payment_type: "refund", created_at: "2026-07-16T09:00:00Z" }],
+  });
+  const result = computeCashDrawerStatus(raw);
+  assert.equal(result.session!.cash_sales_since_open, -25);
+  assert.equal(result.session!.expected_cash_now, 75);
 });
 
 test("attaches cashier_name from the employees lookup", () => {

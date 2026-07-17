@@ -1,8 +1,6 @@
 import React from "react";
-import type { ProductStock } from "../lib/product/types";
-import type { Employee, DrawerSession, DrawerPaidOut } from "../lib/staff/types";
-import type { Sale, SaleItemRecord, EodItem, EodPayment, ReturnItemSummary } from "../lib/sales/types";
-import type { LoyaltyTransaction } from "../lib/customers/types";
+import type { DrawerSession, DrawerPaidOut } from "../lib/staff/types";
+import type { EndOfDaySummary } from "../lib/sales/salesHelpers";
 
 type CashDrawerReportPanelProps = {
   visible: boolean;
@@ -24,17 +22,14 @@ type CashDrawerReportPanelProps = {
   closingCount: string;
   setClosingCount: React.Dispatch<React.SetStateAction<string>>;
 
-  // End-of-Day summary
+  // End-of-Day summary — one precomputed, authoritative result (see
+  // computeEndOfDaySummary in lib/sales/salesHelpers.ts). This component
+  // used to recompute "today's sales" itself from raw sales/payments,
+  // independently of - and inconsistently with - App.tsx's own
+  // handleToggleEod fetch (REPORT-001/REPORT-004). It now only renders.
   onToggleEod: () => Promise<void>;
   showEod: boolean;
-  sales: Sale[];
-  eodItems: EodItem[];
-  eodPayments: EodPayment[];
-  allReturnItems: ReturnItemSummary[];
-  products: ProductStock[];
-  loyaltyTransactions: LoyaltyTransaction[];
-  employees: Employee[];
-  saleItems: SaleItemRecord[];
+  eodSummary: EndOfDaySummary;
 };
 
 export function CashDrawerReportPanel({
@@ -56,14 +51,7 @@ export function CashDrawerReportPanel({
   setClosingCount,
   onToggleEod,
   showEod,
-  sales,
-  eodItems,
-  eodPayments,
-  allReturnItems,
-  products,
-  loyaltyTransactions,
-  employees,
-  saleItems,
+  eodSummary,
 }: CashDrawerReportPanelProps) {
   return (
       <div style={{ display: visible ? '' : 'none' }}>
@@ -207,65 +195,22 @@ export function CashDrawerReportPanel({
       </button>
 
       {showEod && (() => {
-        const today = new Date();
-        const isToday = (d: string) => {
-          const dt = new Date(d);
-          return dt.getFullYear() === today.getFullYear() && dt.getMonth() === today.getMonth() && dt.getDate() === today.getDate();
-        };
-        const todaySales = sales.filter((s) => s.status === "completed" && isToday(s.created_at));
-        const voidedToday = sales.filter((s) => s.status === "voided" && isToday(s.created_at)).length;
-        const returnedToday = sales.filter((s) => s.status === "returned" && isToday(s.created_at)).length;
-        const grossRevenue = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
-        const avgSale = todaySales.length > 0 ? grossRevenue / todaySales.length : 0;
-        const itemsSold = eodItems.reduce((sum, i) => sum + i.quantity, 0);
-        const discountsTotal = todaySales.reduce((sum, s) => sum + Number(s.discount_amount), 0);
-        const eodSalePayments = eodPayments.filter(p => p.payment_type !== 'refund');
-        const eodRefundPayments = eodPayments.filter(p => p.payment_type === 'refund');
-        const cashTotal = eodSalePayments.filter(p => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method === "cash").reduce((sum, p) => sum + Number(p.amount), 0);
-        const cardTotal = eodSalePayments.filter(p => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method === "card").reduce((sum, p) => sum + Number(p.amount), 0);
-        const otherTotal = eodSalePayments.filter(p => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0) - eodRefundPayments.filter(p => p.payment_method !== "cash" && p.payment_method !== "card").reduce((sum, p) => sum + Number(p.amount), 0);
-
-        const allTodaySaleIds = new Set(sales.filter(s => isToday(s.created_at) && (s.status === "completed" || s.status === "returned")).map(s => s.id));
-        const todayReturns = allReturnItems.filter(ri => allTodaySaleIds.has(ri.sale_id));
-        const returnedUnits = todayReturns.reduce((sum, ri) => sum + ri.quantity_returned, 0);
-        const productNameMap = Object.fromEntries(products.map(p => [p.product_id, p.product_name]));
-        const returnedValue = todayReturns.reduce((sum, ri) => {
-          const si = saleItems.find(s => s.sale_id === ri.sale_id && s.product_id === ri.product_id);
-          return sum + (si ? ri.quantity_returned * si.unit_price : 0);
-        }, 0);
-
-        const todayLoyalty = loyaltyTransactions.filter(lt => isToday(lt.created_at));
-        const loyaltyEarned = todayLoyalty.filter(lt => lt.type === "earn" && lt.points > 0).reduce((sum, lt) => sum + lt.points, 0);
-        const loyaltyRedeemed = todayLoyalty.filter(lt => lt.type === "redeem").reduce((sum, lt) => sum + Math.abs(lt.points), 0);
-
-        const productTotals: Record<string, { units: number; revenue: number }> = {};
-        for (const item of eodItems) {
-          if (!productTotals[item.product_id]) productTotals[item.product_id] = { units: 0, revenue: 0 };
-          productTotals[item.product_id].units += item.quantity;
-          productTotals[item.product_id].revenue += Number(item.line_total);
-        }
-        const topProducts = Object.entries(productTotals)
-          .map(([pid, v]) => ({ name: productNameMap[pid] ?? pid.slice(0, 8), ...v }))
-          .sort((a, b) => b.units - a.units);
-
-        const latestSession = drawerSession ?? (() => {
-          const closed = sales.length > 0 ? null : null;
-          return closed;
-        })();
-        const sessionPaidOuts = drawerPaidOuts.reduce((sum, p) => sum + Number(p.amount), 0);
-        const openingFloat = latestSession ? Number(latestSession.opening_float) : 0;
-        const expectedCash = openingFloat + cashTotal - sessionPaidOuts;
+        const {
+          todaySales, todayPayments, transactions, grossRevenue, avgSale, itemsSold, discountsTotal,
+          voidedToday, returnedToday, returnedUnits, returnedValue, cashTotal, cardTotal, otherTotal,
+          loyaltyEarned, loyaltyRedeemed, topProducts, cashierBreakdown, drawerReconciliation,
+        } = eodSummary;
 
         return (
           <div style={{ border: "1px solid #333", borderRadius: "8px", padding: "24px", marginBottom: "32px" }}>
             <h3 style={{ margin: "0 0 20px" }}>
-              End-of-Day Summary — {today.toLocaleDateString()}
+              End-of-Day Summary — {new Date().toLocaleDateString()}
             </h3>
 
             {/* Sales KPI Cards */}
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "24px" }}>
               {([
-                { label: "Transactions", value: String(todaySales.length) },
+                { label: "Transactions", value: String(transactions) },
                 { label: "Gross Revenue", value: `$${grossRevenue.toFixed(2)}`, color: "#1d4ed8" },
                 { label: "Avg Sale", value: `$${avgSale.toFixed(2)}` },
                 { label: "Items Sold", value: String(itemsSold) },
@@ -296,21 +241,21 @@ export function CashDrawerReportPanel({
             </div>
 
             {/* Drawer Reconciliation */}
-            {latestSession && (
+            {drawerReconciliation && (
               <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", marginBottom: "24px", background: "#f8fafc" }}>
-                <h4 style={{ margin: "0 0 12px" }}>Drawer Reconciliation {latestSession.status === "closed" ? "(Closed)" : "(Open)"}</h4>
+                <h4 style={{ margin: "0 0 12px" }}>Drawer Reconciliation {drawerSession?.status === "closed" ? "(Closed)" : "(Open)"}</h4>
                 <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                   {([
-                    { label: "Opening Float", value: `$${openingFloat.toFixed(2)}` },
-                    { label: "Cash Sales", value: `+$${cashTotal.toFixed(2)}`, color: "#15803d" },
-                    { label: "Paid Outs", value: `−$${sessionPaidOuts.toFixed(2)}`, color: sessionPaidOuts > 0 ? "#dc2626" : "#888" },
-                    { label: "Expected Cash", value: `$${expectedCash.toFixed(2)}`, color: "#1d4ed8" },
-                    ...(latestSession.status === "closed" ? [
-                      { label: "Actual Cash", value: `$${Number(latestSession.closing_count ?? 0).toFixed(2)}` },
+                    { label: "Opening Float", value: `$${drawerReconciliation.openingFloat.toFixed(2)}` },
+                    { label: "Cash Sales", value: `+$${drawerReconciliation.cashSales.toFixed(2)}`, color: "#15803d" },
+                    { label: "Paid Outs", value: `−$${drawerReconciliation.paidOuts.toFixed(2)}`, color: drawerReconciliation.paidOuts > 0 ? "#dc2626" : "#888" },
+                    { label: "Expected Cash", value: `$${drawerReconciliation.expectedCash.toFixed(2)}`, color: "#1d4ed8" },
+                    ...(drawerSession?.status === "closed" ? [
+                      { label: "Actual Cash", value: `$${Number(drawerSession.closing_count ?? 0).toFixed(2)}` },
                       { label: "Over/Short", value: (() => {
-                        const os = Number(latestSession.over_short ?? 0);
+                        const os = Number(drawerSession.over_short ?? 0);
                         return os >= 0 ? `+$${os.toFixed(2)}` : `−$${Math.abs(os).toFixed(2)}`;
-                      })(), color: Number(latestSession.over_short ?? 0) >= 0 ? "#15803d" : "#dc2626" },
+                      })(), color: Number(drawerSession.over_short ?? 0) >= 0 ? "#15803d" : "#dc2626" },
                     ] : []),
                   ] as { label: string; value: string; color?: string }[]).map((card) => (
                     <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "10px 14px", minWidth: "110px", flex: 1, background: "#fff" }}>
@@ -355,7 +300,7 @@ export function CashDrawerReportPanel({
                     <tr><td colSpan={5}>No sales today</td></tr>
                   ) : (
                     todaySales.map((s) => {
-                      const method = eodPayments.find((p) => p.sale_id === s.id && p.payment_type !== 'refund')?.payment_method ?? "—";
+                      const method = todayPayments.find((p) => p.sale_id === s.id && p.payment_type !== 'refund')?.payment_method ?? "—";
                       const disc = Number(s.discount_amount);
                       return (
                         <tr key={s.id}>
@@ -372,50 +317,40 @@ export function CashDrawerReportPanel({
               </table>
             </div>
 
-            {employees.length > 0 && (() => {
-              const cashierMap = Object.fromEntries(employees.map(e => [e.id, e.name]));
-              const byEmployee: Record<string, { name: string; count: number; revenue: number }> = {};
-              for (const s of todaySales) {
-                const key = s.cashier_id ?? "__none__";
-                if (!byEmployee[key]) byEmployee[key] = { name: s.cashier_id ? (cashierMap[s.cashier_id] ?? s.cashier_id.slice(0, 8)) : "No cashier", count: 0, revenue: 0 };
-                byEmployee[key].count++;
-                byEmployee[key].revenue += Number(s.total);
-              }
-              const rows = Object.values(byEmployee).sort((a, b) => b.revenue - a.revenue);
-              if (rows.length === 0) return null;
-              return (
-                <>
-                  <h4 style={{ margin: "0 0 8px" }}>Cashier Breakdown</h4>
-                  <div style={{ overflowX: "auto", marginBottom: "20px" }}>
-                    <table border={1} cellPadding={8} style={{ width: "100%" }}>
-                      <thead>
-                        <tr style={{ background: "#f3f4f6" }}>
-                          <th style={{ textAlign: "left" }}>Cashier</th>
-                          <th>Sales</th>
-                          <th>Revenue</th>
+            {cashierBreakdown.length > 0 && (
+              <>
+                <h4 style={{ margin: "0 0 8px" }}>Cashier Breakdown</h4>
+                <div style={{ overflowX: "auto", marginBottom: "20px" }}>
+                  <table border={1} cellPadding={8} style={{ width: "100%" }}>
+                    <thead>
+                      <tr style={{ background: "#f3f4f6" }}>
+                        <th style={{ textAlign: "left" }}>Cashier</th>
+                        <th>Sales</th>
+                        <th>Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cashierBreakdown.map((r, i) => (
+                        <tr key={i}>
+                          <td>{r.name}</td>
+                          <td style={{ textAlign: "center" }}>{r.count}</td>
+                          <td>${r.revenue.toFixed(2)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((r, i) => (
-                          <tr key={i}>
-                            <td>{r.name}</td>
-                            <td style={{ textAlign: "center" }}>{r.count}</td>
-                            <td>${r.revenue.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
-            {(voidedToday > 0 || returnedToday > 0) && (
+            {voidedToday > 0 && (
+              <p style={{ color: "#999", fontSize: "13px", margin: returnedToday > 0 ? "0 0 4px" : 0 }}>
+                {voidedToday} voided sale(s) excluded from revenue totals.
+              </p>
+            )}
+            {returnedToday > 0 && (
               <p style={{ color: "#999", fontSize: "13px", margin: 0 }}>
-                {voidedToday > 0 && `${voidedToday} voided sale(s)`}
-                {voidedToday > 0 && returnedToday > 0 && ", "}
-                {returnedToday > 0 && `${returnedToday} returned sale(s)`}
-                {" "}excluded from revenue totals.
+                {returnedToday} fully-returned sale(s) included above, netted to reflect their refunds.
               </p>
             )}
           </div>

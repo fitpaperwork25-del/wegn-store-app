@@ -166,6 +166,68 @@ test("getSalesSummary returns a validation error without ever calling the fetche
   assert.equal(called, false);
 });
 
+// ---- REPORT-007: returned-status sales stay counted, refunds are netted ----
+
+test("a fully-returned sale stays in count/revenue rather than needing to be excluded upstream", () => {
+  // fetchSalesSummaryRawData now queries status IN ('completed','returned'),
+  // so a returned sale simply appears here like any other - this proves
+  // computeSalesSummary doesn't need a completed-only sale set to work.
+  const raw = rawData({
+    sales: [{ id: "s1", cashier_id: null, total: 40, created_at: "2026-07-15T10:00:00Z" }],
+    payments: [{ sale_id: "s1", payment_method: "cash", amount: 40, payment_type: "refund" }],
+  });
+  const result = computeSalesSummary(raw);
+  assert.equal(result.totals.count, 1);
+  assert.equal(result.totals.revenue, 0);
+});
+
+test("a partial cash refund nets revenue and cash_total without excluding the sale", () => {
+  const raw = rawData({
+    sales: [{ id: "s1", cashier_id: null, total: 100, created_at: "2026-07-15T10:00:00Z" }],
+    payments: [
+      { sale_id: "s1", payment_method: "cash", amount: 100, payment_type: "sale" },
+      { sale_id: "s1", payment_method: "cash", amount: 30, payment_type: "refund" },
+    ],
+  });
+  const result = computeSalesSummary(raw);
+  assert.equal(result.totals.count, 1);
+  assert.equal(result.totals.revenue, 70);
+  assert.equal(result.totals.cash_total, 70);
+});
+
+test("card refunds net card_total independently of cash_total", () => {
+  const raw = rawData({
+    sales: [{ id: "s1", cashier_id: null, total: 50, created_at: "2026-07-15T10:00:00Z" }],
+    payments: [
+      { sale_id: "s1", payment_method: "card", amount: 50, payment_type: "sale" },
+      { sale_id: "s1", payment_method: "card", amount: 50, payment_type: "refund" },
+    ],
+  });
+  const result = computeSalesSummary(raw);
+  assert.equal(result.totals.card_total, 0);
+  assert.equal(result.totals.cash_total, 0);
+});
+
+test("payments with no payment_type are treated as ordinary sale payments, not refunds", () => {
+  const raw = rawData({
+    sales: [{ id: "s1", cashier_id: null, total: 60, created_at: "2026-07-15T10:00:00Z" }],
+    payments: [{ sale_id: "s1", payment_method: "cash", amount: 60 }],
+  });
+  const result = computeSalesSummary(raw);
+  assert.equal(result.totals.revenue, 60);
+  assert.equal(result.totals.cash_total, 60);
+});
+
+test("by_cashier revenue is also netted for that cashier's refunds", () => {
+  const raw = rawData({
+    employees: [{ id: "e1", name: "Alice" }],
+    sales: [{ id: "s1", cashier_id: "e1", total: 100, created_at: "2026-07-15T10:00:00Z" }],
+    payments: [{ sale_id: "s1", payment_method: "cash", amount: 40, payment_type: "refund" }],
+  });
+  const result = computeSalesSummary(raw);
+  assert.equal(result.by_cashier[0].revenue, 60);
+});
+
 test("getSalesSummary passes businessId and the validated filter through to the fetcher - tenant isolation", async () => {
   let receivedBusinessId = "";
   await getSalesSummary({ dateRange: "7d" }, { businessId: "biz-42" }, async (businessId, filter) => {

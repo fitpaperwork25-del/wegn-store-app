@@ -3,6 +3,7 @@ import type { Customer, LoyaltyTransaction } from "../lib/customers/types";
 import type { Sale, SaleItemRecord, EodPayment, ReturnItemSummary } from "../lib/sales/types";
 import type { ProductStock } from "../lib/product/types";
 import { buildProductNameMap } from "../lib/product/productHelpers";
+import { isReportableSaleStatus, computeNetRevenue } from "../lib/sales/salesHelpers";
 
 type CustomersTabProps = {
   visible: boolean;
@@ -120,7 +121,11 @@ export function CustomersTab({
       <h3 style={{ marginTop: "24px", marginBottom: "8px" }}>Customer Insights</h3>
       <p style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>Based on most recent 20 sales</p>
       {(() => {
-        const completedSales = sales.filter(s => s.status === "completed");
+        // Reporting bug-fix (REPORT-006): this used to filter status ===
+        // "completed" only, diverging from the customer row-level Visits/
+        // Spent AND from Purchase History - both now unified to the same
+        // isReportableSaleStatus rule (see the other two custSales below).
+        const completedSales = sales.filter(s => isReportableSaleStatus(s.status));
         const totalVisits = completedSales.length;
         const storeAvg = totalVisits > 0
           ? completedSales.reduce((sum, s) => sum + Number(s.total), 0) / totalVisits
@@ -213,8 +218,14 @@ export function CustomersTab({
       <div style={{ display: (customerListOpen ?? (customers.length < 10)) ? '' : 'none' }}>
       {(() => {
         const rows = customers.map((c) => {
-          const custSales = sales.filter(s => s.customer_id === c.id && s.status === "completed");
-          const totalSpend = custSales.reduce((sum, s) => sum + Number(s.total), 0);
+          // Reporting bug-fix (REPORT-005): previously status === "completed"
+          // only, so a customer whose one purchase was later fully refunded
+          // (status -> "returned") showed Visits = 0 / Spent = $0 here while
+          // still appearing in Purchase History/Returns/Points below - now
+          // unified to the same isReportableSaleStatus rule used everywhere
+          // else, and netted for refunds like every other revenue figure.
+          const custSales = sales.filter(s => s.customer_id === c.id && isReportableSaleStatus(s.status));
+          const totalSpend = computeNetRevenue(custSales, allPayments);
           const lastVisit = custSales.length > 0
             ? new Date(Math.max(...custSales.map(s => new Date(s.created_at).getTime())))
             : null;
@@ -247,7 +258,13 @@ export function CustomersTab({
                     const isExpanded = expandedCustomerId === row.id;
                     const isEditing = editingCustomerId === row.id;
                     const inactive = row.status !== "active";
-                    const custSales = sales.filter(s => s.customer_id === row.id && s.status !== 'open');
+                    // Reporting bug-fix (REPORT-005): previously s.status
+                    // !== 'open' (included voided sales, which never
+                    // actually completed) - now the same isReportableSaleStatus
+                    // rule as row.visitCount/row.totalSpend above, so Purchase
+                    // History always reconciles with the Visits/Spent figures
+                    // shown for the same customer.
+                    const custSales = sales.filter(s => s.customer_id === row.id && isReportableSaleStatus(s.status));
                     return (
                       <React.Fragment key={row.id}>
                         <tr

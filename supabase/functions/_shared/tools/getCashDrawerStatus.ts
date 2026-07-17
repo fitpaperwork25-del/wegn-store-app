@@ -6,13 +6,20 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
  * Only one drawer session is ever open per business at a time
  * (loadDrawerSession() in App.tsx: .eq('status','open').limit(1)) - this
  * tool mirrors that exactly, plus drawerCashSales' cash-sales-since-open
- * formula and handleCloseDrawer's expected-cash formula
- * (App.tsx:639-654, 1354-1356), verbatim. It deliberately never reports an
- * over/short figure for an open drawer - that requires a physical cash
- * count that hasn't happened yet. Only a closed session (already counted)
- * has a real over/short, and this tool doesn't surface historical closed
- * sessions at all - no existing query in this app lists them, and adding
- * one would be new business logic, not a reuse of what exists.
+ * formula and handleCloseDrawer's expected-cash formula (App.tsx),
+ * including the REPORT-004 fix: cash IN is scoped to reportable sales
+ * (completed or fully-returned - see isReportableSaleStatus in
+ * src/lib/sales/salesHelpers.ts) since the session opened, but cash
+ * refunds are matched by the REFUND PAYMENT's own created_at, not the
+ * underlying sale's - a refund processed during this session removes
+ * cash from the drawer today even if the original sale (and its
+ * resulting 'returned' status) is from an earlier session. It
+ * deliberately never reports an over/short figure for an open drawer -
+ * that requires a physical cash count that hasn't happened yet. Only a
+ * closed session (already counted) has a real over/short, and this tool
+ * doesn't surface historical closed sessions at all - no existing query
+ * in this app lists them, and adding one would be new business logic,
+ * not a reuse of what exists.
  */
 
 export type GetCashDrawerStatusInput = Record<string, never>;
@@ -51,16 +58,16 @@ export type RawDrawerSessionRow = { id: string; cashier_id: string | null; openi
 export type RawEmployeeRow = { id: string; name: string };
 export type RawPaidOutRow = { amount: number; reason: string; created_at: string };
 export type RawSaleRow = { id: string; created_at: string };
-export type RawPaymentRow = { sale_id: string; amount: number; payment_type: string };
+export type RawPaymentRow = { sale_id: string; amount: number; payment_type: string; created_at: string };
 
 export type CashDrawerStatusRawData = {
   /** null when no drawer session is currently open for this business. */
   session: RawDrawerSessionRow | null;
   employees: RawEmployeeRow[];
   paidOuts: RawPaidOutRow[];
-  /** Completed sales since the session opened. */
+  /** Reportable (completed or fully-returned) sales since the session opened. */
   salesSinceOpen: RawSaleRow[];
-  /** Cash payments (both sale and refund) for salesSinceOpen. */
+  /** Cash sale payments for salesSinceOpen, plus cash refund payments dated since the session opened (regardless of which sale). */
   cashPayments: RawPaymentRow[];
 };
 
@@ -70,8 +77,11 @@ export function computeCashDrawerStatus(raw: CashDrawerStatusRawData): GetCashDr
 
   const employeeNameById = new Map(raw.employees.map((e) => [e.id, e.name]));
 
-  // Exact mirror of drawerCashSales in App.tsx: cash-in minus cash refunds,
-  // scoped to sales that happened since the drawer opened.
+  // Exact mirror of drawerCashSales in App.tsx (REPORT-004 fix): cash-in
+  // is scoped to sales since the drawer opened; cash refunds are counted
+  // regardless of which sale they belong to (the caller already scoped
+  // the refund payments it fetched by their own created_at, not the
+  // underlying sale's - see fetchCashDrawerStatusRawData).
   let cashIn = 0;
   let cashRefunds = 0;
   for (const p of raw.cashPayments) {
@@ -131,16 +141,31 @@ export async function fetchCashDrawerStatusRawData(supabase: SupabaseClient, bus
   if (paidOutsRes.error) throw paidOutsRes.error;
   const paidOuts = (paidOutsRes.data ?? []) as RawPaidOutRow[];
 
-  const salesRes = await supabase.from("sales").select("id, created_at").eq("business_id", businessId).eq("status", "completed").gte("created_at", session.opened_at);
+  // REPORT-004/REPORT-001 fix: include 'returned' alongside 'completed' -
+  // a fully-refunded sale must stay counted as part of this session's
+  // activity, matching src/lib/sales/salesHelpers.ts's shared rule.
+  const salesRes = await supabase.from("sales").select("id, created_at").eq("business_id", businessId).in("status", ["completed", "returned"]).gte("created_at", session.opened_at);
   if (salesRes.error) throw salesRes.error;
   const salesSinceOpen = (salesRes.data ?? []) as RawSaleRow[];
 
-  if (salesSinceOpen.length === 0) return { session, employees, paidOuts, salesSinceOpen: [], cashPayments: [] };
-
+  // Cash sale payments for sales in scope, PLUS cash refund payments
+  // dated since the session opened regardless of which sale they belong
+  // to - a refund can be processed this session against a sale from an
+  // earlier session (or one whose status has since flipped to
+  // 'returned'), and cash still left the drawer this session either way.
   const saleIds = salesSinceOpen.map((s) => s.id);
-  const paymentsRes = await supabase.from("payments").select("sale_id, amount, payment_type").eq("business_id", businessId).eq("payment_method", "cash").in("sale_id", saleIds);
-  if (paymentsRes.error) throw paymentsRes.error;
-  const cashPayments = (paymentsRes.data ?? []) as RawPaymentRow[];
+  const salePaymentsRes = saleIds.length > 0
+    ? await supabase.from("payments").select("sale_id, amount, payment_type, created_at").eq("business_id", businessId).eq("payment_method", "cash").in("sale_id", saleIds).neq("payment_type", "refund")
+    : { data: [], error: null };
+  if (salePaymentsRes.error) throw salePaymentsRes.error;
+
+  const refundPaymentsRes = await supabase.from("payments").select("sale_id, amount, payment_type, created_at").eq("business_id", businessId).eq("payment_method", "cash").eq("payment_type", "refund").gte("created_at", session.opened_at);
+  if (refundPaymentsRes.error) throw refundPaymentsRes.error;
+
+  const cashPayments = [
+    ...((salePaymentsRes.data ?? []) as RawPaymentRow[]),
+    ...((refundPaymentsRes.data ?? []) as RawPaymentRow[]),
+  ];
 
   return { session, employees, paidOuts, salesSinceOpen, cashPayments };
 }

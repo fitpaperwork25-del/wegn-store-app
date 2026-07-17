@@ -77,19 +77,16 @@ export type Receipt = {
   pointsRedeemed?: number;
 };
 
-export type EodItem = {
-  sale_id: string;
-  product_id: string;
-  quantity: number;
-  line_total: number;
-};
-
 export type EodPayment = {
   sale_id: string;
   payment_method: string;
   amount: number;
   reference?: string | null;
   payment_type?: string;
+  /** Required for refund-date-based reconciliation (Cash Drawer / EOD): a
+   *  refund must be matched to the drawer session/day it was actually
+   *  processed in, not the day its original sale happened. */
+  created_at: string;
 };
 
 export type AnalyticsData = {

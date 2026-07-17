@@ -29,14 +29,14 @@ import { SalesAnalyticsReport } from "./components/SalesAnalyticsReport";
 import { InventoryReportsPanel } from "./components/InventoryReportsPanel";
 import type { ProductStock, Category, ProductResolutionRequest } from "./lib/product/types";
 import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips, generateWegnBarcode } from "./lib/product/productHelpers";
-import { getSalesTodaySummary } from "./lib/sales/salesHelpers";
+import { getSalesTodaySummary, computeEndOfDaySummary, computeNetRevenue, isReportableSaleStatus, isSameBusinessDay } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
 import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
 import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
 import { validateExpirationBatchCapture, buildTrackingRecord, type InventoryBatchInsertRow } from "./lib/inventory/trackingCapture";
 import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail, SessionItem, SessionHistoryItem, SessionPayment } from "./lib/inventory/types";
 import type { Supplier, PurchaseOrder, POItem, SupplierStatementRow, PoSignatures } from "./lib/purchasing/types";
-import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReturnItemSummary, ReceiptItem, Receipt, EodItem, EodPayment, AnalyticsData } from "./lib/sales/types";
+import type { Sale, SaleItemRecord, CartItem, ReturnLineItem, ReturnRecord, ReturnItemSummary, ReceiptItem, Receipt, EodPayment, AnalyticsData } from "./lib/sales/types";
 import type { Customer, LoyaltyTransaction } from "./lib/customers/types";
 import type { Employee, DrawerSession, DrawerPaidOut } from "./lib/staff/types";
 import type { OnboardingStepData } from "./lib/onboarding/types";
@@ -251,6 +251,16 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   // Single user-facing toggle; persisted as tracking_mode "expiration_batch"/"none" (src/lib/inventory/trackingCapture.ts).
   const [newTrackExpiration, setNewTrackExpiration] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  // UI-001 fix: success notifications previously persisted indefinitely -
+  // neither switching users nor changing modules cleared them, and there
+  // was no auto-dismiss timer anywhere. Error messages are left alone
+  // (often need to stay until the user acts on them); only transient
+  // success confirmations auto-clear.
+  useEffect(() => {
+    if (!message || message.type !== "success") return;
+    const timer = setTimeout(() => setMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [message]);
   const [movementFilter, setMovementFilter] = useState("all");
   const [txDateRange, setTxDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [txHistoryOpen, setTxHistoryOpen] = useState(false);
@@ -289,8 +299,6 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
   const [saleItems, setSaleItems] = useState<SaleItemRecord[]>([]);
   const [showEod, setShowEod] = useState(false);
-  const [eodItems, setEodItems] = useState<EodItem[]>([]);
-  const [eodPayments, setEodPayments] = useState<EodPayment[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [printPo, setPrintPo] = useState<{ po: PurchaseOrder; items: POItem[]; supplier: Supplier | null } | null>(null);
   // Supplier Statement Printing Phase 2 - the print-ready snapshot,
@@ -762,20 +770,27 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const fmtPhone = (p: string) => { const d = p.replace(/\D/g, ""); return d.length === 10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : p; };
 
   // Derived from allPayments + sales so it stays current after every sale/void/return.
-  // Filters to completed sales only (excludes voided/returned) scoped to current drawer session.
+  // Reporting bug-fix (REPORT-004): cash IN is scoped to reportable sales
+  // completed during this drawer session (unchanged reasoning - a sale
+  // belongs to the session it happened in). Cash refunds are matched by
+  // the REFUND PAYMENT's own created_at, not the underlying sale's -
+  // previously, a refund against a sale from an earlier session (or one
+  // whose status had since flipped to 'returned', which used to also be
+  // excluded from `validIds`) was invisible here even though the cash
+  // physically left the drawer during this session.
   const drawerCashSales = useMemo(() => {
     if (!drawerSession) return 0;
     const openedAt = new Date(drawerSession.opened_at as string);
-    const validIds = new Set(
+    const validSaleIds = new Set(
       sales
-        .filter(s => s.status === 'completed' && new Date(s.created_at) >= openedAt)
+        .filter(s => isReportableSaleStatus(s.status) && new Date(s.created_at) >= openedAt)
         .map(s => s.id)
     );
     const cashIn = allPayments
-      .filter(p => p.payment_method === 'cash' && p.payment_type !== 'refund' && validIds.has(p.sale_id))
+      .filter(p => p.payment_method === 'cash' && p.payment_type !== 'refund' && validSaleIds.has(p.sale_id))
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const cashRefunds = allPayments
-      .filter(p => p.payment_method === 'cash' && p.payment_type === 'refund' && validIds.has(p.sale_id))
+      .filter(p => p.payment_method === 'cash' && p.payment_type === 'refund' && new Date(p.created_at) >= openedAt)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     return cashIn - cashRefunds;
   }, [drawerSession, sales, allPayments]);
@@ -921,22 +936,28 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   );
 
   // Analytics data — replaces the full computation IIFE that ran on every render.
+  // Reporting bug-fix (REPORT-002): previously used status === 'completed'
+  // only (silently dropping fully-refunded sales) and never netted refund
+  // payments out of the headline `revenue`/daily-breakdown figures, while
+  // cashTotal/cardTotal/otherTotal in this SAME object already did net
+  // refunds - an internal inconsistency, and a divergence from the
+  // Dashboard's getSalesTodaySummary. Now uses the same shared rule
+  // (isReportableSaleStatus + computeNetRevenue) everywhere in this memo.
   const analyticsData = useMemo((): AnalyticsData => {
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const rangeStart: Date | null =
-      analyticsRange === 'today' ? startOfDay :
-      analyticsRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
-      analyticsRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
+      analyticsRange === '7d'  ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
+      analyticsRange === '30d' ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
       null;
-    const periodSales = sales.filter(s =>
-      s.status === 'completed' &&
-      (rangeStart === null || new Date(s.created_at) >= rangeStart)
-    );
+    const periodSales = sales.filter(s => {
+      if (!isReportableSaleStatus(s.status)) return false;
+      if (analyticsRange === 'today') return isSameBusinessDay(s.created_at, 0, now);
+      return rangeStart === null || new Date(s.created_at) >= rangeStart;
+    });
     const periodSaleIds = new Set(periodSales.map(s => s.id));
     const periodItems = saleItems.filter(si => periodSaleIds.has(si.sale_id));
     const periodPayments = allPayments.filter(p => periodSaleIds.has(p.sale_id));
-    const revenue = periodSales.reduce((sum, s) => sum + Number(s.total), 0);
+    const revenue = computeNetRevenue(periodSales, periodPayments);
     const txCount = periodSales.length;
     const avgTx = txCount > 0 ? revenue / txCount : 0;
     const itemsSold = periodItems.reduce((sum, i) => sum + i.quantity, 0);
@@ -953,15 +974,17 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     const otherTotal =
       periodSaleP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0) -
       periodRefundP.filter(p => p.payment_method !== 'cash' && p.payment_method !== 'card').reduce((sum, p) => sum + Number(p.amount), 0);
-    const byDay: Record<string, { revenue: number; count: number }> = {};
+    const byDay: Record<string, { sales: Sale[]; count: number }> = {};
     for (const s of periodSales) {
       const d = new Date(s.created_at);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      if (!byDay[key]) byDay[key] = { revenue: 0, count: 0 };
-      byDay[key].revenue += Number(s.total);
+      if (!byDay[key]) byDay[key] = { sales: [], count: 0 };
+      byDay[key].sales.push(s);
       byDay[key].count += 1;
     }
-    const dailyRows = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]));
+    const dailyRows: [string, { revenue: number; count: number }][] = Object.entries(byDay)
+      .map(([key, v]) => [key, { revenue: computeNetRevenue(v.sales, periodRefundP), count: v.count }] as [string, { revenue: number; count: number }])
+      .sort((a, b) => b[0].localeCompare(a[0]));
     const byProduct: Record<string, { name: string; units: number; revenue: number }> = {};
     for (const si of periodItems) {
       if (!byProduct[si.product_id]) {
@@ -986,6 +1009,14 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const salesTodaySummary = useMemo(
     () => getSalesTodaySummary(sales, saleItems, allPayments, products, productIdMap),
     [sales, saleItems, allPayments, products, productIdMap]
+  );
+  // End-of-Day Summary (Cash Drawer tab) — see computeEndOfDaySummary for
+  // the REPORT-001/REPORT-004 fix this replaces (previously a fetch-on-
+  // toggle in handleToggleEod plus a second, drifted recomputation inside
+  // CashDrawerReportPanel itself).
+  const eodSummary = useMemo(
+    () => computeEndOfDaySummary({ sales, saleItems, payments: allPayments, allReturnItems, products, loyaltyTransactions, employees, drawerSession, drawerPaidOuts }),
+    [sales, saleItems, allPayments, allReturnItems, products, loyaltyTransactions, employees, drawerSession, drawerPaidOuts]
   );
   const todaysProfitEstimate = useMemo(
     () => getTodaysProfitEstimate(sales, saleItems, productIdMap),
@@ -1924,12 +1955,12 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from("payments")
-      .select("sale_id, payment_method, amount, reference, payment_type")
+      .select("sale_id, payment_method, amount, reference, payment_type, created_at")
       .gte("created_at", cutoff);
     if (error) {
       const { data: fallback } = await supabase
         .from("payments")
-        .select("sale_id, payment_method, amount")
+        .select("sale_id, payment_method, amount, created_at")
         .gte("created_at", cutoff);
       setAllPayments((fallback as EodPayment[]) ?? []);
       return;
@@ -2845,40 +2876,17 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     await loadLoyaltyTransactions();
   }
 
+  // Reporting bug-fix (REPORT-001/004): the End-of-Day summary used to be
+  // fetched fresh on every toggle, filtered to status === "completed"
+  // only - excluding any fully-returned sale entirely, which is what let
+  // a day with real activity show Transactions = 0. sale_items and
+  // payments (with created_at, added for this fix) are already loaded as
+  // ordinary app state within the last 60 days, which always covers
+  // "today" - eodSummary below derives the whole panel from that
+  // already-loaded data via the shared, correct computeEndOfDaySummary,
+  // so there is no separate fetch left to run here at all.
   async function handleToggleEod() {
-    if (showEod) { setShowEod(false); return; }
-
-    const today = new Date();
-    const isToday = (d: string) => {
-      const dt = new Date(d);
-      return dt.getFullYear() === today.getFullYear() &&
-        dt.getMonth() === today.getMonth() &&
-        dt.getDate() === today.getDate();
-    };
-
-    const todaySaleIds = sales
-      .filter((s) => s.status === "completed" && isToday(s.created_at))
-      .map((s) => s.id);
-
-    if (todaySaleIds.length > 0) {
-      const { data: items } = await supabase
-        .from("sale_items")
-        .select("sale_id, product_id, quantity, line_total")
-        .in("sale_id", todaySaleIds);
-
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("sale_id, payment_method, amount, payment_type")
-        .in("sale_id", todaySaleIds);
-
-      setEodItems((items as EodItem[]) || []);
-      setEodPayments((payments as EodPayment[]) || []);
-    } else {
-      setEodItems([]);
-      setEodPayments([]);
-    }
-
-    setShowEod(true);
+    setShowEod((v) => !v);
   }
 
   // Shared PO-number format, used by every draft-PO creation path below.
@@ -5792,14 +5800,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         setClosingCount={setClosingCount}
         onToggleEod={handleToggleEod}
         showEod={showEod}
-        sales={sales}
-        eodItems={eodItems}
-        eodPayments={eodPayments}
-        allReturnItems={allReturnItems}
-        products={products}
-        loyaltyTransactions={loyaltyTransactions}
-        employees={employees}
-        saleItems={saleItems}
+        eodSummary={eodSummary}
       />
 
       {/* ── STAFF (EMPLOYEES) ── */}
