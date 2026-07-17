@@ -308,6 +308,108 @@ export type Database = {
           },
         ]
       }
+      device_registrations: {
+        Row: {
+          auth_user_id: string
+          business_id: string
+          device_label: string
+          id: string
+          last_seen_at: string | null
+          registered_at: string
+          registered_by: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+        }
+        Insert: {
+          auth_user_id: string
+          business_id: string
+          device_label: string
+          id?: string
+          last_seen_at?: string | null
+          registered_at?: string
+          registered_by: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+        }
+        Update: {
+          auth_user_id?: string
+          business_id?: string
+          device_label?: string
+          id?: string
+          last_seen_at?: string | null
+          registered_at?: string
+          registered_by?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_registrations_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_audit_log: {
+        Row: {
+          actor_auth_id: string | null
+          business_id: string
+          created_at: string
+          device_id: string | null
+          employee_id: string | null
+          event_type: string
+          id: string
+          metadata: Json | null
+        }
+        Insert: {
+          actor_auth_id?: string | null
+          business_id: string
+          created_at?: string
+          device_id?: string | null
+          employee_id?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json | null
+        }
+        Update: {
+          actor_auth_id?: string | null
+          business_id?: string
+          created_at?: string
+          device_id?: string | null
+          employee_id?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_audit_log_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_audit_log_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "device_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory: {
         Row: {
           business_id: string

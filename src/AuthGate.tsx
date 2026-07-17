@@ -1,7 +1,66 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
 import type { User } from "@supabase/supabase-js";
 import App from "./App";
+import { resolveMountSessionTrust } from "./lib/auth/sessionAccess";
+
+// Registered Store Device / Staff Mode (Option A - shared device identity).
+// See supabase/migrations/20260716_registered_device_staff_mode.sql.
+//
+// Supabase's client only ever holds ONE live session at a time. On a
+// shared store device that session is normally the device's own minimal
+// Supabase Auth identity (auth_user_id in device_registrations), so the
+// Employee ID + PIN screen (inside App) can render without the owner ever
+// signing in on that browser. This cache is what lets that device session
+// survive a temporary Owner Access override: entering Owner Access swaps
+// the live session to the owner's real account, which discards the
+// device's tokens from Supabase's own storage - so the latest known-good
+// device tokens are mirrored here on every device-session auth event, and
+// restored from here when the owner returns to Staff Mode.
+//
+// This is a cache of a real, revocable Supabase session - not a bare
+// trust flag. Restoring from it re-authenticates via setSession(), which
+// fails immediately if the device has since been revoked (revoke-device
+// bans the underlying auth identity), so a stale/invalid cache can never
+// grant access on its own.
+const DEVICE_SESSION_CACHE_KEY = "wegn_device_session_v1";
+
+type CachedDeviceSession = { accessToken: string; refreshToken: string };
+
+function readDeviceSessionCache(): CachedDeviceSession | null {
+  try {
+    const raw = window.localStorage.getItem(DEVICE_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.accessToken === "string" && typeof parsed?.refreshToken === "string") {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDeviceSessionCache(tokens: CachedDeviceSession) {
+  try {
+    window.localStorage.setItem(DEVICE_SESSION_CACHE_KEY, JSON.stringify(tokens));
+  } catch {
+    // Best-effort - a failed cache write only affects whether Owner Access
+    // can restore the device session afterward, never current access.
+  }
+}
+
+function clearDeviceSessionCache() {
+  try {
+    window.localStorage.removeItem(DEVICE_SESSION_CACHE_KEY);
+  } catch {
+    // Ignore - nothing to clean up if storage is unavailable.
+  }
+}
+
+function isDeviceUser(user: User | null): boolean {
+  return !!user && (user.user_metadata as Record<string, unknown> | undefined)?.kind === "device";
+}
 
 export default function AuthGate() {
   const [user, setUser] = useState<User | null>(null);
@@ -12,14 +71,93 @@ export default function AuthGate() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [restoringDevice, setRestoringDevice] = useState(true);
+  const [overrideActive, setOverrideActive] = useState(false);
+  // State-model fix: overrideActive alone does not say whether the current
+  // owner elevation has an actual registered-device session to return to.
+  // It's set the instant a device cache exists at the moment Owner Access
+  // is entered (enterOwnerOverride) - a standalone owner login (the
+  // owner's own browser, never a registered device) has no device to
+  // return to, so "Return to Staff Mode" must not be offered for it, and
+  // restoreDeviceSession's "no device found" error must never surface for
+  // a state where that action was never actually available.
+  const [canReturnToStaffMode, setCanReturnToStaffMode] = useState(false);
+  const restoreAttempted = useRef(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data }) => {
+      const sessionUser = data.session?.user ?? null;
+      const cachedBeforeDecision = readDeviceSessionCache();
+      const decision = resolveMountSessionTrust({
+        hasLiveSession: !!sessionUser,
+        liveSessionIsDevice: isDeviceUser(sessionUser),
+        hasDeviceCache: !!cachedBeforeDecision,
+      });
+
+      if (decision === "use_live_session" && sessionUser) {
+        if (isDeviceUser(sessionUser) && data.session) {
+          writeDeviceSessionCache({ accessToken: data.session.access_token, refreshToken: data.session.refresh_token });
+        }
+        setUser(sessionUser);
+        setLoading(false);
+        setRestoringDevice(false);
+        return;
+      }
+
+      if (decision === "restore_device_cache" && cachedBeforeDecision) {
+        // A live session exists but it is NOT this browser's registered
+        // device - most concretely, an Owner Access override that was
+        // never explicitly ended (page refreshed/reopened instead of
+        // clicking "Return to Staff Mode"). A leftover live session must
+        // never stand in for a fresh re-authentication, so it is
+        // discarded here in favor of the device's own identity.
+        restoreAttempted.current = true;
+        const { data: restored, error: restoreErr } = await supabase.auth.setSession({
+          access_token: cachedBeforeDecision.accessToken,
+          refresh_token: cachedBeforeDecision.refreshToken,
+        });
+        if (restoreErr || !restored.session) {
+          clearDeviceSessionCache();
+          setUser(null);
+        } else {
+          writeDeviceSessionCache({ accessToken: restored.session.access_token, refreshToken: restored.session.refresh_token });
+          setUser(restored.session.user);
+        }
+        setLoading(false);
+        setRestoringDevice(false);
+        return;
+      }
+
+      // No live session on this browser - if a device was previously
+      // registered here, restore it automatically so a refresh or a
+      // reopened tab lands back in Staff Mode, never the public owner
+      // form. setSession re-authenticates against Supabase; a revoked or
+      // banned device fails here and the cache is discarded.
+      if (!restoreAttempted.current) {
+        restoreAttempted.current = true;
+        const cached = cachedBeforeDecision;
+        if (cached) {
+          const { data: restored, error: restoreErr } = await supabase.auth.setSession({
+            access_token: cached.accessToken,
+            refresh_token: cached.refreshToken,
+          });
+          if (restoreErr || !restored.session) {
+            clearDeviceSessionCache();
+          } else {
+            writeDeviceSessionCache({ accessToken: restored.session.access_token, refreshToken: restored.session.refresh_token });
+          }
+        }
+      }
       setLoading(false);
+      setRestoringDevice(false);
     });
+
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const sessionUser = session?.user ?? null;
+      if (isDeviceUser(sessionUser) && session) {
+        writeDeviceSessionCache({ accessToken: session.access_token, refreshToken: session.refresh_token });
+      }
+      setUser(sessionUser);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -76,10 +214,78 @@ export default function AuthGate() {
 
   async function handleSignOut() {
     await supabase.auth.signOut();
+    setOverrideActive(false);
+    setCanReturnToStaffMode(false);
     setUser(null);
   }
 
-  if (loading) {
+  // Owner Access: re-authenticates as the real owner. Two distinct
+  // situations reach this same function, and the resulting state must
+  // keep them distinguishable afterward:
+  //   - a temporary elevation OVER an existing registered device session
+  //     (the device's tokens are already mirrored in the cache - see
+  //     onAuthStateChange above - so there is something for
+  //     restoreDeviceSession() to hand the browser back to), vs.
+  //   - a standalone owner login on a browser that was never a
+  //     registered device (no cache exists, nothing to "return" to).
+  // canReturnToStaffMode records which one this is, captured from the
+  // cache's presence at the moment BEFORE the sign-in swap (signing in as
+  // owner never touches the device cache either way, so before/after
+  // would agree here - "before" is used because it's the plain, direct
+  // answer to "was there a device session being elevated from").
+  async function enterOwnerOverride(ownerEmail: string, ownerPassword: string): Promise<{ error?: string }> {
+    const hadDeviceSession = !!readDeviceSessionCache();
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email: ownerEmail.trim(),
+      password: ownerPassword,
+    });
+    if (signInErr) return { error: signInErr.message };
+    setOverrideActive(true);
+    setCanReturnToStaffMode(hadDeviceSession);
+    return {};
+  }
+
+  // Returns from an Owner Access override back to the device's own Staff
+  // Mode session. Only ever called from UI that first checks
+  // canReturnToStaffMode (see App.tsx), so reaching here with no cache
+  // would itself indicate a state-tracking bug rather than an expected
+  // user-facing outcome - the error text is kept as a fail-closed safety
+  // net, not a message users are expected to see.
+  async function restoreDeviceSession(): Promise<{ ok: boolean; error?: string }> {
+    const cached = readDeviceSessionCache();
+    if (!cached) return { ok: false, error: "No registered device session found on this browser." };
+    const { data: restored, error: restoreErr } = await supabase.auth.setSession({
+      access_token: cached.accessToken,
+      refresh_token: cached.refreshToken,
+    });
+    if (restoreErr || !restored.session) {
+      clearDeviceSessionCache();
+      return { ok: false, error: "This device's registration is no longer valid. Register a new device from Settings." };
+    }
+    writeDeviceSessionCache({ accessToken: restored.session.access_token, refreshToken: restored.session.refresh_token });
+    setOverrideActive(false);
+    setCanReturnToStaffMode(false);
+    return { ok: true };
+  }
+
+  // Used by the owner-facing device management UI right after
+  // register-device succeeds - makes the newly registered device this
+  // browser's live session immediately.
+  async function activateDeviceSession(tokens: { accessToken: string; refreshToken: string }): Promise<{ ok: boolean; error?: string }> {
+    const { data: activated, error: activateErr } = await supabase.auth.setSession({
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+    });
+    if (activateErr || !activated.session) {
+      return { ok: false, error: activateErr?.message ?? "Could not activate the device session." };
+    }
+    writeDeviceSessionCache({ accessToken: activated.session.access_token, refreshToken: activated.session.refresh_token });
+    setOverrideActive(false);
+    setCanReturnToStaffMode(false);
+    return { ok: true };
+  }
+
+  if (loading || restoringDevice) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontFamily: "system-ui, sans-serif" }}>
         <p style={{ color: "#64748b", fontSize: "16px" }}>Loading...</p>
@@ -88,7 +294,19 @@ export default function AuthGate() {
   }
 
   if (user) {
-    return <App userId={user.id} userEmail={user.email ?? ""} onSignOut={handleSignOut} />;
+    return (
+      <App
+        userId={user.id}
+        userEmail={user.email ?? ""}
+        onSignOut={handleSignOut}
+        sessionKind={isDeviceUser(user) ? "device" : "owner"}
+        overrideActive={overrideActive}
+        canReturnToStaffMode={canReturnToStaffMode}
+        enterOwnerOverride={enterOwnerOverride}
+        restoreDeviceSession={restoreDeviceSession}
+        activateDeviceSession={activateDeviceSession}
+      />
+    );
   }
 
   return (

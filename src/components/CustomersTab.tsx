@@ -35,9 +35,10 @@ type CustomersTabProps = {
   onEditCustomer: (e: React.FormEvent, customerId: string) => void;
   onToggleCustomerStatus: (customer: Customer) => void;
   onPrintReceipt: (sale: Sale) => void;
-  /** Role-permissions revision: Cashier gets customer lookup only - Add/Edit/
-   *  Deactivate customer are owner+manager only. */
+  /** Edit/Deactivate customer stay owner+manager only. */
   canManageCustomers: boolean;
+  /** Add Customer is a normal checkout need - Cashier gets this too. */
+  canAddCustomers: boolean;
 };
 
 export function CustomersTab({
@@ -72,6 +73,7 @@ export function CustomersTab({
   onToggleCustomerStatus,
   onPrintReceipt,
   canManageCustomers,
+  canAddCustomers,
 }: CustomersTabProps) {
   return (
       <div style={{ display: visible ? '' : 'none' }}>
@@ -81,7 +83,7 @@ export function CustomersTab({
         <p className="page-subtitle">Manage customer profiles, purchase history, and loyalty points</p>
       </div>
 
-      {canManageCustomers && (
+      {canAddCustomers && (
         <>
           <h3 style={{ marginBottom: "8px" }}>Add Customer</h3>
           <form

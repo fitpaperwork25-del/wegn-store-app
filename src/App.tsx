@@ -4,6 +4,8 @@ import type { Database } from "./lib/database.types";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { SettingsTab } from "./components/SettingsTab";
+import { DeviceManagementPanel } from "./components/DeviceManagementPanel";
+import { isOwnerAccessGranted } from "./lib/auth/sessionAccess";
 import { WegnAiPage } from "./components/WegnAiPage";
 import { getTodaysProfitEstimate, getPriorityAlerts } from "./lib/copilot/executiveBriefing";
 import { CustomersTab } from "./components/CustomersTab";
@@ -43,9 +45,30 @@ type AppProps = {
   userId: string;
   userEmail: string;
   onSignOut: () => void;
+  // Registered Store Device / Staff Mode (Option A). "device" means the
+  // live Supabase session backing this render is a shared device
+  // identity, not the owner's own account - see AuthGate.tsx. Every
+  // owner-only affordance below that used to assume "reached this screen"
+  // implies "authenticated as the owner" must check this instead.
+  sessionKind: "owner" | "device";
+  // True while owner access has been temporarily entered via Owner Access
+  // (rather than the owner's own standing session), pending an explicit
+  // exit. Does not by itself mean there is a device session to return to
+  // - see canReturnToStaffMode.
+  overrideActive: boolean;
+  // True only when this override was entered OVER an existing registered
+  // device session (a device cache existed the moment Owner Access was
+  // used) - distinguishes that from a standalone owner login on a
+  // browser that was never a registered device, which has nothing to
+  // "return" to. "Return to Staff Mode" must only ever be offered when
+  // this is true.
+  canReturnToStaffMode: boolean;
+  enterOwnerOverride: (email: string, password: string) => Promise<{ error?: string }>;
+  restoreDeviceSession: () => Promise<{ ok: boolean; error?: string }>;
+  activateDeviceSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<{ ok: boolean; error?: string }>;
 };
 
-function App({ userId, userEmail, onSignOut }: AppProps) {
+function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canReturnToStaffMode, enterOwnerOverride, restoreDeviceSession, activateDeviceSession }: AppProps) {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -535,7 +558,22 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [editBizTaxRate, setEditBizTaxRate] = useState("");
   const [editBizSellingPolicy, setEditBizSellingPolicy] = useState("fixed_pricing");
 
-  const userRole = staffSession ? staffSession.role : "owner";
+  const hasStaffPins = employees.some(e => e.pin && e.status === "active");
+
+  // Security fix: userRole previously reported "owner" whenever
+  // sessionKind === "owner", regardless of whether owner access had
+  // actually been granted - i.e., merely holding a live, valid
+  // owner-identity Supabase session was treated as equivalent to granted
+  // access. That mislabeled the header while the Staff Mode gate was
+  // still showing, and made the one-click "Continue as Owner" button (now
+  // removed - see the Staff Login card below) a real, no-password bypass:
+  // clicking it just flipped ownerBypass, and appUnlocked/userRole would
+  // already trust that instantly, with no re-authentication step ever
+  // occurring. isOwnerAccessGranted (src/lib/auth/sessionAccess.ts) is
+  // the single, unit-tested source of truth for "has owner access
+  // actually been granted" - see sessionAccess.test.mjs.
+  const ownerAccessGranted = isOwnerAccessGranted({ ownerBypass, sessionKind, hasStaffPins });
+  const userRole = staffSession ? staffSession.role : ownerAccessGranted ? "owner" : "locked";
   const isOwnerOrManager = userRole === "owner" || userRole === "manager";
   const canDeactivateProducts = isOwnerOrManager;
   const canAdjustInventory = isOwnerOrManager;
@@ -554,6 +592,12 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const canManageSuppliers = isOwnerOrManager;
   const canViewCashDrawerReport = isOwnerOrManager;
   const canManageCustomers = isOwnerOrManager;
+  // Cashier Add Customer fix: Add is a normal checkout need (signing up a
+  // walk-in for loyalty), distinct from Edit/Deactivate (administrative,
+  // stays owner+manager only via canManageCustomers above). Equivalent to
+  // "anyone who can reach the Customers tab" - Inventory Clerk never gets
+  // that tab, so this doesn't expand its access.
+  const canAddCustomers = isOwnerOrManager || userRole === "cashier";
 
   // Deep-linking: on first load, open whichever tab a ?module= query
   // param requests (used by Platform Admin's Navigation Framework to
@@ -567,8 +611,42 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   ));
   const [navOpen, setNavOpen] = useState(false);
 
-  const hasStaffPins = employees.some(e => e.pin && e.status === "active");
-  const appUnlocked = !hasStaffPins || staffSession !== null || ownerBypass;
+  // A device session must never auto-unlock just because no PIN-enabled
+  // employees exist yet (the owner's own browser still gets that
+  // convenience, unchanged) - only a real PIN login or a granted Owner
+  // Access override unlocks a shared device. Equivalent to (and now
+  // expressed directly in terms of) ownerAccessGranted above - single
+  // source of truth for "is owner access actually granted."
+  const appUnlocked = staffSession !== null || ownerAccessGranted;
+
+  // Security fix: ownerBypass is local App state, not tied to which
+  // Supabase identity is actually live - it does NOT get reset just
+  // because AuthGate swaps the underlying session (e.g. registering a new
+  // device from Settings while ownerBypass was already true from an
+  // earlier "Continue as Owner"/Owner Access click keeps the SAME App
+  // component instance mounted, so ownerBypass silently carried over onto
+  // the freshly-activated device session, granting it unauthenticated
+  // owner access - see userRole/appUnlocked above, both of which trust
+  // ownerBypass). Transitioning to a device session must always start
+  // from a clean, unauthenticated state: no prior owner elevation (this
+  // browser's or anyone else's) may carry forward onto it.
+  useEffect(() => {
+    if (sessionKind === "device") {
+      // Deliberately synchronous: this is a security invariant, not a
+      // data-load side effect - it must apply before the very first paint
+      // of a device session, not after some later async step.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOwnerBypass(false);
+      setShowOwnerLoginForm(false);
+      // Defense in depth alongside the two lines above (the confirmed
+      // exploit path): a device session should never inherit a staff
+      // shift either, so a stray PIN login from a prior identity on this
+      // same browser tab can't carry forward.
+      setStaffSession(null);
+      setActiveCashierId(null);
+      setActiveCashierName("");
+    }
+  }, [sessionKind]);
 
   // Role-permissions revision: Manager gets Cash Drawer (the reporting/EOD
   // view, split out from the owner-only Staff tab below) but not Settings or
@@ -583,6 +661,11 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'cash_drawer', 'reports', 'copilot'],
     cashier: ['dashboard', 'pos', 'customers'],
     inventory_clerk: ['inventory', 'purchasing'],
+    // Defense in depth alongside appUnlocked above: a session with no
+    // granted owner access yet (device or a not-yet-re-authenticated
+    // owner-identity session) gets no tabs at all, not the owner
+    // fallback below.
+    locked: [],
   };
   const allowedTabs = tabAccess[userRole] ?? tabAccess.owner;
 
@@ -926,10 +1009,14 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   );
 
   async function loadBusiness() {
+    // Not filtered by owner_id: RLS (owner_select for the owner,
+    // staff_select for employees/devices via auth_business_id()) already
+    // scopes this to exactly the caller's one business, for every session
+    // kind - filtering here too would only work for the owner's own
+    // session and silently return nothing for a device session.
     const { data, error } = await supabase
       .from("businesses")
       .select("id, name, phone, email, address, tax_rate, selling_policy")
-      .eq("owner_id", userId)
       .limit(1)
       .maybeSingle();
     if (error) {
@@ -950,6 +1037,45 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     }
     setBusinessLoaded(true);
   }
+
+  // Registered Store Device / Staff Mode audit trail. Writes directly from
+  // the client - device_audit_log_self_insert (see migration) only allows
+  // these three non-privileged event types, scoped to the caller's own
+  // business and actor id, so this can never be used to forge a
+  // device_registered/device_revoked row. Never throws: an audit-write
+  // failure must not be able to block the transition it's recording.
+  async function writeDeviceAuditEvent(eventType: "staff_mode_entered" | "staff_mode_exited" | "owner_override", metadata?: Record<string, string | number | boolean | null>) {
+    try {
+      const { error } = await supabase.from("device_audit_log").insert({
+        business_id: businessId,
+        device_id: null,
+        employee_id: staffSession?.id ?? null,
+        event_type: eventType,
+        actor_auth_id: userId,
+        metadata: metadata ?? null,
+      });
+      if (error) console.error(`[device_audit_log] ${eventType} write failed:`, error);
+    } catch (err) {
+      console.error(`[device_audit_log] ${eventType} write threw:`, err);
+    }
+  }
+
+  // Fires once per arrival at the Staff Mode PIN screen (matches the exact
+  // condition that screen renders under, below) - not on every render.
+  const staffModeEnteredLoggedRef = useRef(false);
+  useEffect(() => {
+    const showingPinScreen = sessionKind === "device" && businessId && !staffSession && !ownerBypass && employees.some(e => e.pin && e.status === "active");
+    if (showingPinScreen && !staffModeEnteredLoggedRef.current) {
+      staffModeEnteredLoggedRef.current = true;
+      writeDeviceAuditEvent("staff_mode_entered");
+    }
+    if (!showingPinScreen && overrideActive) {
+      // An Owner Access override is in progress - the next arrival back at
+      // the PIN screen (via "Return to Staff Mode") is a new entry.
+      staffModeEnteredLoggedRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKind, businessId, staffSession, ownerBypass, employees, overrideActive]);
 
   // Wegn AI Onboarding Blueprint, Phase 1. A missing row means either a
   // business that predates this feature and wasn't caught by the migration
@@ -1075,25 +1201,51 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     setActiveTab("dashboard");
   }
 
-  // Login Navigation Fix: same supabase.auth.signInWithPassword call
-  // AuthGate uses for the owner's initial sign-in - this just lets an owner
-  // reach it as a secondary path from the Employee ID + PIN screen instead
-  // of it being the only thing a fresh page load can show. A successful
-  // sign-in is picked up by AuthGate's onAuthStateChange listener exactly
-  // as it already is today; no new auth logic here.
+  // Owner Access: reached as a secondary path from the Employee ID + PIN
+  // screen, not the default entry point. Goes through AuthGate's
+  // enterOwnerOverride (same supabase.auth.signInWithPassword call
+  // AuthGate's own form uses) so a device session's tokens are already
+  // mirrored in AuthGate's cache before this swaps the live session to the
+  // owner's - required to be able to return to Staff Mode afterward. A
+  // successful sign-in is picked up by AuthGate's onAuthStateChange
+  // listener exactly as it already is today.
   async function handleOwnerLoginSubmit(e: React.FormEvent) {
     e.preventDefault();
     setOwnerLoginError("");
     if (!ownerLoginEmail.trim() || !ownerLoginPassword) return;
     setOwnerLoginSubmitting(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: ownerLoginEmail.trim(),
-      password: ownerLoginPassword,
-    });
-    if (error) { setOwnerLoginError(error.message); setOwnerLoginSubmitting(false); return; }
+    const wasDeviceSession = sessionKind === "device";
+    const { error } = await enterOwnerOverride(ownerLoginEmail.trim(), ownerLoginPassword);
+    if (error) { setOwnerLoginError(error); setOwnerLoginSubmitting(false); return; }
+    if (wasDeviceSession) {
+      await writeDeviceAuditEvent("staff_mode_exited");
+      await writeDeviceAuditEvent("owner_override");
+    }
     setOwnerLoginEmail("");
     setOwnerLoginPassword("");
     setOwnerLoginSubmitting(false);
+    setShowOwnerLoginForm(false);
+    // Skip the PIN gate for the duration of this override - re-showing it
+    // immediately after a successful, explicit Owner Access sign-in would
+    // defeat the point of it. Cleared again by handleStaffLogout /
+    // handleReturnToStaffMode below.
+    setOwnerBypass(true);
+  }
+
+  // Ends an Owner Access override and hands the browser back to the
+  // device's own Staff Mode session (see AuthGate.restoreDeviceSession).
+  // Distinct from handleStaffLogout: that only clears local UI state and
+  // assumes the underlying session is already correct, which isn't true
+  // here - the live Supabase session is currently the owner's and must be
+  // swapped back to the device's before the PIN screen can be trusted
+  // again.
+  async function handleReturnToStaffMode() {
+    const result = await restoreDeviceSession();
+    if (!result.ok) {
+      setMessage({ text: result.error ?? "Could not return to Staff Mode.", type: "error" });
+      return;
+    }
+    setOwnerBypass(false);
     setShowOwnerLoginForm(false);
   }
 
@@ -4858,7 +5010,26 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
           <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "4px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
             <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "12px", background: "#eff6ff", color: "#1d4ed8", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.05em" }}>{userRole.replace('_', ' ')}</span>
             {staffSession && <span style={{ fontSize: "12px", color: "#64748b" }}>{staffSession.name}</span>}
-            {staffSession ? (
+            {overrideActive && canReturnToStaffMode ? (
+              // Owner Access override in progress OVER an existing
+              // registered device session - "Back to Employee Login"
+              // alone would only clear local UI state and leave the live
+              // session as the owner's, so this instead swaps the actual
+              // Supabase session back to the device's own (see
+              // AuthGate.restoreDeviceSession). Gated on
+              // canReturnToStaffMode, not just overrideActive: a
+              // standalone owner login (no device involved) has no
+              // device session to return to, so this must not be offered
+              // for it - falls through to the same
+              // staffSession/hasStaffPins branches below a non-device
+              // owner has always used to leave an elevated session.
+              <button
+                onClick={() => { handleReturnToStaffMode(); setNavOpen(false); }}
+                style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#dbeafe", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
+              >
+                Return to Staff Mode
+              </button>
+            ) : staffSession ? (
               <button
                 onClick={() => { handleStaffLogout(); setNavOpen(false); }}
                 style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
@@ -4888,6 +5059,41 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
                 Sign Out
               </button>
             )}
+            {/* Owner Access, permanent header placement (requirement:
+                "one permanent, consistent location throughout the
+                application"). Security fix: this is now the ONLY path to
+                owner access, for every sessionKind - the Staff Login
+                card's separate one-click "Continue as Owner" bypass has
+                been removed (it granted access with no re-authentication
+                whenever sessionKind === "owner", including on a stale/
+                leftover owner session left over from an unclosed Owner
+                Access override - see sessionAccess.ts). Shown whenever
+                owner access has not actually been granted yet
+                (!ownerAccessGranted) and no override is already in
+                progress (overrideActive shows "Return to Staff Mode"
+                instead, above). Unaffected by staffSession/hasStaffPins/
+                employees state, so it never disappears once staff
+                accounts exist - same icon, same position, whether idle
+                at the PIN screen or a cashier is actively clocked in.
+                Always opens the same modal requiring a fresh owner
+                email/password re-authentication; no auth/session logic
+                changed here beyond removing the bypass. */}
+            {!overrideActive && !ownerAccessGranted && (
+              <button
+                type="button"
+                onClick={() => { setShowOwnerLoginForm(true); setOwnerLoginError(""); setNavOpen(false); }}
+                title="Owner access"
+                aria-label="Owner access"
+                style={{ width: "26px", height: "26px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", borderRadius: "6px", marginLeft: "auto" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.background = "#f1f5f9"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "#cbd5e1"; e.currentTarget.style.background = "none"; }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+              </button>
+            )}
           </div>
         </nav>
       </div>
@@ -4904,7 +5110,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         </div>
       )}
 
-      {businessLoaded && !businessId && (
+      {businessLoaded && !businessId && sessionKind === "owner" && (
         <div style={{ maxWidth: "480px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
           <h2 style={{ margin: "0 0 8px", fontSize: "22px", color: "#0f172a" }}>Set Up Your Business</h2>
           <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>
@@ -4926,49 +5132,85 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         </div>
       )}
 
-      {businessId && !staffSession && !ownerBypass && employees.some(e => e.pin && e.status === "active") && (
-        !showOwnerLoginForm ? (
-          <div style={{ maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
+      {businessId && !staffSession && !ownerAccessGranted && (sessionKind === "device" || employees.some(e => e.pin && e.status === "active")) && (
+        <div style={{ position: "relative", maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
+            {/* Security fix: this card no longer has its own escalation
+                icon. It previously offered a one-click "Continue as
+                Owner" bypass whenever sessionKind === "owner" - which
+                required no re-authentication and, combined with a stale
+                live owner session surviving a page refresh (see
+                AuthGate's resolveMountSessionTrust), was an exploitable
+                path to unrestricted owner access with no password. The
+                header's Owner Access icon (always visible whenever
+                !ownerAccessGranted) is now the only path, for every
+                sessionKind, and always requires the re-authentication
+                modal below. */}
             <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Staff Login</h2>
-            <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your Employee ID and PIN to start your shift</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
-              <input
-                type="text"
-                placeholder="Employee ID"
-                value={employeeCodeInput}
-                onChange={(e) => { setEmployeeCodeInput(e.target.value); setPinError(""); }}
-                onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
-                autoFocus
-                style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "16px", textAlign: "center", width: "220px" }}
-              />
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="Enter PIN"
-                value={pinInput}
-                onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(""); }}
-                onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
-                style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "24px", textAlign: "center", width: "180px", letterSpacing: "0.3em" }}
-              />
-              {pinError && <p style={{ margin: 0, color: "#b91c1c", fontSize: "13px" }}>{pinError}</p>}
-              <button onClick={handlePinLogin} disabled={!employeeCodeInput || !pinInput} style={{ padding: "10px 32px", background: (employeeCodeInput && pinInput) ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: (employeeCodeInput && pinInput) ? "pointer" : "not-allowed" }}>
-                Clock In
-              </button>
-              <button onClick={() => setOwnerBypass(true)} style={{ padding: "8px 20px", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "13px", marginTop: "8px" }}>
-                Continue as Owner
-              </button>
-              {/* Login Navigation Fix: Owner email/password login is a
-                  secondary path from here, not the default entry point. */}
-              <button onClick={() => { setShowOwnerLoginForm(true); setOwnerLoginError(""); }} style={{ padding: "4px 20px", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "12px", textDecoration: "underline" }}>
-                Owner Login
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
-            <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Owner Login</h2>
-            <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Sign in with your owner email and password</p>
+            {employees.some(e => e.pin && e.status === "active") ? (
+              <>
+                <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your Employee ID and PIN to start your shift</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    placeholder="Employee ID"
+                    value={employeeCodeInput}
+                    onChange={(e) => { setEmployeeCodeInput(e.target.value); setPinError(""); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
+                    autoFocus
+                    style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "16px", textAlign: "center", width: "220px" }}
+                  />
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="Enter PIN"
+                    value={pinInput}
+                    onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(""); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
+                    style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "24px", textAlign: "center", width: "180px", letterSpacing: "0.3em" }}
+                  />
+                  {pinError && <p style={{ margin: 0, color: "#b91c1c", fontSize: "13px" }}>{pinError}</p>}
+                  <button onClick={handlePinLogin} disabled={!employeeCodeInput || !pinInput} style={{ padding: "10px 32px", background: (employeeCodeInput && pinInput) ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: (employeeCodeInput && pinInput) ? "pointer" : "not-allowed" }}>
+                    Clock In
+                  </button>
+                </div>
+              </>
+            ) : (
+              // Registered Store Device / Staff Mode: a device session
+              // never falls through to full app access just because no
+              // PIN-enabled employees exist yet (see appUnlocked above) -
+              // the Owner Access icon in the header is this screen's only
+              // way forward until the owner adds staff.
+              <p style={{ margin: "0 0 8px", color: "#64748b", fontSize: "14px" }}>No staff accounts are set up yet. An owner must sign in to add employees.</p>
+            )}
+        </div>
+      )}
+
+      {/* Owner re-authentication modal - reachable from the header's Owner
+          Access icon (registered device sessions) or the Staff Login
+          card's own icon (the owner's own non-device browser). Rendered
+          independently of the Staff Login card above so it can overlay
+          any screen, including an active Staff Mode session mid-shift -
+          Requirement: Owner Access must have one permanent, consistent
+          trigger regardless of whether staff are currently clocked in.
+          Mechanism is unchanged from before: same handleOwnerLoginSubmit,
+          same audit events, same temporary-override/Return-to-Staff-Mode
+          lifecycle. */}
+      {showOwnerLoginForm && (
+        <div
+          onClick={() => { setShowOwnerLoginForm(false); setOwnerLoginError(""); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "16px" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: "380px", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 12px 40px rgba(0,0,0,0.18)", textAlign: "center" }}
+          >
+            <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>{sessionKind === "device" ? "Owner Access" : "Owner Login"}</h2>
+            <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>
+              {sessionKind === "device"
+                ? "Sign in with your owner email and password to temporarily unlock this device."
+                : "Sign in with your owner email and password"}
+            </p>
             <form onSubmit={handleOwnerLoginSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
               <input
                 type="email"
@@ -4995,17 +5237,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
               >
                 {ownerLoginSubmitting ? "Signing in..." : "Sign In"}
               </button>
-              {/* Login Navigation Fix: required so an owner can always get
-                  back to the Employee ID + PIN screen from here. */}
               <button type="button" onClick={() => { setShowOwnerLoginForm(false); setOwnerLoginError(""); }} style={{ padding: "4px 20px", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "13px", textDecoration: "underline" }}>
-                Back to Employee Login
+                Cancel
               </button>
               <button type="button" onClick={onSignOut} style={{ padding: "2px 20px", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "11px" }}>
                 Sign out of this device
               </button>
             </form>
           </div>
-        )
+        </div>
       )}
 
       {businessId && !allowedTabs.includes(activeTab) && (
@@ -5487,6 +5727,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         onToggleCustomerStatus={handleToggleCustomerStatus}
         onPrintReceipt={handlePrintReceipt}
         canManageCustomers={canManageCustomers}
+        canAddCustomers={canAddCustomers}
       />{/* end customers */}
 
       {/* ── REPORTS TAB ── */}
@@ -5613,6 +5854,14 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         userRole={userRole}
         onSave={handleSaveBusiness}
       />{/* end settings */}
+
+      {canManageStaff && (
+        <DeviceManagementPanel
+          visible={activeTab === 'settings' && !!businessId && appUnlocked}
+          businessId={businessId}
+          activateDeviceSession={activateDeviceSession}
+        />
+      )}
 
       {/* ── WEGN AI TAB ── */}
       <WegnAiPage
