@@ -14,12 +14,23 @@ type DashboardProps = {
   inventorySummary: InventoryDashboardSummary;
   lowStockCount: number;
   recentSales: Sale[];
+  /** Cashier's own recent sales - filtered from the full sales array in
+   *  App.tsx, not sliced from the store-wide `recentSales` above. */
+  myRecentSales: Sale[];
   drawerSession: DrawerSession | null;
   employeeMap: Record<string, Employee>;
+  /** Role-permissions revision: Cashier gets a reduced dashboard (POS/
+   *  Customers shortcuts, own drawer status, own recent sales only) - no
+   *  purchasing/inventory shortcuts, no store-wide revenue/EOD/financial
+   *  KPIs. viewerId identifies "own" for drawer/sales filtering. */
+  viewerRole: string;
+  viewerId: string | null;
   onGoToReorderCenter: () => void;
   onOpenPurchasing: () => void;
   onViewInventory: () => void;
   onViewEodReport: () => void;
+  onGoToPOS: () => void;
+  onGoToCustomers: () => void;
 };
 
 export function Dashboard({
@@ -30,12 +41,17 @@ export function Dashboard({
   inventorySummary,
   lowStockCount,
   recentSales,
+  myRecentSales,
   drawerSession,
   employeeMap,
+  viewerRole,
+  viewerId,
   onGoToReorderCenter,
   onOpenPurchasing,
   onViewInventory,
   onViewEodReport,
+  onGoToPOS,
+  onGoToCustomers,
 }: DashboardProps) {
   const { revenueToday, txnCount, avgSale,
           yesterdaySalesCount, yesterdayRevenue, yesterdayProfit, yesterdayCash,
@@ -47,6 +63,68 @@ export function Dashboard({
   const sLabel: React.CSSProperties = { fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "12px" };
   const pCardStyle: React.CSSProperties = { borderRadius: "10px", padding: "16px 18px", background: "#fff", display: "flex", flexDirection: "column", gap: "6px" };
   const pCardBtn: React.CSSProperties = { marginTop: "10px", padding: "7px 0", borderRadius: "6px", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "13px", width: "100%" };
+
+  if (viewerRole === "cashier") {
+    const myDrawerOpen = !!drawerSession && drawerSession.cashier_id === viewerId;
+    const mySales = myRecentSales;
+    return (
+      <div style={{ display: visible ? '' : 'none' }}>
+        <div className="page-header">
+          <h2 className="page-title">Dashboard</h2>
+          <p className="page-subtitle">Your shift status and quick actions</p>
+        </div>
+
+        <div style={sLabel}>Quick Actions</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "12px", marginBottom: "28px" }}>
+          <div style={{ ...pCardStyle, border: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Checkout</div>
+            <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>POS</div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}>Ring up a sale</div>
+            <button onClick={onGoToPOS} style={{ ...pCardBtn, background: "#1d4ed8", color: "#fff" }}>Go to POS</button>
+          </div>
+          <div style={{ ...pCardStyle, border: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Customers</div>
+            <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>Lookup</div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}>Find a customer or loyalty balance</div>
+            <button onClick={onGoToCustomers} style={{ ...pCardBtn, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}>Go to Customers</button>
+          </div>
+          <div style={{ ...pCardStyle, border: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: myDrawerOpen ? "#16a34a" : "#94a3b8" }}>My Drawer</div>
+            <div style={{ fontSize: "22px", fontWeight: 700, color: myDrawerOpen ? "#15803d" : "#94a3b8" }}>{myDrawerOpen ? "OPEN" : "CLOSED"}</div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}>
+              {myDrawerOpen ? `Since ${new Date(drawerSession!.opened_at as string).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active session"}
+            </div>
+          </div>
+        </div>
+
+        <div style={sLabel}>My Recent Sales</div>
+        {mySales.length === 0 ? (
+          <p style={{ color: "#94a3b8", fontSize: "14px", margin: "0" }}>No completed sales yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                  <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Sale #</th>
+                  <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Total</th>
+                  <th style={{ padding: "10px 14px", textAlign: "left", color: "#475569", fontWeight: 600 }}>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mySales.map((s, i) => (
+                  <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                    <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>{s.id.slice(0, 8)}…</td>
+                    <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>${Number(s.total).toFixed(2)}</td>
+                    <td style={{ padding: "10px 14px", color: "#94a3b8" }}>{new Date(s.created_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: visible ? '' : 'none' }}>

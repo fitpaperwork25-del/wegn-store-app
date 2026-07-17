@@ -760,6 +760,18 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     [sales]
   );
 
+  // Cashier Dashboard: filtered from the full `sales` array (not the
+  // store-wide `recentSales` above, which is already sliced to 5) so a
+  // cashier's own sales aren't silently dropped by other cashiers' more
+  // recent activity.
+  const myRecentSales = useMemo(() => {
+    if (!staffSession) return [];
+    return [...sales]
+      .filter(s => s.cashier_id === staffSession.id && (s.status === 'completed' || s.status === 'returned'))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5);
+  }, [sales, staffSession]);
+
   // O(1) lookup maps — used across Sales History, Analytics, and Dashboard IIFEs.
   const customerMap = useMemo(
     () => Object.fromEntries(customers.map(c => [c.id, c])) as Record<string, Customer>,
@@ -5187,12 +5199,17 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         inventorySummary={inventoryDashboardSummary}
         lowStockCount={lowStockProducts.length}
         recentSales={recentSales}
+        myRecentSales={myRecentSales}
         drawerSession={drawerSession}
         employeeMap={employeeMap}
+        viewerRole={userRole}
+        viewerId={staffSession?.id ?? null}
         onGoToReorderCenter={() => setActiveTab("purchasing")}
         onOpenPurchasing={() => setActiveTab("purchasing")}
         onViewInventory={() => setActiveTab("inventory")}
-        onViewEodReport={() => { setActiveTab("employees"); if (!showEod) handleToggleEod(); }}
+        onViewEodReport={() => { setActiveTab("cash_drawer"); if (!showEod) handleToggleEod(); }}
+        onGoToPOS={() => setActiveTab("pos")}
+        onGoToCustomers={() => setActiveTab("customers")}
       />{/* end dashboard */}
 
 
