@@ -70,6 +70,12 @@ type PurchaseOrderLifecyclePanelProps = {
   setReceiveManufacturedDates: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onConfirmReceive: () => void;
   isConfirmingReceive: boolean;
+  /** Role-permissions revision: Create/Cancel/Delete PO are owner+manager
+   *  only (mirrored server-side by RLS on purchase_orders). View, Mark
+   *  Ordered, and Receive stay available to whoever can see this panel -
+   *  Inventory Clerk's granted "View Purchase Orders" / "Receive Inventory"
+   *  must not imply PO lifecycle control. */
+  canManagePurchaseOrders: boolean;
 };
 
 export function PurchaseOrderLifecyclePanel({
@@ -114,47 +120,52 @@ export function PurchaseOrderLifecyclePanel({
   receiveManufacturedDates, setReceiveManufacturedDates,
   onConfirmReceive,
   isConfirmingReceive,
+  canManagePurchaseOrders,
 }: PurchaseOrderLifecyclePanelProps) {
   return (
     <div style={{ display: visible ? '' : 'none' }}>
 
-      <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
+      {canManagePurchaseOrders && (
+        <>
+          <h2 style={{ marginTop: "40px" }}>Create Purchase Order</h2>
 
-      <form
-        onSubmit={onCreatePO}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "16px",
-        }}
-      >
-        <select
-          value={poSupplierId}
-          onChange={(e) => setPoSupplierId(e.target.value)}
-          style={{ flex: "2 1 200px", padding: "8px" }}
-        >
-          <option value="">Select supplier...</option>
-          {suppliers.filter(s => s.status === "active").map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+          <form
+            onSubmit={onCreatePO}
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "12px",
+              alignItems: "center",
+              marginBottom: "16px",
+            }}
+          >
+            <select
+              value={poSupplierId}
+              onChange={(e) => setPoSupplierId(e.target.value)}
+              style={{ flex: "2 1 200px", padding: "8px" }}
+            >
+              <option value="">Select supplier...</option>
+              {suppliers.filter(s => s.status === "active").map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
 
-        <input
-          type="text"
-          placeholder="Notes"
-          value={poNotes}
-          onChange={(e) => setPoNotes(e.target.value)}
-          style={{ flex: "3 1 240px", padding: "8px" }}
-        />
+            <input
+              type="text"
+              placeholder="Notes"
+              value={poNotes}
+              onChange={(e) => setPoNotes(e.target.value)}
+              style={{ flex: "3 1 240px", padding: "8px" }}
+            />
 
-        <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
-          Create PO
-        </button>
-      </form>
+            <button type="submit" style={{ flex: "1 1 120px", padding: "8px" }}>
+              Create PO
+            </button>
+          </form>
+        </>
+      )}
 
       <button
         onClick={() => setPoListOpen(!(poListOpen ?? (purchaseOrders.length < 10)))}
@@ -253,8 +264,10 @@ export function PurchaseOrderLifecyclePanel({
                     // An Ordered PO with no items yet is still correctable (Edit
                     // + Cancel); once it has any items, editing locks and only
                     // Receive/Cancel remain. Partially Received never gets
-                    // Cancel - inventory has already moved.
-                    const canEditItems = isDraft || (isOrdered && itemCount === 0);
+                    // Cancel - inventory has already moved. Role-permissions
+                    // revision: editing PO line items is owner+manager only -
+                    // Inventory Clerk gets read-only View regardless of status.
+                    const canEditItems = canManagePurchaseOrders && (isDraft || (isOrdered && itemCount === 0));
                     const canCancel = isDraft || isOrdered;
                     const isSelected = selectedPoId === po.id;
                     const badgeBg = isDraft ? "#fef3c7" : isOrdered ? "#dbeafe" : isPartiallyReceived ? "#fef9c3" : isCancelled ? "#e5e7eb" : "#dcfce7";
@@ -285,8 +298,8 @@ export function PurchaseOrderLifecyclePanel({
                               {isSelected ? "Close" : canEditItems ? "View/Edit" : "View"}
                             </button>
                           )}
-                          {/* Primary: Mark Ordered (draft only) */}
-                          {isDraft && (
+                          {/* Primary: Mark Ordered (draft only, owner+manager only) */}
+                          {isDraft && canManagePurchaseOrders && (
                             <button onClick={() => onMarkOrdered(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd", borderRadius: "4px" }}>
                               Mark Ordered
                             </button>
@@ -305,14 +318,15 @@ export function PurchaseOrderLifecyclePanel({
                               {receivingPoId === po.id ? "Cancel" : "Receive"}
                             </button>
                           )}
-                          {/* Primary: Delete (draft only) */}
-                          {isDraft && (
+                          {/* Primary: Delete (draft only, owner+manager only) */}
+                          {isDraft && canManagePurchaseOrders && (
                             <button onClick={() => onDeletePO(po)} style={{ padding: "4px 10px", marginRight: "4px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}>
                               Delete
                             </button>
                           )}
-                          {/* More menu */}
-                          {(hasSecondary || isReceived) && (
+                          {/* More menu (Print/Email/Sign/Cancel - all owner+manager
+                              only, none are receiving-related actions) */}
+                          {(hasSecondary || isReceived) && canManagePurchaseOrders && (
                             <span style={{ position: "relative", display: "inline-block" }}>
                               <button onClick={() => setPoMoreOpen(moreOpen ? null : po.id)} style={{ padding: "4px 8px", fontSize: "13px", cursor: "pointer", background: moreOpen ? "#e5e7eb" : undefined }}>
                                 ···
@@ -328,7 +342,7 @@ export function PurchaseOrderLifecyclePanel({
                                   {(isDraft || isOrdered || isPartiallyReceived) && (
                                     <button onClick={() => { setSignPoId(po.id); setSignRole("manager"); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#15803d" }}>Sign PO</button>
                                   )}
-                                  {canCancel && (
+                                  {canCancel && canManagePurchaseOrders && (
                                     <button onClick={() => { onCancelPO(po); setPoMoreOpen(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 14px", border: "none", background: "none", cursor: "pointer", fontSize: "13px", color: "#dc2626" }}>Cancel PO</button>
                                   )}
                                   {isReceived && (

@@ -35,6 +35,9 @@ type CustomersTabProps = {
   onEditCustomer: (e: React.FormEvent, customerId: string) => void;
   onToggleCustomerStatus: (customer: Customer) => void;
   onPrintReceipt: (sale: Sale) => void;
+  /** Role-permissions revision: Cashier gets customer lookup only - Add/Edit/
+   *  Deactivate customer are owner+manager only. */
+  canManageCustomers: boolean;
 };
 
 export function CustomersTab({
@@ -68,6 +71,7 @@ export function CustomersTab({
   onEditCustomer,
   onToggleCustomerStatus,
   onPrintReceipt,
+  canManageCustomers,
 }: CustomersTabProps) {
   return (
       <div style={{ display: visible ? '' : 'none' }}>
@@ -77,34 +81,38 @@ export function CustomersTab({
         <p className="page-subtitle">Manage customer profiles, purchase history, and loyalty points</p>
       </div>
 
-      <h3 style={{ marginBottom: "8px" }}>Add Customer</h3>
-      <form
-        onSubmit={onAddCustomer}
-        style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "24px" }}
-      >
-        <input
-          type="text"
-          placeholder="Name *"
-          value={newCusName}
-          onChange={(e) => setNewCusName(e.target.value)}
-          style={{ flex: "1 1 150px", padding: "8px" }}
-        />
-        <input
-          type="text"
-          placeholder="Phone *"
-          value={newCusPhone}
-          onChange={(e) => setNewCusPhone(e.target.value)}
-          style={{ flex: "1 1 140px", padding: "8px" }}
-        />
-        <input
-          type="email"
-          placeholder="Email (optional)"
-          value={newCusEmail}
-          onChange={(e) => setNewCusEmail(e.target.value)}
-          style={{ flex: "1 1 180px", padding: "8px" }}
-        />
-        <button type="submit" style={{ padding: "8px 20px" }}>Add Customer</button>
-      </form>
+      {canManageCustomers && (
+        <>
+          <h3 style={{ marginBottom: "8px" }}>Add Customer</h3>
+          <form
+            onSubmit={onAddCustomer}
+            style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", marginBottom: "24px" }}
+          >
+            <input
+              type="text"
+              placeholder="Name *"
+              value={newCusName}
+              onChange={(e) => setNewCusName(e.target.value)}
+              style={{ flex: "1 1 150px", padding: "8px" }}
+            />
+            <input
+              type="text"
+              placeholder="Phone *"
+              value={newCusPhone}
+              onChange={(e) => setNewCusPhone(e.target.value)}
+              style={{ flex: "1 1 140px", padding: "8px" }}
+            />
+            <input
+              type="email"
+              placeholder="Email (optional)"
+              value={newCusEmail}
+              onChange={(e) => setNewCusEmail(e.target.value)}
+              style={{ flex: "1 1 180px", padding: "8px" }}
+            />
+            <button type="submit" style={{ padding: "8px 20px" }}>Add Customer</button>
+          </form>
+        </>
+      )}
 
       {/* Customer Insights */}
       <h3 style={{ marginTop: "24px", marginBottom: "8px" }}>Customer Insights</h3>
@@ -263,23 +271,27 @@ export function CustomersTab({
                           <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
                           <td style={{ color: row.pointsBalance > 0 ? "#7c3aed" : "#888", fontWeight: row.pointsBalance > 0 ? "bold" : "normal" }}>{row.pointsBalance}</td>
                           <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => {
-                                if (isEditing) { setEditingCustomerId(null); return; }
-                                setEditingCustomerId(row.id);
-                                setEditCusName(row.name);
-                                setEditCusPhone(row.phone);
-                                setEditCusEmail(row.email ?? "");
-                              }}
-                              style={{ marginRight: "6px", padding: "3px 10px", cursor: "pointer" }}
-                            >{isEditing ? "Cancel" : "Edit"}</button>
-                            <button
-                              onClick={() => onToggleCustomerStatus(row)}
-                              style={{ padding: "3px 10px", cursor: "pointer" }}
-                            >{inactive ? "Activate" : "Deactivate"}</button>
+                            {canManageCustomers && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    if (isEditing) { setEditingCustomerId(null); return; }
+                                    setEditingCustomerId(row.id);
+                                    setEditCusName(row.name);
+                                    setEditCusPhone(row.phone);
+                                    setEditCusEmail(row.email ?? "");
+                                  }}
+                                  style={{ marginRight: "6px", padding: "3px 10px", cursor: "pointer" }}
+                                >{isEditing ? "Cancel" : "Edit"}</button>
+                                <button
+                                  onClick={() => onToggleCustomerStatus(row)}
+                                  style={{ padding: "3px 10px", cursor: "pointer" }}
+                                >{inactive ? "Activate" : "Deactivate"}</button>
+                              </>
+                            )}
                           </td>
                         </tr>
-                        {isEditing && (
+                        {canManageCustomers && isEditing && (
                           <tr>
                             <td colSpan={9} style={{ background: "#f9fafb", padding: "16px" }}>
                               <form onSubmit={(e) => onEditCustomer(e, row.id)} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>

@@ -531,6 +531,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const canBulkImport = isOwnerOrManager;
   const canManageStaff = userRole === "owner";
   const canVoidSales = isOwnerOrManager;
+  // Role-permissions revision (Inventory Clerk excessive-access fix): Create/
+  // Cancel/Delete PO and all Supplier management stay owner+manager only, so
+  // Inventory Clerk's granted "View Purchase Orders" / "Receive Inventory"
+  // never implies PO lifecycle control or supplier access. Mirrored by RLS
+  // policies on purchase_orders/suppliers (see migration) for the same rule.
+  const canManagePurchaseOrders = isOwnerOrManager;
+  const canManageSuppliers = isOwnerOrManager;
+  const canViewCashDrawerReport = isOwnerOrManager;
+  const canManageCustomers = isOwnerOrManager;
 
   // Deep-linking: on first load, open whichever tab a ?module= query
   // param requests (used by Platform Admin's Navigation Framework to
@@ -547,11 +556,19 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const hasStaffPins = employees.some(e => e.pin && e.status === "active");
   const appUnlocked = !hasStaffPins || staffSession !== null || ownerBypass;
 
+  // Role-permissions revision: Manager gets Cash Drawer (the reporting/EOD
+  // view, split out from the owner-only Staff tab below) but not Settings or
+  // Staff (system administration). Cashier and Inventory Clerk lose Wegn AI -
+  // neither role was granted it in the approved matrix. Inventory Clerk loses
+  // Dashboard entirely (not in its grant list; Dashboard surfaces Cash
+  // Drawer/Revenue/EOD, all explicitly excluded) - Purchasing stays granted
+  // but is internally restricted to View/Receive (see canManagePurchaseOrders
+  // and SupplierManagementPanel/PurchasingTab visibility below).
   const tabAccess: Record<string, string[]> = {
-    owner: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'employees', 'reports', 'settings', 'copilot'],
-    manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'reports', 'settings', 'copilot'],
-    cashier: ['dashboard', 'pos', 'customers', 'copilot'],
-    inventory_clerk: ['dashboard', 'inventory', 'purchasing', 'copilot'],
+    owner: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'employees', 'cash_drawer', 'reports', 'settings', 'copilot'],
+    manager: ['dashboard', 'pos', 'inventory', 'purchasing', 'customers', 'cash_drawer', 'reports', 'copilot'],
+    cashier: ['dashboard', 'pos', 'customers'],
+    inventory_clerk: ['inventory', 'purchasing'],
   };
   const allowedTabs = tabAccess[userRole] ?? tabAccess.owner;
 
@@ -1343,6 +1360,12 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   async function handlePaidOut(e: React.FormEvent) {
     e.preventDefault();
     if (!drawerSession) return;
+    // Role-permissions revision: Cashier is restricted to their own drawer
+    // session (Owner/Manager retain full access to any open drawer).
+    if (userRole === "cashier" && drawerSession.cashier_id !== staffSession?.id) {
+      setMessage({ text: "This drawer belongs to another cashier", type: "error" });
+      return;
+    }
     const amount = Number(paidOutAmount);
     if (isNaN(amount) || amount <= 0) return;
     setDrawerLoading(true);
@@ -1364,6 +1387,12 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   async function handleCloseDrawer(e: React.FormEvent) {
     e.preventDefault();
     if (!drawerSession) return;
+    // Role-permissions revision: Cashier is restricted to their own drawer
+    // session (Owner/Manager retain full access to any open drawer).
+    if (userRole === "cashier" && drawerSession.cashier_id !== staffSession?.id) {
+      setMessage({ text: "This drawer belongs to another cashier", type: "error" });
+      return;
+    }
     const counted = Number(closingCount);
     if (isNaN(counted) || counted < 0) return;
     setDrawerLoading(true);
@@ -4729,6 +4758,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
             ['purchasing', 'Purchasing'],
             ['customers', 'Customers'],
             ['employees', 'Staff'],
+            ['cash_drawer', 'Cash Drawer'],
             ['reports', 'Reports'],
             ['copilot', '✨ Wegn AI'],
             ['settings', 'Settings'],
@@ -5033,6 +5063,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         needsOrderingSelected={needsOrderingSelected} setNeedsOrderingSelected={setNeedsOrderingSelected}
         needsOrderingQtys={needsOrderingQtys} setNeedsOrderingQtys={setNeedsOrderingQtys}
         onCreatePOFromNeedsOrdering={handleCreatePOFromNeedsOrdering}
+        canManagePurchaseOrders={canManagePurchaseOrders}
+        canManageSuppliers={canManageSuppliers}
         txHistoryOpen={txHistoryOpen} setTxHistoryOpen={setTxHistoryOpen}
         txDateRange={txDateRange} setTxDateRange={setTxDateRange}
         transactions={transactions}
@@ -5166,7 +5198,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
       {/* ── PURCHASING TAB ── */}
       <PurchasingTab
-        visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
+        visible={activeTab === 'purchasing' && !!businessId && appUnlocked && isOwnerOrManager}
         suppliers={suppliers}
         products={products}
         reorderSuppliers={reorderSuppliers} setReorderSuppliers={setReorderSuppliers}
@@ -5182,7 +5214,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
       {/* ── SUPPLIER MANAGEMENT (Purchasing sub-domain) ── */}
       <SupplierManagementPanel
-        visible={activeTab === 'purchasing' && !!businessId && appUnlocked}
+        visible={activeTab === 'purchasing' && !!businessId && appUnlocked && canManageSuppliers}
         suppliers={suppliers}
         supName={supName} setSupName={setSupName}
         supContact={supContact} setSupContact={setSupContact}
@@ -5272,6 +5304,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         receiveManufacturedDates={receiveManufacturedDates} setReceiveManufacturedDates={setReceiveManufacturedDates}
         onConfirmReceive={handleConfirmReceive}
         isConfirmingReceive={isConfirmingReceive}
+        canManagePurchaseOrders={canManagePurchaseOrders}
       />{/* end purchase order lifecycle */}
 
       {/* ── CUSTOMERS TAB ── */}
@@ -5306,6 +5339,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         onEditCustomer={handleEditCustomer}
         onToggleCustomerStatus={handleToggleCustomerStatus}
         onPrintReceipt={handlePrintReceipt}
+        canManageCustomers={canManageCustomers}
       />{/* end customers */}
 
       {/* ── REPORTS TAB ── */}
@@ -5352,7 +5386,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
 
       {/* ── CASH DRAWER / EOD REPORT ── */}
       <CashDrawerReportPanel
-        visible={activeTab === 'employees' && !!businessId && appUnlocked}
+        visible={activeTab === 'cash_drawer' && !!businessId && appUnlocked && canViewCashDrawerReport}
         drawerSession={drawerSession}
         onOpenDrawer={handleOpenDrawer}
         openingFloat={openingFloat}
@@ -5659,22 +5693,26 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
                                 <div>
                                   <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>This supplier is not yet in your catalog.</div>
                                   <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                                    <button
-                                      type="button"
-                                      disabled={isCreatingSmartSupplier}
-                                      onClick={async () => {
-                                        setIsCreatingSmartSupplier(true);
-                                        const { data: newSup, error: supErr } = await supabase
-                                          .from("suppliers")
-                                          .insert({ business_id: businessId, name: extractedName, status: "active" })
-                                          .select("id, name")
-                                          .single();
-                                        if (supErr) { setMessage({ text: "Failed to create supplier: " + supErr.message, type: "error" }); }
-                                        else if (newSup) { setSmartReceiveLinkedSupplierId(newSup.id); await loadSuppliers(); }
-                                        setIsCreatingSmartSupplier(false);
-                                      }}
-                                      style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 600, cursor: isCreatingSmartSupplier ? "not-allowed" : "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", opacity: isCreatingSmartSupplier ? 0.6 : 1 }}
-                                    >{isCreatingSmartSupplier ? "Creating..." : "Create Supplier"}</button>
+                                    {/* Role-permissions revision: creating a supplier record is
+                                        owner+manager only, same rule as Supplier Management. */}
+                                    {canManageSuppliers && (
+                                      <button
+                                        type="button"
+                                        disabled={isCreatingSmartSupplier}
+                                        onClick={async () => {
+                                          setIsCreatingSmartSupplier(true);
+                                          const { data: newSup, error: supErr } = await supabase
+                                            .from("suppliers")
+                                            .insert({ business_id: businessId, name: extractedName, status: "active" })
+                                            .select("id, name")
+                                            .single();
+                                          if (supErr) { setMessage({ text: "Failed to create supplier: " + supErr.message, type: "error" }); }
+                                          else if (newSup) { setSmartReceiveLinkedSupplierId(newSup.id); await loadSuppliers(); }
+                                          setIsCreatingSmartSupplier(false);
+                                        }}
+                                        style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 600, cursor: isCreatingSmartSupplier ? "not-allowed" : "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", opacity: isCreatingSmartSupplier ? 0.6 : 1 }}
+                                      >{isCreatingSmartSupplier ? "Creating..." : "Create Supplier"}</button>
+                                    )}
                                     <button type="button" onClick={resetAll} style={{ padding: "8px 14px", fontSize: "13px", cursor: "pointer", background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", color: "#475569" }}>Cancel</button>
                                   </div>
 

@@ -162,6 +162,14 @@ type InventoryTabProps = {
   needsOrderingQtys: Record<string, number>;
   setNeedsOrderingQtys: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   onCreatePOFromNeedsOrdering: () => void;
+  /** Role-permissions revision: this section creates purchase orders, so it
+   *  is owner+manager only, same rule as PurchaseOrderLifecyclePanel's
+   *  Create PO form. */
+  canManagePurchaseOrders: boolean;
+  /** Role-permissions revision: creating a supplier record (Smart Receive's
+   *  inline "Create Supplier" and the receiving-session "Create new" link
+   *  flow) is owner+manager only, same rule as Supplier Management. */
+  canManageSuppliers: boolean;
 
   // Transaction History
   txHistoryOpen: boolean;
@@ -196,7 +204,7 @@ export function InventoryTab(props: InventoryTabProps) {
     onReceive, selectedProductId, setSelectedProductId, receiveQuantity, setReceiveQuantity,
     canBulkImport, onDownloadCsvTemplate, onCsvUpload, bulkPreview, bulkImporting, onBulkImport, bulkResults,
     lowStockProducts, needsOrderingSelected, setNeedsOrderingSelected, needsOrderingQtys, setNeedsOrderingQtys,
-    onCreatePOFromNeedsOrdering,
+    onCreatePOFromNeedsOrdering, canManagePurchaseOrders, canManageSuppliers,
     txHistoryOpen, setTxHistoryOpen, txDateRange, transactions, setTxDateRange, movementFilter, setMovementFilter,
   } = props;
 
@@ -579,7 +587,10 @@ export function InventoryTab(props: InventoryTabProps) {
                   </div>
                   <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
                     <button onClick={() => setResolveMode("pick")} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "pick" ? 700 : 400, cursor: "pointer", background: resolveMode === "pick" ? "#7c3aed" : "none", color: resolveMode === "pick" ? "#fff" : "#7c3aed", border: "1px solid #7c3aed", borderRadius: "5px" }}>Match existing</button>
-                    <button onClick={() => { setResolveMode("create"); setResolveNewSupplierName(session.supplier_name ?? ""); }} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "create" ? 700 : 400, cursor: "pointer", background: resolveMode === "create" ? "#7c3aed" : "none", color: resolveMode === "create" ? "#fff" : "#7c3aed", border: "1px solid #7c3aed", borderRadius: "5px" }}>Create new</button>
+                    {/* Role-permissions revision: creating a supplier record is owner+manager only. */}
+                    {canManageSuppliers && (
+                      <button onClick={() => { setResolveMode("create"); setResolveNewSupplierName(session.supplier_name ?? ""); }} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "create" ? 700 : 400, cursor: "pointer", background: resolveMode === "create" ? "#7c3aed" : "none", color: resolveMode === "create" ? "#fff" : "#7c3aed", border: "1px solid #7c3aed", borderRadius: "5px" }}>Create new</button>
+                    )}
                     <button onClick={() => setResolveMode("nolinkconfirm")} style={{ padding: "5px 12px", fontSize: "12px", fontWeight: resolveMode === "nolinkconfirm" ? 700 : 400, cursor: "pointer", background: resolveMode === "nolinkconfirm" ? "#64748b" : "none", color: resolveMode === "nolinkconfirm" ? "#fff" : "#64748b", border: "1px solid #94a3b8", borderRadius: "5px" }}>Continue without linking</button>
                   </div>
                   {resolveMode === "pick" && (
@@ -984,9 +995,9 @@ export function InventoryTab(props: InventoryTabProps) {
         )}
       </div>}
 
-      {/* ── Needs Ordering Today ── */}
+      {/* ── Needs Ordering Today (creates purchase orders - owner+manager only) ── */}
       {(() => {
-        if (lowStockProducts.length === 0) return null;
+        if (!canManagePurchaseOrders || lowStockProducts.length === 0) return null;
 
         const allIds = lowStockProducts.map(p => p.product_id);
         const allSelected = allIds.length > 0 && allIds.every(id => needsOrderingSelected.has(id));
