@@ -473,14 +473,19 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [activeCashierId, setActiveCashierId] = useState<string | null>(null);
   const [activeCashierName, setActiveCashierName] = useState("");
   const [newEmpName, setNewEmpName] = useState("");
+  const [newEmpCode, setNewEmpCode] = useState("");
   const [newEmpPin, setNewEmpPin] = useState("");
   const [newEmpRole, setNewEmpRole] = useState<"cashier" | "manager" | "inventory_clerk">("cashier");
   const [staffSession, setStaffSession] = useState<{ id: string; name: string; role: string } | null>(null);
   const [ownerBypass, setOwnerBypass] = useState(false);
+  // Staff Authentication Redesign: login now requires both an Employee ID
+  // and a PIN - employeeCodeInput identifies who, pinInput authenticates.
+  const [employeeCodeInput, setEmployeeCodeInput] = useState("");
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [editEmpRole, setEditEmpRole] = useState("");
+  const [editEmpCode, setEditEmpCode] = useState("");
   const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
   const [salesSearchQuery, setSalesSearchQuery] = useState("");
   const [salesDateRange, setSalesDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
@@ -1027,13 +1032,22 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   }
 
   function handlePinLogin() {
+    const code = employeeCodeInput.trim();
     const pin = pinInput.trim();
-    if (!pin) return;
-    const emp = employees.find(e => e.pin === pin && e.status === "active");
-    if (!emp) { setPinError("Invalid PIN or inactive account"); return; }
+    if (!code || !pin) return;
+    // Staff Authentication Redesign: identify by Employee ID first, then
+    // verify active status and PIN - but never reveal which check failed.
+    // Every failure path (unknown code, inactive account, wrong PIN) hits
+    // the exact same generic message.
+    const emp = employees.find(e => e.employee_code.toLowerCase() === code.toLowerCase());
+    if (!emp || emp.status !== "active" || emp.pin !== pin) {
+      setPinError("Invalid Employee ID or PIN");
+      return;
+    }
     setStaffSession({ id: emp.id, name: emp.name, role: emp.role });
     setActiveCashierId(emp.id);
     setActiveCashierName(emp.name);
+    setEmployeeCodeInput("");
     setPinInput("");
     setPinError("");
     const tabs = tabAccess[emp.role] ?? tabAccess.owner;
@@ -1043,6 +1057,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   function handleStaffLogout() {
     setStaffSession(null);
     setOwnerBypass(false);
+    setEmployeeCodeInput("");
     setPinInput("");
     setPinError("");
     setActiveCashierId(null);
@@ -1741,7 +1756,7 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   async function loadEmployees() {
     const { data, error } = await supabase
       .from("employees")
-      .select("id, business_id, name, role, status, pin, created_at")
+      .select("id, business_id, name, employee_code, role, status, pin, created_at")
       .order("created_at", { ascending: false });
     if (error) { console.error(error); return; }
     setEmployees((data as Employee[]) || []);
@@ -3061,24 +3076,30 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   async function handleAddEmployee(e: React.FormEvent) {
     e.preventDefault();
     if (!canManageStaff) return;
-    if (!newEmpName.trim() || !newEmpPin.trim() || !businessId) return;
+    if (!newEmpName.trim() || !newEmpCode.trim() || !newEmpPin.trim() || !businessId) return;
+    const code = newEmpCode.trim().toUpperCase();
+    if (!/^[A-Z0-9]{2,20}$/.test(code)) { setMessage({ text: "Employee ID must be 2–20 letters/numbers", type: "error" }); return; }
     const pin = newEmpPin.trim();
     if (!/^\d{4,6}$/.test(pin)) { setMessage({ text: "PIN must be 4–6 digits", type: "error" }); return; }
+    const duplicateCode = employees.find(emp => emp.employee_code.toUpperCase() === code);
+    if (duplicateCode) { setMessage({ text: `Employee ID already assigned to ${duplicateCode.name}`, type: "error" }); return; }
     const duplicate = employees.find(emp => emp.pin === pin);
     if (duplicate) { setMessage({ text: `PIN already assigned to ${duplicate.name}`, type: "error" }); return; }
     const { error } = await supabase.from("employees").insert({
       business_id: businessId,
       name: newEmpName.trim(),
+      employee_code: code,
       pin,
       role: newEmpRole,
       status: "active",
     });
     if (error) { console.error(error); setMessage({ text: "Failed to add employee: " + error.message, type: "error" }); return; }
     setNewEmpName("");
+    setNewEmpCode("");
     setNewEmpPin("");
     setNewEmpRole("cashier");
     setOwnerBypass(true);
-    setMessage({ text: `Employee added — PIN: ${pin}`, type: "success" });
+    setMessage({ text: `Employee added — ID: ${code}, PIN: ${pin}`, type: "success" });
     await loadEmployees();
   }
 
@@ -3098,14 +3119,21 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
     await loadEmployees();
   }
 
-  async function handleSaveEmployeeRole(emp: Employee) {
+  async function handleSaveEmployeeEdit(emp: Employee) {
     if (!canManageStaff) return;
-    if (!editEmpRole || editEmpRole === emp.role) { setEditingEmpId(null); return; }
-    const { error } = await supabase.from("employees").update({ role: editEmpRole }).eq("id", emp.id);
-    if (error) { console.error(error); setMessage({ text: "Failed to update role: " + error.message, type: "error" }); return; }
+    const code = editEmpCode.trim().toUpperCase();
+    if (!code) { setMessage({ text: "Employee ID is required", type: "error" }); return; }
+    if (!/^[A-Z0-9]{2,20}$/.test(code)) { setMessage({ text: "Employee ID must be 2–20 letters/numbers", type: "error" }); return; }
+    const duplicateCode = employees.find(e => e.id !== emp.id && e.employee_code.toUpperCase() === code);
+    if (duplicateCode) { setMessage({ text: `Employee ID already assigned to ${duplicateCode.name}`, type: "error" }); return; }
+    const role = editEmpRole || emp.role;
+    if (role === emp.role && code === emp.employee_code.toUpperCase()) { setEditingEmpId(null); return; }
+    const { error } = await supabase.from("employees").update({ role, employee_code: code }).eq("id", emp.id);
+    if (error) { console.error(error); setMessage({ text: "Failed to update employee: " + error.message, type: "error" }); return; }
     setEditingEmpId(null);
     setEditEmpRole("");
-    setMessage({ text: `${emp.name} role updated to ${editEmpRole}`, type: "success" });
+    setEditEmpCode("");
+    setMessage({ text: `${emp.name} updated`, type: "success" });
     await loadEmployees();
   }
 
@@ -4854,8 +4882,17 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       {businessId && !staffSession && !ownerBypass && employees.some(e => e.pin && e.status === "active") && (
         <div style={{ maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
           <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Staff Login</h2>
-          <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your PIN to start your shift</p>
+          <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your Employee ID and PIN to start your shift</p>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="Employee ID"
+              value={employeeCodeInput}
+              onChange={(e) => { setEmployeeCodeInput(e.target.value); setPinError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
+              autoFocus
+              style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "16px", textAlign: "center", width: "220px" }}
+            />
             <input
               type="password"
               inputMode="numeric"
@@ -4864,11 +4901,10 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
               value={pinInput}
               onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(""); }}
               onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
-              autoFocus
               style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "24px", textAlign: "center", width: "180px", letterSpacing: "0.3em" }}
             />
             {pinError && <p style={{ margin: 0, color: "#b91c1c", fontSize: "13px" }}>{pinError}</p>}
-            <button onClick={handlePinLogin} disabled={!pinInput} style={{ padding: "10px 32px", background: pinInput ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: pinInput ? "pointer" : "not-allowed" }}>
+            <button onClick={handlePinLogin} disabled={!employeeCodeInput || !pinInput} style={{ padding: "10px 32px", background: (employeeCodeInput && pinInput) ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: (employeeCodeInput && pinInput) ? "pointer" : "not-allowed" }}>
               Clock In
             </button>
             <button onClick={() => setOwnerBypass(true)} style={{ padding: "8px 20px", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "13px", marginTop: "8px" }}>
@@ -5438,6 +5474,8 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         onAddEmployee={handleAddEmployee}
         newEmpName={newEmpName}
         setNewEmpName={setNewEmpName}
+        newEmpCode={newEmpCode}
+        setNewEmpCode={setNewEmpCode}
         newEmpPin={newEmpPin}
         setNewEmpPin={setNewEmpPin}
         newEmpRole={newEmpRole}
@@ -5449,7 +5487,9 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
         setEditingEmpId={setEditingEmpId}
         editEmpRole={editEmpRole}
         setEditEmpRole={setEditEmpRole}
-        onSaveEmployeeRole={handleSaveEmployeeRole}
+        editEmpCode={editEmpCode}
+        setEditEmpCode={setEditEmpCode}
+        onSaveEmployeeEdit={handleSaveEmployeeEdit}
         onToggleEmployeeStatus={handleToggleEmployeeStatus}
       />
 

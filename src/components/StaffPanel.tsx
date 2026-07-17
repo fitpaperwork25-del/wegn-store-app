@@ -8,6 +8,10 @@ type StaffPanelProps = {
   onAddEmployee: (e: React.FormEvent) => Promise<void>;
   newEmpName: string;
   setNewEmpName: React.Dispatch<React.SetStateAction<string>>;
+  /** Staff Authentication Redesign: unique per-business login identifier -
+   *  required alongside PIN for the new Employee ID + PIN staff login. */
+  newEmpCode: string;
+  setNewEmpCode: React.Dispatch<React.SetStateAction<string>>;
   newEmpPin: string;
   setNewEmpPin: React.Dispatch<React.SetStateAction<string>>;
   newEmpRole: "cashier" | "manager" | "inventory_clerk";
@@ -20,7 +24,9 @@ type StaffPanelProps = {
   setEditingEmpId: React.Dispatch<React.SetStateAction<string | null>>;
   editEmpRole: string;
   setEditEmpRole: React.Dispatch<React.SetStateAction<string>>;
-  onSaveEmployeeRole: (emp: Employee) => Promise<void>;
+  editEmpCode: string;
+  setEditEmpCode: React.Dispatch<React.SetStateAction<string>>;
+  onSaveEmployeeEdit: (emp: Employee) => Promise<void>;
   onToggleEmployeeStatus: (emp: Employee) => Promise<void>;
 };
 
@@ -30,6 +36,8 @@ export function StaffPanel({
   onAddEmployee,
   newEmpName,
   setNewEmpName,
+  newEmpCode,
+  setNewEmpCode,
   newEmpPin,
   setNewEmpPin,
   newEmpRole,
@@ -41,7 +49,9 @@ export function StaffPanel({
   setEditingEmpId,
   editEmpRole,
   setEditEmpRole,
-  onSaveEmployeeRole,
+  editEmpCode,
+  setEditEmpCode,
+  onSaveEmployeeEdit,
   onToggleEmployeeStatus,
 }: StaffPanelProps) {
   return (
@@ -60,6 +70,14 @@ export function StaffPanel({
             value={newEmpName}
             onChange={(e) => setNewEmpName(e.target.value)}
             style={{ padding: "8px", flex: "1 1 150px" }}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Employee ID *"
+            value={newEmpCode}
+            onChange={(e) => setNewEmpCode(e.target.value.toUpperCase())}
+            style={{ padding: "8px", width: "140px" }}
             required
           />
           <input
@@ -83,7 +101,7 @@ export function StaffPanel({
           </select>
           <button
             type="submit"
-            disabled={!newEmpName.trim() || !newEmpPin.trim()}
+            disabled={!newEmpName.trim() || !newEmpCode.trim() || !newEmpPin.trim()}
             style={{ padding: "8px 20px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}
           >
             Add Employee
@@ -104,6 +122,7 @@ export function StaffPanel({
           <thead>
             <tr style={{ background: "#f3f4f6" }}>
               <th style={{ textAlign: "left" }}>Name</th>
+              <th>Employee ID</th>
               <th>PIN</th>
               <th>Role</th>
               <th>Status</th>
@@ -112,7 +131,7 @@ export function StaffPanel({
           </thead>
           <tbody>
             {employees.length === 0 ? (
-              <tr><td colSpan={canManageStaff ? 5 : 4} style={{ color: "#888" }}>No employees yet</td></tr>
+              <tr><td colSpan={canManageStaff ? 6 : 5} style={{ color: "#888" }}>No employees yet</td></tr>
             ) : (
               employees.map(emp => {
                 const rowStyle = emp.status === "inactive" ? { backgroundColor: "#f5f5f5", color: "#999" } : {};
@@ -122,6 +141,18 @@ export function StaffPanel({
                 return (
                   <tr key={emp.id} style={rowStyle}>
                     <td style={{ fontWeight: "bold" }}>{emp.name}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: "13px" }}>
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={editEmpCode}
+                          onChange={(e) => setEditEmpCode(e.target.value.toUpperCase())}
+                          style={{ padding: "4px 8px", fontSize: "13px", width: "100px" }}
+                        />
+                      ) : (
+                        emp.employee_code
+                      )}
+                    </td>
                     <td style={{ fontFamily: "monospace", fontSize: "13px", color: "#64748b" }}>{emp.pin ? "****" : "—"}</td>
                     <td>
                       {isEditing ? (
@@ -131,7 +162,7 @@ export function StaffPanel({
                             <option value="manager">Manager</option>
                             <option value="inventory_clerk">Inventory Clerk</option>
                           </select>
-                          <button onClick={() => onSaveEmployeeRole(emp)} style={{ padding: "2px 10px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" }}>Save</button>
+                          <button onClick={() => onSaveEmployeeEdit(emp)} style={{ padding: "2px 10px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" }}>Save</button>
                           <button onClick={() => setEditingEmpId(null)} style={{ padding: "2px 10px", cursor: "pointer", border: "1px solid #ccc", borderRadius: "4px", fontSize: "12px", background: "#fff" }}>Cancel</button>
                         </div>
                       ) : (
@@ -150,10 +181,10 @@ export function StaffPanel({
                         <div style={{ display: "flex", gap: "6px" }}>
                           {!isEditing && (
                             <button
-                              onClick={() => { setEditingEmpId(emp.id); setEditEmpRole(emp.role); }}
+                              onClick={() => { setEditingEmpId(emp.id); setEditEmpRole(emp.role); setEditEmpCode(emp.employee_code); }}
                               style={{ padding: "3px 12px", cursor: "pointer", borderRadius: "4px", background: "#eff6ff", color: "#1d4ed8", border: "none", fontWeight: "bold" }}
                             >
-                              Edit Role
+                              Edit
                             </button>
                           )}
                           <button

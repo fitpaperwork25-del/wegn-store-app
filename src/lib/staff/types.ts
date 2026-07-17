@@ -2,6 +2,7 @@ export type Employee = {
   id: string;
   business_id: string;
   name: string;
+  employee_code: string;
   role: string;
   status: string;
   pin: string | null;

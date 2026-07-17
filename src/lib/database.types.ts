@@ -263,6 +263,7 @@ export type Database = {
           auth_user_id: string | null
           business_id: string
           created_at: string | null
+          employee_code: string
           id: string
           invite_status: string | null
           invited_at: string | null
@@ -275,6 +276,7 @@ export type Database = {
           auth_user_id?: string | null
           business_id: string
           created_at?: string | null
+          employee_code: string
           id?: string
           invite_status?: string | null
           invited_at?: string | null
@@ -287,6 +289,7 @@ export type Database = {
           auth_user_id?: string | null
           business_id?: string
           created_at?: string | null
+          employee_code?: string
           id?: string
           invite_status?: string | null
           invited_at?: string | null
