@@ -478,6 +478,15 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   const [newEmpRole, setNewEmpRole] = useState<"cashier" | "manager" | "inventory_clerk">("cashier");
   const [staffSession, setStaffSession] = useState<{ id: string; name: string; role: string } | null>(null);
   const [ownerBypass, setOwnerBypass] = useState(false);
+  // Login Navigation Fix: Owner Login is a secondary path reached from the
+  // Employee ID + PIN screen, not the default entry point. Reuses the exact
+  // same supabase.auth.signInWithPassword call AuthGate already uses - no
+  // new authentication logic, just an alternate place to reach the form.
+  const [showOwnerLoginForm, setShowOwnerLoginForm] = useState(false);
+  const [ownerLoginEmail, setOwnerLoginEmail] = useState("");
+  const [ownerLoginPassword, setOwnerLoginPassword] = useState("");
+  const [ownerLoginError, setOwnerLoginError] = useState("");
+  const [ownerLoginSubmitting, setOwnerLoginSubmitting] = useState(false);
   // Staff Authentication Redesign: login now requires both an Employee ID
   // and a PIN - employeeCodeInput identifies who, pinInput authenticates.
   const [employeeCodeInput, setEmployeeCodeInput] = useState("");
@@ -1057,12 +1066,35 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
   function handleStaffLogout() {
     setStaffSession(null);
     setOwnerBypass(false);
+    setShowOwnerLoginForm(false);
     setEmployeeCodeInput("");
     setPinInput("");
     setPinError("");
     setActiveCashierId(null);
     setActiveCashierName("");
     setActiveTab("dashboard");
+  }
+
+  // Login Navigation Fix: same supabase.auth.signInWithPassword call
+  // AuthGate uses for the owner's initial sign-in - this just lets an owner
+  // reach it as a secondary path from the Employee ID + PIN screen instead
+  // of it being the only thing a fresh page load can show. A successful
+  // sign-in is picked up by AuthGate's onAuthStateChange listener exactly
+  // as it already is today; no new auth logic here.
+  async function handleOwnerLoginSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setOwnerLoginError("");
+    if (!ownerLoginEmail.trim() || !ownerLoginPassword) return;
+    setOwnerLoginSubmitting(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: ownerLoginEmail.trim(),
+      password: ownerLoginPassword,
+    });
+    if (error) { setOwnerLoginError(error.message); setOwnerLoginSubmitting(false); return; }
+    setOwnerLoginEmail("");
+    setOwnerLoginPassword("");
+    setOwnerLoginSubmitting(false);
+    setShowOwnerLoginForm(false);
   }
 
   async function handleCreateBusiness(e: React.FormEvent) {
@@ -4833,7 +4865,22 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
               >
                 Switch User
               </button>
+            ) : hasStaffPins ? (
+              // Login Navigation Fix: an owner using the app (via "Continue
+              // as Owner" or the new Owner Login form) returns to the
+              // Employee ID + PIN screen, matching "Switch User" - it must
+              // never tear down the underlying Supabase session, or staff
+              // are stranded on the bare owner sign-in page with no way
+              // back (the original bug).
+              <button
+                onClick={() => { handleStaffLogout(); setNavOpen(false); }}
+                style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
+              >
+                Back to Employee Login
+              </button>
             ) : (
+              // No staff PINs exist yet, so there is no Employee Login
+              // screen to return to - a full sign-out remains correct here.
               <button
                 onClick={onSignOut}
                 style={{ padding: "6px 14px", fontSize: "13px", cursor: "pointer", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: "5px", fontWeight: 500, whiteSpace: "nowrap" }}
@@ -4880,38 +4927,85 @@ function App({ userId, userEmail, onSignOut }: AppProps) {
       )}
 
       {businessId && !staffSession && !ownerBypass && employees.some(e => e.pin && e.status === "active") && (
-        <div style={{ maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
-          <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Staff Login</h2>
-          <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your Employee ID and PIN to start your shift</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
-            <input
-              type="text"
-              placeholder="Employee ID"
-              value={employeeCodeInput}
-              onChange={(e) => { setEmployeeCodeInput(e.target.value); setPinError(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
-              autoFocus
-              style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "16px", textAlign: "center", width: "220px" }}
-            />
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder="Enter PIN"
-              value={pinInput}
-              onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
-              style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "24px", textAlign: "center", width: "180px", letterSpacing: "0.3em" }}
-            />
-            {pinError && <p style={{ margin: 0, color: "#b91c1c", fontSize: "13px" }}>{pinError}</p>}
-            <button onClick={handlePinLogin} disabled={!employeeCodeInput || !pinInput} style={{ padding: "10px 32px", background: (employeeCodeInput && pinInput) ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: (employeeCodeInput && pinInput) ? "pointer" : "not-allowed" }}>
-              Clock In
-            </button>
-            <button onClick={() => setOwnerBypass(true)} style={{ padding: "8px 20px", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "13px", marginTop: "8px" }}>
-              Continue as Owner
-            </button>
+        !showOwnerLoginForm ? (
+          <div style={{ maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Staff Login</h2>
+            <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your Employee ID and PIN to start your shift</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder="Employee ID"
+                value={employeeCodeInput}
+                onChange={(e) => { setEmployeeCodeInput(e.target.value); setPinError(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
+                autoFocus
+                style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "16px", textAlign: "center", width: "220px" }}
+              />
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="Enter PIN"
+                value={pinInput}
+                onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handlePinLogin(); }}
+                style={{ padding: "12px 16px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "24px", textAlign: "center", width: "180px", letterSpacing: "0.3em" }}
+              />
+              {pinError && <p style={{ margin: 0, color: "#b91c1c", fontSize: "13px" }}>{pinError}</p>}
+              <button onClick={handlePinLogin} disabled={!employeeCodeInput || !pinInput} style={{ padding: "10px 32px", background: (employeeCodeInput && pinInput) ? "#1d4ed8" : "#ccc", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: (employeeCodeInput && pinInput) ? "pointer" : "not-allowed" }}>
+                Clock In
+              </button>
+              <button onClick={() => setOwnerBypass(true)} style={{ padding: "8px 20px", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "13px", marginTop: "8px" }}>
+                Continue as Owner
+              </button>
+              {/* Login Navigation Fix: Owner email/password login is a
+                  secondary path from here, not the default entry point. */}
+              <button onClick={() => { setShowOwnerLoginForm(true); setOwnerLoginError(""); }} style={{ padding: "4px 20px", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "12px", textDecoration: "underline" }}>
+                Owner Login
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Owner Login</h2>
+            <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Sign in with your owner email and password</p>
+            <form onSubmit={handleOwnerLoginSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+              <input
+                type="email"
+                placeholder="Email"
+                value={ownerLoginEmail}
+                onChange={(e) => { setOwnerLoginEmail(e.target.value); setOwnerLoginError(""); }}
+                autoFocus
+                autoComplete="email"
+                style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", width: "100%", boxSizing: "border-box" }}
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={ownerLoginPassword}
+                onChange={(e) => { setOwnerLoginPassword(e.target.value); setOwnerLoginError(""); }}
+                autoComplete="current-password"
+                style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", width: "100%", boxSizing: "border-box" }}
+              />
+              {ownerLoginError && <p style={{ margin: 0, color: "#b91c1c", fontSize: "13px" }}>{ownerLoginError}</p>}
+              <button
+                type="submit"
+                disabled={ownerLoginSubmitting || !ownerLoginEmail.trim() || !ownerLoginPassword}
+                style={{ width: "100%", padding: "10px", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: ownerLoginSubmitting ? "not-allowed" : "pointer", opacity: ownerLoginSubmitting ? 0.7 : 1 }}
+              >
+                {ownerLoginSubmitting ? "Signing in..." : "Sign In"}
+              </button>
+              {/* Login Navigation Fix: required so an owner can always get
+                  back to the Employee ID + PIN screen from here. */}
+              <button type="button" onClick={() => { setShowOwnerLoginForm(false); setOwnerLoginError(""); }} style={{ padding: "4px 20px", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "13px", textDecoration: "underline" }}>
+                Back to Employee Login
+              </button>
+              <button type="button" onClick={onSignOut} style={{ padding: "2px 20px", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "11px" }}>
+                Sign out of this device
+              </button>
+            </form>
+          </div>
+        )
       )}
 
       {businessId && !allowedTabs.includes(activeTab) && (
