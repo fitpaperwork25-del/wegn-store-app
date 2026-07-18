@@ -5,6 +5,7 @@ import type { SalesTodaySummary } from "../lib/sales/salesHelpers";
 import type { PurchasingDashboardSummary } from "../lib/purchasing/purchasingHelpers";
 import type { CustomersDashboardSummary } from "../lib/customers/customersHelpers";
 import type { InventoryDashboardSummary } from "../lib/inventory/inventoryHelpers";
+import { formatMoney } from "../lib/business/businessConfig";
 
 type DashboardProps = {
   visible: boolean;
@@ -117,7 +118,7 @@ export function Dashboard({
                 {mySales.map((s, i) => (
                   <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
                     <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>{s.id.slice(0, 8)}…</td>
-                    <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>{currencySymbol}{Number(s.total).toFixed(2)}</td>
+                    <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>{formatMoney(Number(s.total), currencySymbol)}</td>
                     <td style={{ padding: "10px 14px", color: "#94a3b8" }}>{new Date(s.created_at).toLocaleString()}</td>
                   </tr>
                 ))}
@@ -147,7 +148,7 @@ export function Dashboard({
           <div style={{ fontSize: "22px", fontWeight: 700, color: lowStockCount > 0 ? "#0f172a" : "#94a3b8" }}>{lowStockCount} item{lowStockCount !== 1 ? "s" : ""}</div>
           <div style={{ fontSize: "12px", color: "#64748b" }}>
             {lowStockCount > 0
-              ? (buyTodayCost > 0 ? `Est. ${currencySymbol}${buyTodayCost.toFixed(2)}` : "Cost data unavailable")
+              ? (buyTodayCost > 0 ? `Est. ${formatMoney(buyTodayCost, currencySymbol)}` : "Cost data unavailable")
               : "All products stocked"}
           </div>
           <button
@@ -189,10 +190,10 @@ export function Dashboard({
             <div style={{ fontSize: "13px", color: "#94a3b8", flex: 1 }}>No sales recorded</div>
           ) : (
             <>
-              <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>{currencySymbol}{yesterdayRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>{formatMoney(yesterdayRevenue, currencySymbol)}</div>
               <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7 }}>
-                <div>Profit: <strong>{yesterdayProfit !== null ? `${currencySymbol}${yesterdayProfit.toFixed(2)}` : "—"}</strong></div>
-                <div>Cash: <strong>{currencySymbol}{yesterdayCash.toFixed(2)}</strong></div>
+                <div>Profit: <strong>{yesterdayProfit !== null ? formatMoney(yesterdayProfit, currencySymbol) : "—"}</strong></div>
+                <div>Cash: <strong>{formatMoney(yesterdayCash, currencySymbol)}</strong></div>
                 {topYesterdayId && <div>Top: <strong>{topYesterdayName}</strong> ({topYesterdayQty})</div>}
               </div>
             </>
@@ -212,7 +213,7 @@ export function Dashboard({
           <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>{currencySymbol}</div>
           <div className="dash-card-body">
             <div className="dash-card-label">Revenue Today</div>
-            <div className="dash-card-value">{currencySymbol}{revenueToday.toFixed(2)}</div>
+            <div className="dash-card-value">{formatMoney(revenueToday, currencySymbol)}</div>
           </div>
         </div>
         <div className="dash-card">
@@ -227,7 +228,7 @@ export function Dashboard({
           <div className="dash-card-icon" style={{ background: "#eef2ff", color: "#4f46e5" }}>&#x2197;</div>
           <div className="dash-card-body">
             <div className="dash-card-label">Average Sale</div>
-            <div className="dash-card-value">{txnCount > 0 ? `${currencySymbol}${avgSale.toFixed(2)}` : "—"}</div>
+            <div className="dash-card-value">{txnCount > 0 ? formatMoney(avgSale, currencySymbol) : "—"}</div>
           </div>
         </div>
         <div className="dash-card">
@@ -301,7 +302,7 @@ export function Dashboard({
                 return (
                   <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
                     <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>{s.id.slice(0, 8)}…</td>
-                    <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>{currencySymbol}{Number(s.total).toFixed(2)}</td>
+                    <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0f172a" }}>{formatMoney(Number(s.total), currencySymbol)}</td>
                     <td style={{ padding: "10px 14px", color: "#64748b" }}>{cashierName}</td>
                     <td style={{ padding: "10px 14px", color: "#94a3b8" }}>{new Date(s.created_at).toLocaleString()}</td>
                   </tr>
