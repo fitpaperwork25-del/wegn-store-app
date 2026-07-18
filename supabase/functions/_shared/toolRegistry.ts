@@ -272,6 +272,7 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     description:
       "Look up whether a cash drawer is currently open, and if so: who opened it, when, the opening float, cash sales recorded since it opened, paid-outs recorded, and the CURRENT EXPECTED cash position (opening float + cash sales - paid-outs). " +
       "Use this for questions like: \"Is the drawer open?\", \"What's the cash drawer status?\", \"How much cash should be in the drawer right now?\", \"What paid-outs have been recorded today?\". " +
+      "IMPORTANT: this figure is scoped to the CURRENT DRAWER SESSION (since it was physically opened), not the business day - if the session has been open across more than one day, this will differ from End-of-Day/today's-sales totals reported by get_sales_summary. Always phrase the answer as \"since the drawer was opened\", never as \"today's cash sales\". " +
       "This tool never reports an over/short figure - that only exists after a physical cash count at drawer close, which this tool has no way to know. It also does not report on past, already-closed drawer sessions - only the current one, if open. This tool is read-only and cannot open, close, or modify a drawer session.",
     inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
     allowedRoles: ["owner", "manager", "cashier"],

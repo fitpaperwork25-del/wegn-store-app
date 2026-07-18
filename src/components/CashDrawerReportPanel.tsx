@@ -88,14 +88,17 @@ export function CashDrawerReportPanel({
             <strong style={{ color: "#15803d", fontSize: "16px" }}>Drawer Open</strong>
             <span style={{ fontSize: "13px", color: "#888" }}>Opened: {new Date(drawerSession.opened_at as string).toLocaleString()}</span>
           </div>
+          <p style={{ fontSize: "12px", color: "#888", margin: "0 0 12px" }}>
+            Reflects activity since this drawer was opened — may span more than one business day.
+          </p>
 
           {/* Session summary cards */}
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
             {[
               { label: "Opening Float", value: `$${Number(drawerSession.opening_float).toFixed(2)}` },
-              { label: "Cash Sales", value: `$${drawerCashSales.toFixed(2)}` },
+              { label: "Cash Sales (Since Opened)", value: `$${drawerCashSales.toFixed(2)}` },
               { label: "Paid Outs", value: `−$${drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0).toFixed(2)}` },
-              { label: "Expected Cash", value: `$${(Number(drawerSession.opening_float) + drawerCashSales - drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0)).toFixed(2)}`, bold: true },
+              { label: "Expected Cash (Since Opened)", value: `$${(Number(drawerSession.opening_float) + drawerCashSales - drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0)).toFixed(2)}`, bold: true },
             ].map(card => (
               <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "12px 16px", minWidth: "140px" }}>
                 <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
@@ -171,8 +174,8 @@ export function CashDrawerReportPanel({
               const expected = Number(drawerSession.opening_float) + drawerCashSales - totalPo;
               const os = counted - expected;
               return (
-                <span style={{ fontWeight: "bold", color: os >= 0 ? "#15803d" : "#dc2626" }}>
-                  {os >= 0 ? `Over $${os.toFixed(2)}` : `Short $${Math.abs(os).toFixed(2)}`}
+                <span style={{ fontWeight: "bold", color: os >= 0 ? "#15803d" : "#dc2626" }} title="Based on cash sales since this drawer was opened">
+                  {os >= 0 ? `Over $${os.toFixed(2)}` : `Short $${Math.abs(os).toFixed(2)}`} (Since Opened)
                 </span>
               );
             })()}
@@ -243,13 +246,16 @@ export function CashDrawerReportPanel({
             {/* Drawer Reconciliation */}
             {drawerReconciliation && (
               <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", marginBottom: "24px", background: "#f8fafc" }}>
-                <h4 style={{ margin: "0 0 12px" }}>Drawer Reconciliation {drawerSession?.status === "closed" ? "(Closed)" : "(Open)"}</h4>
+                <h4 style={{ margin: "0 0 4px" }}>Drawer Reconciliation (Today) {drawerSession?.status === "closed" ? "(Closed)" : "(Open)"}</h4>
+                <p style={{ fontSize: "12px", color: "#888", margin: "0 0 12px" }}>
+                  Reflects today's business day only — may differ from the Live Cash Drawer figures above if the current session started on a different day.
+                </p>
                 <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                   {([
                     { label: "Opening Float", value: `$${drawerReconciliation.openingFloat.toFixed(2)}` },
-                    { label: "Cash Sales", value: `+$${drawerReconciliation.cashSales.toFixed(2)}`, color: "#15803d" },
+                    { label: "Cash Sales (Today)", value: `+$${drawerReconciliation.cashSales.toFixed(2)}`, color: "#15803d" },
                     { label: "Paid Outs", value: `−$${drawerReconciliation.paidOuts.toFixed(2)}`, color: drawerReconciliation.paidOuts > 0 ? "#dc2626" : "#888" },
-                    { label: "Expected Cash", value: `$${drawerReconciliation.expectedCash.toFixed(2)}`, color: "#1d4ed8" },
+                    { label: "Expected Cash (Today)", value: `$${drawerReconciliation.expectedCash.toFixed(2)}`, color: "#1d4ed8" },
                     ...(drawerSession?.status === "closed" ? [
                       { label: "Actual Cash", value: `$${Number(drawerSession.closing_count ?? 0).toFixed(2)}` },
                       { label: "Over/Short", value: (() => {
