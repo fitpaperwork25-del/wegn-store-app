@@ -123,21 +123,35 @@ export function computeReturns(raw: ReturnsRawData): ReturnsOutput {
 /** Pure orchestration: validate -> fetch -> compute. Unit-tested with a mock fetcher - no live database needed. */
 export async function getReturnsAndRefunds(
   rawInput: unknown,
-  ctx: { businessId: string },
-  fetcher: (businessId: string, filter: ReturnsInput) => Promise<ReturnsRawData>
+  ctx: { businessId: string; businessDayStartIso?: string },
+  fetcher: (businessId: string, filter: ReturnsInput, businessDayStartIso: string) => Promise<ReturnsRawData>
 ): Promise<ValidationResult<ReturnsOutput>> {
   const validated = validateReturnsInput(rawInput);
   if (!validated.ok) return validated;
-  const raw = await fetcher(ctx.businessId, validated.value);
+  // businessDayStartIso is supplied by the client (the browser's own local
+  // midnight, in UTC terms) so "today" means the STORE's business day, not
+  // the server's - a Deno Edge Function has no timezone of its own to fall
+  // back on correctly. The fallback here only degrades to the old
+  // server-clock behavior for callers that don't supply it (e.g. tests).
+  const businessDayStartIso = ctx.businessDayStartIso ?? serverLocalStartOfDayIso();
+  const raw = await fetcher(ctx.businessId, validated.value, businessDayStartIso);
   return { ok: true, value: computeReturns(raw) };
 }
 
-function rangeStartFor(dateRange: ReturnsDateRange): string | null {
-  if (dateRange === "all") return null;
+function serverLocalStartOfDayIso(): string {
   const now = new Date();
-  if (dateRange === "today") return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+}
+
+/** "today" uses the caller-supplied business-day-start instant directly (no
+ * local-timezone decomposition here); "7d"/"30d" are plain rolling windows
+ * from the real current instant, which every server clock already gets
+ * right regardless of timezone. */
+function rangeStartFor(dateRange: ReturnsDateRange, businessDayStartIso: string): string | null {
+  if (dateRange === "all") return null;
+  if (dateRange === "today") return businessDayStartIso;
   const days = dateRange === "7d" ? 7 : 30;
-  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 /**
@@ -145,7 +159,7 @@ function rangeStartFor(dateRange: ReturnsDateRange): string | null {
  * explicit filter on every query in addition to RLS - defense in depth,
  * matching every other tool executor in this registry.
  */
-export async function fetchReturnsRawData(supabase: SupabaseClient, businessId: string, filter: ReturnsInput): Promise<ReturnsRawData> {
+export async function fetchReturnsRawData(supabase: SupabaseClient, businessId: string, filter: ReturnsInput, businessDayStartIso: string = serverLocalStartOfDayIso()): Promise<ReturnsRawData> {
   const employeesRes = await supabase.from("employees").select("id, name").eq("business_id", businessId);
   if (employeesRes.error) throw employeesRes.error;
   const employees = (employeesRes.data ?? []) as RawEmployeeRow[];
@@ -159,7 +173,7 @@ export async function fetchReturnsRawData(supabase: SupabaseClient, businessId: 
 
   let query = supabase.from("return_items").select("id, sale_id, product_id, quantity_returned, reason, return_number, processed_by, created_at").eq("business_id", businessId);
 
-  const rangeStart = rangeStartFor(filter.dateRange ?? "today");
+  const rangeStart = rangeStartFor(filter.dateRange ?? "today", businessDayStartIso);
   if (rangeStart) query = query.gte("created_at", rangeStart);
   if (processedByFilter) query = query.in("processed_by", processedByFilter);
 

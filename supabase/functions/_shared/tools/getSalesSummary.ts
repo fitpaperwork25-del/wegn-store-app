@@ -193,22 +193,36 @@ export function computeSalesSummary(raw: SalesSummaryRawData): SalesSummaryOutpu
 /** Pure orchestration: validate -> fetch -> compute. Unit-tested with a mock fetcher - no live database needed. */
 export async function getSalesSummary(
   rawInput: unknown,
-  ctx: { businessId: string },
-  fetcher: (businessId: string, filter: SalesSummaryInput) => Promise<SalesSummaryRawData>
+  ctx: { businessId: string; businessDayStartIso?: string },
+  fetcher: (businessId: string, filter: SalesSummaryInput, businessDayStartIso: string) => Promise<SalesSummaryRawData>
 ): Promise<ValidationResult<SalesSummaryOutput>> {
   const validated = validateSalesSummaryInput(rawInput);
   if (!validated.ok) return validated;
-  const raw = await fetcher(ctx.businessId, validated.value);
+  // businessDayStartIso is supplied by the client (the browser's own local
+  // midnight, in UTC terms) so "today" means the STORE's business day, not
+  // the server's - a Deno Edge Function has no timezone of its own to fall
+  // back on correctly. The fallback here only degrades to the old
+  // server-clock behavior for callers that don't supply it (e.g. tests).
+  const businessDayStartIso = ctx.businessDayStartIso ?? serverLocalStartOfDayIso();
+  const raw = await fetcher(ctx.businessId, validated.value, businessDayStartIso);
   return { ok: true, value: computeSalesSummary(raw) };
 }
 
-/** Shared by every sales-domain tool in this file set - not exported, each tool file keeps its own copy rather than cross-importing from src/. */
-function rangeStartFor(dateRange: SalesSummaryDateRange): string | null {
-  if (dateRange === "all") return null;
+function serverLocalStartOfDayIso(): string {
   const now = new Date();
-  if (dateRange === "today") return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+}
+
+/** Shared by every sales-domain tool in this file set - not exported, each tool file keeps its own copy rather than cross-importing from src/.
+ * "today" uses the caller-supplied business-day-start instant directly (no
+ * local-timezone decomposition here); "7d"/"30d" are plain rolling windows
+ * from the real current instant, which every server clock already gets
+ * right regardless of timezone. */
+function rangeStartFor(dateRange: SalesSummaryDateRange, businessDayStartIso: string): string | null {
+  if (dateRange === "all") return null;
+  if (dateRange === "today") return businessDayStartIso;
   const days = dateRange === "7d" ? 7 : 30;
-  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function extractProductName(products: { name: string } | { name: string }[] | null): string | null {
@@ -223,7 +237,7 @@ function extractProductName(products: { name: string } | { name: string }[] | nu
  * matching every other tool executor in this registry. Status/date-range/
  * amount/cashier filters are all applied as real query predicates.
  */
-export async function fetchSalesSummaryRawData(supabase: SupabaseClient, businessId: string, filter: SalesSummaryInput): Promise<SalesSummaryRawData> {
+export async function fetchSalesSummaryRawData(supabase: SupabaseClient, businessId: string, filter: SalesSummaryInput, businessDayStartIso: string = serverLocalStartOfDayIso()): Promise<SalesSummaryRawData> {
   const employeesRes = await supabase.from("employees").select("id, name").eq("business_id", businessId);
   if (employeesRes.error) throw employeesRes.error;
   const employees = (employeesRes.data ?? []) as RawEmployeeRow[];
@@ -240,7 +254,7 @@ export async function fetchSalesSummaryRawData(supabase: SupabaseClient, busines
   // not vanish from totals, matching salesHelpers.ts's shared rule.
   let query = supabase.from("sales").select("id, cashier_id, total, created_at").eq("business_id", businessId).in("status", ["completed", "returned"]);
 
-  const rangeStart = rangeStartFor(filter.dateRange ?? "today");
+  const rangeStart = rangeStartFor(filter.dateRange ?? "today", businessDayStartIso);
   if (rangeStart) query = query.gte("created_at", rangeStart);
   if (filter.minTotal !== undefined) query = query.gte("total", filter.minTotal);
   if (filter.maxTotal !== undefined) query = query.lte("total", filter.maxTotal);

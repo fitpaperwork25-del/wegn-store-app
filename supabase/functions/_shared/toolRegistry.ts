@@ -21,6 +21,14 @@ export type ToolExecutionContext = {
   businessId: string;
   role: CopilotRole;
   supabase: SupabaseClient;
+  /** The store's local midnight (start of "today"), expressed as a UTC ISO
+   *  instant computed by the CLIENT - a Deno Edge Function has no timezone
+   *  of its own, so any tool answering "today"/"yesterday" questions must
+   *  use this instead of its own server clock to match the Dashboard/EOD/
+   *  Reports, all of which compute "today" from the browser's local time.
+   *  Not a new, separate "AI timezone" - this is the same store-device
+   *  clock every other reporting surface already relies on. */
+  businessDayStartIso: string;
 };
 
 export type ToolRegistryEntry = {
@@ -201,7 +209,11 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     inputSchema: GET_SALES_SUMMARY_INPUT_SCHEMA,
     allowedRoles: ["owner", "manager"],
     execute: async (rawInput, ctx) => {
-      const result = await getSalesSummary(rawInput, { businessId: ctx.businessId }, (businessId, filter) => fetchSalesSummaryRawData(ctx.supabase, businessId, filter));
+      const result = await getSalesSummary(
+        rawInput,
+        { businessId: ctx.businessId, businessDayStartIso: ctx.businessDayStartIso },
+        (businessId, filter, businessDayStartIso) => fetchSalesSummaryRawData(ctx.supabase, businessId, filter, businessDayStartIso)
+      );
       if (!result.ok) return { ok: false, error: result.error };
       return { ok: true, value: result.value };
     },
@@ -216,7 +228,11 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     inputSchema: GET_RETURNS_AND_REFUNDS_INPUT_SCHEMA,
     allowedRoles: ["owner", "manager"],
     execute: async (rawInput, ctx) => {
-      const result = await getReturnsAndRefunds(rawInput, { businessId: ctx.businessId }, (businessId, filter) => fetchReturnsRawData(ctx.supabase, businessId, filter));
+      const result = await getReturnsAndRefunds(
+        rawInput,
+        { businessId: ctx.businessId, businessDayStartIso: ctx.businessDayStartIso },
+        (businessId, filter, businessDayStartIso) => fetchReturnsRawData(ctx.supabase, businessId, filter, businessDayStartIso)
+      );
       if (!result.ok) return { ok: false, error: result.error };
       return { ok: true, value: result.value };
     },

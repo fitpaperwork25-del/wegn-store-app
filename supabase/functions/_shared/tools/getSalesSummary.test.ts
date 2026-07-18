@@ -237,3 +237,25 @@ test("getSalesSummary passes businessId and the validated filter through to the 
   });
   assert.equal(receivedBusinessId, "biz-42");
 });
+
+// ---- B2: "today" must use the client's local business day, not the server's clock ----
+
+test("getSalesSummary passes ctx.businessDayStartIso through to the fetcher unchanged", async () => {
+  let received = "";
+  const clientMidnight = "2026-07-18T05:00:00.000Z"; // e.g. UTC-5 store's local midnight
+  await getSalesSummary({ dateRange: "today" }, { businessId: "b1", businessDayStartIso: clientMidnight }, async (_businessId, _filter, businessDayStartIso) => {
+    received = businessDayStartIso;
+    return rawData({});
+  });
+  assert.equal(received, clientMidnight);
+});
+
+test("getSalesSummary falls back to a server-computed business-day start when the client doesn't supply one", async () => {
+  let received = "";
+  await getSalesSummary({ dateRange: "today" }, { businessId: "b1" }, async (_businessId, _filter, businessDayStartIso) => {
+    received = businessDayStartIso;
+    return rawData({});
+  });
+  assert.notEqual(received, "");
+  assert.doesNotThrow(() => new Date(received).toISOString());
+});

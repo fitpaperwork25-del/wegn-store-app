@@ -57,7 +57,7 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Server is not configured (missing required secrets)" }, 500);
   }
 
-  let requestBody: { message?: string; conversationId?: string; employeeId?: string | null; priorMessages?: AiMessage[] };
+  let requestBody: { message?: string; conversationId?: string; employeeId?: string | null; priorMessages?: AiMessage[]; businessDayStartIso?: string };
   try {
     requestBody = await req.json();
   } catch {
@@ -92,7 +92,17 @@ serve(async (req: Request) => {
     return jsonResponse({ error: `Not authorized (${roleResult.reason})` }, 403);
   }
 
-  const ctx = { businessId: verified.businessId, role: roleResult.role, supabase: verified.supabase };
+  // The client (browser) knows the store's local business day; this server
+  // has no timezone of its own, so "today"/"yesterday" tool answers must
+  // use the client-supplied instant rather than the server's own clock.
+  // Falls back to the server's own (potentially wrong-timezone) start of
+  // day only if the client didn't supply a valid one.
+  const clientBusinessDayStart = typeof requestBody.businessDayStartIso === "string" ? new Date(requestBody.businessDayStartIso) : null;
+  const businessDayStartIso = clientBusinessDayStart && !isNaN(clientBusinessDayStart.getTime())
+    ? clientBusinessDayStart.toISOString()
+    : (() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString(); })();
+
+  const ctx = { businessId: verified.businessId, role: roleResult.role, supabase: verified.supabase, businessDayStartIso };
   const provider = new AnthropicProvider(anthropicApiKey);
 
   const messages: AiMessage[] = [
