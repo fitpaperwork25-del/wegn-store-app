@@ -5,6 +5,8 @@ import type { Sale, SaleItemRecord, ReturnLineItem } from "../lib/sales/types";
 
 type SalesHistoryPanelProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
 
   salesHistoryOpen: boolean;
   setSalesHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -44,6 +46,7 @@ type SalesHistoryPanelProps = {
 
 export function SalesHistoryPanel({
   visible,
+  currencySymbol,
   salesHistoryOpen,
   setSalesHistoryOpen,
   salesDateRange,
@@ -160,8 +163,8 @@ export function SalesHistoryPanel({
                     <tr className={rowClass}>
                       <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
                       <td style={{ fontSize: "12px", color: "#475569", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={productNames.join(", ")}>{productsLabel}</td>
-                      <td>${Number(s.total).toFixed(2)}</td>
-                      <td>${Number(s.tax).toFixed(2)}</td>
+                      <td>{currencySymbol}{Number(s.total).toFixed(2)}</td>
+                      <td>{currencySymbol}{Number(s.tax).toFixed(2)}</td>
                       <td><span className={`status-pill sp-${s.status}`}>{s.status}</span></td>
                       <td>{cashierName}</td>
                       <td>{new Date(s.created_at).toLocaleString()}</td>

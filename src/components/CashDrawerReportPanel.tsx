@@ -4,6 +4,8 @@ import type { EndOfDaySummary } from "../lib/sales/salesHelpers";
 
 type CashDrawerReportPanelProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
 
   // Cash drawer
   drawerSession: DrawerSession | null;
@@ -34,6 +36,7 @@ type CashDrawerReportPanelProps = {
 
 export function CashDrawerReportPanel({
   visible,
+  currencySymbol,
   drawerSession,
   onOpenDrawer,
   openingFloat,
@@ -67,7 +70,7 @@ export function CashDrawerReportPanel({
               type="number"
               min="0"
               step="0.01"
-              placeholder="Opening float ($)"
+              placeholder={`Opening float (${currencySymbol})`}
               value={openingFloat}
               onChange={(e) => setOpeningFloat(e.target.value)}
               style={{ padding: "8px", width: "180px" }}
@@ -95,10 +98,10 @@ export function CashDrawerReportPanel({
           {/* Session summary cards */}
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
             {[
-              { label: "Opening Float", value: `$${Number(drawerSession.opening_float).toFixed(2)}` },
-              { label: "Cash Sales (Since Opened)", value: `$${drawerCashSales.toFixed(2)}` },
-              { label: "Paid Outs", value: `−$${drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0).toFixed(2)}` },
-              { label: "Expected Cash (Since Opened)", value: `$${(Number(drawerSession.opening_float) + drawerCashSales - drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0)).toFixed(2)}`, bold: true },
+              { label: "Opening Float", value: `${currencySymbol}${Number(drawerSession.opening_float).toFixed(2)}` },
+              { label: "Cash Sales (Since Opened)", value: `${currencySymbol}${drawerCashSales.toFixed(2)}` },
+              { label: "Paid Outs", value: `−${currencySymbol}${drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0).toFixed(2)}` },
+              { label: "Expected Cash (Since Opened)", value: `${currencySymbol}${(Number(drawerSession.opening_float) + drawerCashSales - drawerPaidOuts.reduce((s, p) => s + Number(p.amount), 0)).toFixed(2)}`, bold: true },
             ].map(card => (
               <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "12px 16px", minWidth: "140px" }}>
                 <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
@@ -146,7 +149,7 @@ export function CashDrawerReportPanel({
                   {drawerPaidOuts.map(po => (
                     <tr key={po.id}>
                       <td>{new Date(po.created_at).toLocaleTimeString()}</td>
-                      <td>${Number(po.amount).toFixed(2)}</td>
+                      <td>{currencySymbol}{Number(po.amount).toFixed(2)}</td>
                       <td>{po.reason ?? "—"}</td>
                     </tr>
                   ))}
@@ -162,7 +165,7 @@ export function CashDrawerReportPanel({
               type="number"
               min="0"
               step="0.01"
-              placeholder="Counted cash ($)"
+              placeholder={`Counted cash (${currencySymbol})`}
               value={closingCount}
               onChange={(e) => setClosingCount(e.target.value)}
               style={{ padding: "7px", width: "160px" }}
@@ -175,7 +178,7 @@ export function CashDrawerReportPanel({
               const os = counted - expected;
               return (
                 <span style={{ fontWeight: "bold", color: os >= 0 ? "#15803d" : "#dc2626" }} title="Based on cash sales since this drawer was opened">
-                  {os >= 0 ? `Over $${os.toFixed(2)}` : `Short $${Math.abs(os).toFixed(2)}`} (Since Opened)
+                  {os >= 0 ? `Over ${currencySymbol}${os.toFixed(2)}` : `Short ${currencySymbol}${Math.abs(os).toFixed(2)}`} (Since Opened)
                 </span>
               );
             })()}
@@ -214,11 +217,11 @@ export function CashDrawerReportPanel({
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "24px" }}>
               {([
                 { label: "Transactions", value: String(transactions) },
-                { label: "Gross Revenue", value: `$${grossRevenue.toFixed(2)}`, color: "#1d4ed8" },
-                { label: "Avg Sale", value: `$${avgSale.toFixed(2)}` },
+                { label: "Gross Revenue", value: `${currencySymbol}${grossRevenue.toFixed(2)}`, color: "#1d4ed8" },
+                { label: "Avg Sale", value: `${currencySymbol}${avgSale.toFixed(2)}` },
                 { label: "Items Sold", value: String(itemsSold) },
-                { label: "Discounts", value: `−$${discountsTotal.toFixed(2)}`, color: discountsTotal > 0 ? "#b45309" : "#888" },
-                { label: "Returns", value: `${returnedUnits} items (−$${returnedValue.toFixed(2)})`, color: returnedUnits > 0 ? "#dc2626" : "#888" },
+                { label: "Discounts", value: `−${currencySymbol}${discountsTotal.toFixed(2)}`, color: discountsTotal > 0 ? "#b45309" : "#888" },
+                { label: "Returns", value: `${returnedUnits} items (−${currencySymbol}${returnedValue.toFixed(2)})`, color: returnedUnits > 0 ? "#dc2626" : "#888" },
               ] as { label: string; value: string; color?: string }[]).map((card) => (
                 <div key={card.label} style={{ padding: "12px 18px", border: "1px solid #e5e7eb", borderRadius: "8px", minWidth: "120px", flex: 1 }}>
                   <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
@@ -230,9 +233,9 @@ export function CashDrawerReportPanel({
             {/* Payment & Loyalty Cards */}
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "24px" }}>
               {[
-                { label: "Cash Sales", value: `$${cashTotal.toFixed(2)}`, color: "#15803d" },
-                { label: "Card Sales", value: `$${cardTotal.toFixed(2)}`, color: "#1d4ed8" },
-                ...(otherTotal > 0 ? [{ label: "Other Payments", value: `$${otherTotal.toFixed(2)}`, color: "#6b7280" }] : []),
+                { label: "Cash Sales", value: `${currencySymbol}${cashTotal.toFixed(2)}`, color: "#15803d" },
+                { label: "Card Sales", value: `${currencySymbol}${cardTotal.toFixed(2)}`, color: "#1d4ed8" },
+                ...(otherTotal > 0 ? [{ label: "Other Payments", value: `${currencySymbol}${otherTotal.toFixed(2)}`, color: "#6b7280" }] : []),
                 { label: "Loyalty Earned", value: `+${loyaltyEarned} pts`, color: loyaltyEarned > 0 ? "#15803d" : "#888" },
                 { label: "Loyalty Redeemed", value: `${loyaltyRedeemed} pts`, color: loyaltyRedeemed > 0 ? "#7c3aed" : "#888" },
               ].map((card) => (
@@ -252,15 +255,15 @@ export function CashDrawerReportPanel({
                 </p>
                 <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                   {([
-                    { label: "Opening Float", value: `$${drawerReconciliation.openingFloat.toFixed(2)}` },
-                    { label: "Cash Sales (Today)", value: `+$${drawerReconciliation.cashSales.toFixed(2)}`, color: "#15803d" },
-                    { label: "Paid Outs", value: `−$${drawerReconciliation.paidOuts.toFixed(2)}`, color: drawerReconciliation.paidOuts > 0 ? "#dc2626" : "#888" },
-                    { label: "Expected Cash (Today)", value: `$${drawerReconciliation.expectedCash.toFixed(2)}`, color: "#1d4ed8" },
+                    { label: "Opening Float", value: `${currencySymbol}${drawerReconciliation.openingFloat.toFixed(2)}` },
+                    { label: "Cash Sales (Today)", value: `+${currencySymbol}${drawerReconciliation.cashSales.toFixed(2)}`, color: "#15803d" },
+                    { label: "Paid Outs", value: `−${currencySymbol}${drawerReconciliation.paidOuts.toFixed(2)}`, color: drawerReconciliation.paidOuts > 0 ? "#dc2626" : "#888" },
+                    { label: "Expected Cash (Today)", value: `${currencySymbol}${drawerReconciliation.expectedCash.toFixed(2)}`, color: "#1d4ed8" },
                     ...(drawerSession?.status === "closed" ? [
-                      { label: "Actual Cash", value: `$${Number(drawerSession.closing_count ?? 0).toFixed(2)}` },
+                      { label: "Actual Cash", value: `${currencySymbol}${Number(drawerSession.closing_count ?? 0).toFixed(2)}` },
                       { label: "Over/Short", value: (() => {
                         const os = Number(drawerSession.over_short ?? 0);
-                        return os >= 0 ? `+$${os.toFixed(2)}` : `−$${Math.abs(os).toFixed(2)}`;
+                        return os >= 0 ? `+${currencySymbol}${os.toFixed(2)}` : `−${currencySymbol}${Math.abs(os).toFixed(2)}`;
                       })(), color: Number(drawerSession.over_short ?? 0) >= 0 ? "#15803d" : "#dc2626" },
                     ] : []),
                   ] as { label: string; value: string; color?: string }[]).map((card) => (
@@ -287,7 +290,7 @@ export function CashDrawerReportPanel({
                       <tr key={i}>
                         <td>{p.name}</td>
                         <td>{p.units}</td>
-                        <td>${p.revenue.toFixed(2)}</td>
+                        <td>{currencySymbol}{p.revenue.toFixed(2)}</td>
                       </tr>
                     ))
                   )}
@@ -312,8 +315,8 @@ export function CashDrawerReportPanel({
                         <tr key={s.id}>
                           <td>{new Date(s.created_at).toLocaleTimeString()}</td>
                           <td style={{ fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</td>
-                          <td>${Number(s.total).toFixed(2)}</td>
-                          <td style={{ color: disc > 0 ? "#b45309" : "#ccc" }}>{disc > 0 ? `−$${disc.toFixed(2)}` : "—"}</td>
+                          <td>{currencySymbol}{Number(s.total).toFixed(2)}</td>
+                          <td style={{ color: disc > 0 ? "#b45309" : "#ccc" }}>{disc > 0 ? `−${currencySymbol}${disc.toFixed(2)}` : "—"}</td>
                           <td>{method}</td>
                         </tr>
                       );
@@ -340,7 +343,7 @@ export function CashDrawerReportPanel({
                         <tr key={i}>
                           <td>{r.name}</td>
                           <td style={{ textAlign: "center" }}>{r.count}</td>
-                          <td>${r.revenue.toFixed(2)}</td>
+                          <td>{currencySymbol}{r.revenue.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>

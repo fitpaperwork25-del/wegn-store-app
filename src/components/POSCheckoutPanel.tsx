@@ -6,6 +6,8 @@ import type { LoyaltyTransaction } from "../lib/customers/types";
 
 type POSCheckoutPanelProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
 
   // Cash drawer
   drawerSession: DrawerSession | null;
@@ -92,6 +94,7 @@ type POSCheckoutPanelProps = {
 
 export function POSCheckoutPanel({
   visible,
+  currencySymbol,
   drawerSession,
   employees,
   onOpenDrawer,
@@ -184,7 +187,7 @@ export function POSCheckoutPanel({
             </div>
             <form onSubmit={onOpenDrawer} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <input
-                type="number" min="0" step="0.01" placeholder="Opening float ($)"
+                type="number" min="0" step="0.01" placeholder={`Opening float (${currencySymbol})`}
                 value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)}
                 style={{ padding: "6px 10px", width: "150px", fontSize: "13px", border: "1px solid #fca5a5", borderRadius: "6px" }}
               />
@@ -211,7 +214,7 @@ export function POSCheckoutPanel({
                 Opened: <strong>{new Date(drawerSession.opened_at as string).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong>
               </span>
               <span style={{ fontSize: "13px", color: "#374151" }}>
-                Float: <strong>${Number(drawerSession.opening_float).toFixed(2)}</strong>
+                Float: <strong>{currencySymbol}{Number(drawerSession.opening_float).toFixed(2)}</strong>
               </span>
             </div>
             {!posDrawerCloseOpen ? (
@@ -223,7 +226,7 @@ export function POSCheckoutPanel({
             ) : (
               <form onSubmit={onCloseDrawer} style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                 <input
-                  type="number" min="0" step="0.01" placeholder="Counted cash ($)"
+                  type="number" min="0" step="0.01" placeholder={`Counted cash (${currencySymbol})`}
                   value={closingCount} onChange={(e) => setClosingCount(e.target.value)}
                   style={{ padding: "6px 10px", width: "150px", fontSize: "13px", border: "1px solid #d1d5db", borderRadius: "6px" }}
                 />
@@ -308,7 +311,7 @@ export function POSCheckoutPanel({
           <option value="">Select product...</option>
           {products.filter((p) => p.quantity_on_hand > 0 && p.status === "active").map((p) => (
             <option key={p.product_id} value={p.product_id}>
-              {p.product_name} — ${p.selling_price.toFixed(2)} (stock: {p.quantity_on_hand})
+              {p.product_name} — {currencySymbol}{p.selling_price.toFixed(2)} (stock: {p.quantity_on_hand})
             </option>
           ))}
         </select>
@@ -399,21 +402,21 @@ export function POSCheckoutPanel({
                     <td>{item.product_name}</td>
                     <td>{item.quantity}</td>
                     <td>
-                      ${item.unit_price.toFixed(2)}
+                      {currencySymbol}{item.unit_price.toFixed(2)}
                       {wasNegotiated && (() => {
                         const diff = item.unit_price - item.original_unit_price;
                         const diffColor = diff < 0 ? "#dc2626" : diff > 0 ? "#15803d" : "#64748b";
-                        const diffLabel = diff < 0 ? `-$${Math.abs(diff).toFixed(2)}` : diff > 0 ? `+$${diff.toFixed(2)}` : "$0.00";
+                        const diffLabel = diff < 0 ? `-${currencySymbol}${Math.abs(diff).toFixed(2)}` : diff > 0 ? `+${currencySymbol}${diff.toFixed(2)}` : `${currencySymbol}0.00`;
                         return (
                         <div style={{ fontSize: "11px", color: "#64748b" }}>
-                          <span style={{ textDecoration: "line-through" }}>${item.original_unit_price.toFixed(2)}</span>
+                          <span style={{ textDecoration: "line-through" }}>{currencySymbol}{item.original_unit_price.toFixed(2)}</span>
                           {" "}
                           <span style={{ color: diffColor }}>{diffLabel}</span>
                         </div>
                         );
                       })()}
                     </td>
-                    <td>${item.line_total.toFixed(2)}</td>
+                    <td>{currencySymbol}{item.line_total.toFixed(2)}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                       {sellingPolicy !== "fixed_pricing" && (
@@ -481,7 +484,7 @@ export function POSCheckoutPanel({
                                 <span style={{ fontSize: "13px", fontWeight: 600, color: statusColor }}>{statusLabel}</span>
                                 {hasCost && expectedProfit != null && marginPct != null && (
                                   <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>
-                                    Profit ${expectedProfit.toFixed(2)} &middot; Margin {marginPct.toFixed(1)}%
+                                    Profit {currencySymbol}{expectedProfit.toFixed(2)} &middot; Margin {marginPct.toFixed(1)}%
                                   </span>
                                 )}
                               </div>
@@ -521,13 +524,13 @@ export function POSCheckoutPanel({
                                 </div>
                               )}
                               <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "6px 16px", fontSize: "13px", color: "#475569" }}>
-                                <div>Listed price</div><div style={{ textAlign: "right", fontWeight: 600, color: "#0f172a" }}>${item.original_unit_price.toFixed(2)}</div>
-                                <div>Average cost</div><div style={{ textAlign: "right", fontWeight: 600 }}>{hasCost ? `$${avgCost.toFixed(2)}` : "Not set"}</div>
+                                <div>Listed price</div><div style={{ textAlign: "right", fontWeight: 600, color: "#0f172a" }}>{currencySymbol}{item.original_unit_price.toFixed(2)}</div>
+                                <div>Average cost</div><div style={{ textAlign: "right", fontWeight: 600 }}>{hasCost ? `${currencySymbol}${avgCost.toFixed(2)}` : "Not set"}</div>
                                 <div>Overhead</div><div style={{ textAlign: "right", fontWeight: 600 }}>{overheadPct}%</div>
                                 {hasCost && <>
-                                  <div>Break-even</div><div style={{ textAlign: "right", fontWeight: 600 }}>${breakEven.toFixed(2)}</div>
-                                  <div>Minimum safe</div><div style={{ textAlign: "right", fontWeight: 600 }}>${minSafe.toFixed(2)}</div>
-                                  <div>Target price</div><div style={{ textAlign: "right", fontWeight: 600 }}>${targetPrice.toFixed(2)}</div>
+                                  <div>Break-even</div><div style={{ textAlign: "right", fontWeight: 600 }}>{currencySymbol}{breakEven.toFixed(2)}</div>
+                                  <div>Minimum safe</div><div style={{ textAlign: "right", fontWeight: 600 }}>{currencySymbol}{minSafe.toFixed(2)}</div>
+                                  <div>Target price</div><div style={{ textAlign: "right", fontWeight: 600 }}>{currencySymbol}{targetPrice.toFixed(2)}</div>
                                 </>}
                               </div>
                             </div>
@@ -603,33 +606,33 @@ export function POSCheckoutPanel({
                     <>
                       <tr>
                         <td colSpan={3} style={{ textAlign: "right" }}>Subtotal</td>
-                        <td>${subtotal.toFixed(2)}</td>
+                        <td>{currencySymbol}{subtotal.toFixed(2)}</td>
                         <td></td>
                       </tr>
                       {discountAmt > 0 && (
                         <tr>
                           <td colSpan={3} style={{ textAlign: "right", color: "#16a34a" }}>Discount</td>
-                          <td style={{ color: "#16a34a" }}>−${discountAmt.toFixed(2)}</td>
+                          <td style={{ color: "#16a34a" }}>−{currencySymbol}{discountAmt.toFixed(2)}</td>
                           <td></td>
                         </tr>
                       )}
                       {tfTaxAmt > 0 && (
                         <tr>
                           <td colSpan={3} style={{ textAlign: "right", color: "#b45309" }}>Tax ({businessTaxRate}%)</td>
-                          <td style={{ color: "#b45309" }}>${tfTaxAmt.toFixed(2)}</td>
+                          <td style={{ color: "#b45309" }}>{currencySymbol}{tfTaxAmt.toFixed(2)}</td>
                           <td></td>
                         </tr>
                       )}
                       {tfRedeemPts > 0 && (
                         <tr>
                           <td colSpan={3} style={{ textAlign: "right", color: "#7c3aed" }}>Points ({tfRedeemPts} pts)</td>
-                          <td style={{ color: "#7c3aed" }}>−${redeemDollar.toFixed(2)}</td>
+                          <td style={{ color: "#7c3aed" }}>−{currencySymbol}{redeemDollar.toFixed(2)}</td>
                           <td></td>
                         </tr>
                       )}
                       <tr>
                         <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total</td>
-                        <td style={{ fontWeight: "bold" }}>${finalTotal.toFixed(2)}</td>
+                        <td style={{ fontWeight: "bold" }}>{currencySymbol}{finalTotal.toFixed(2)}</td>
                         <td></td>
                       </tr>
                     </>
@@ -702,7 +705,7 @@ export function POSCheckoutPanel({
                   <span style={{ fontSize: "13px", color: "#dc2626", fontWeight: "bold" }}>Exceeds available points ({custBal})</span>
                 )}
                 {!redeemExceeds && redeemVal > 0 && (
-                  <span style={{ fontSize: "13px", color: "#7c3aed" }}>= −${(redeemVal / 100).toFixed(2)}</span>
+                  <span style={{ fontSize: "13px", color: "#7c3aed" }}>= −{currencySymbol}{(redeemVal / 100).toFixed(2)}</span>
                 )}
                 {posRedeemPoints && (
                   <button onClick={() => setPosRedeemPoints("")} style={{ padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}>
@@ -766,7 +769,7 @@ export function POSCheckoutPanel({
                   />
                   {Number(amountTendered) >= finalTotal && amountTendered !== "" && (
                     <span style={{ fontWeight: "bold", color: "#15803d" }}>
-                      Change: ${(Number(amountTendered) - finalTotal).toFixed(2)}
+                      Change: {currencySymbol}{(Number(amountTendered) - finalTotal).toFixed(2)}
                     </span>
                   )}
                 </>

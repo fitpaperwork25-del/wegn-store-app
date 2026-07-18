@@ -4,9 +4,11 @@ type SalesAnalyticsReportProps = {
   analyticsData: AnalyticsData;
   analyticsRange: 'today' | '7d' | '30d' | 'all';
   setAnalyticsRange: (v: 'today' | '7d' | '30d' | 'all') => void;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
 };
 
-export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyticsRange }: SalesAnalyticsReportProps) {
+export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyticsRange, currencySymbol }: SalesAnalyticsReportProps) {
   const { revenue, txCount, avgTx, itemsSold, discounts, taxCollected,
           cashTotal, cardTotal, otherTotal, dailyRows, productRows, rangeLabel } = analyticsData;
 
@@ -40,12 +42,12 @@ export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyti
       {/* KPI cards */}
       <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "28px" }}>
         {[
-          { label: "Revenue", value: `$${revenue.toFixed(2)}`, color: "#1d4ed8" },
+          { label: "Revenue", value: `${currencySymbol}${revenue.toFixed(2)}`, color: "#1d4ed8" },
           { label: "Transactions", value: String(txCount) },
-          { label: "Avg Transaction", value: `$${avgTx.toFixed(2)}` },
+          { label: "Avg Transaction", value: `${currencySymbol}${avgTx.toFixed(2)}` },
           { label: "Items Sold", value: String(itemsSold) },
-          { label: "Discounts Given", value: `$${discounts.toFixed(2)}`, color: discounts > 0 ? "#b45309" : undefined },
-          { label: "Tax Collected", value: `$${taxCollected.toFixed(2)}`, color: taxCollected > 0 ? "#b45309" : undefined },
+          { label: "Discounts Given", value: `${currencySymbol}${discounts.toFixed(2)}`, color: discounts > 0 ? "#b45309" : undefined },
+          { label: "Tax Collected", value: `${currencySymbol}${taxCollected.toFixed(2)}`, color: taxCollected > 0 ? "#b45309" : undefined },
         ].map(card => (
           <div key={card.label} style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "14px 20px", minWidth: "140px", flex: 1 }}>
             <div style={{ fontSize: "12px", color: "#888" }}>{card.label}</div>
@@ -63,7 +65,7 @@ export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyti
         ].map(p => (
           <div key={p.label} style={{ border: "1px solid #e5e7eb", borderRadius: "8px", padding: "12px 18px", minWidth: "120px" }}>
             <div style={{ fontSize: "12px", color: "#888" }}>{p.label}</div>
-            <div style={{ fontSize: "20px", fontWeight: "bold", color: p.color }}>${p.value.toFixed(2)}</div>
+            <div style={{ fontSize: "20px", fontWeight: "bold", color: p.color }}>{currencySymbol}{p.value.toFixed(2)}</div>
             <div style={{ fontSize: "11px", color: "#aaa" }}>
               {revenue > 0 ? `${((p.value / revenue) * 100).toFixed(0)}%` : '—'}
             </div>
@@ -87,7 +89,7 @@ export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyti
                   {dailyRows.map(([date, row]) => (
                     <tr key={date}>
                       <td>{new Date(date + 'T12:00:00').toLocaleDateString()}</td>
-                      <td>${row.revenue.toFixed(2)}</td>
+                      <td>{currencySymbol}{row.revenue.toFixed(2)}</td>
                       <td>{row.count}</td>
                     </tr>
                   ))}
@@ -95,7 +97,7 @@ export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyti
                 <tfoot>
                   <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
                     <td>Total</td>
-                    <td>${revenue.toFixed(2)}</td>
+                    <td>{currencySymbol}{revenue.toFixed(2)}</td>
                     <td>{txCount}</td>
                   </tr>
                 </tfoot>
@@ -121,7 +123,7 @@ export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyti
                       <td>{i + 1}</td>
                       <td>{row.name}</td>
                       <td>{row.units}</td>
-                      <td>${row.revenue.toFixed(2)}</td>
+                      <td>{currencySymbol}{row.revenue.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -129,7 +131,7 @@ export function SalesAnalyticsReport({ analyticsData, analyticsRange, setAnalyti
                   <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
                     <td colSpan={2}>Total</td>
                     <td>{productRows.reduce((s, r) => s + r.units, 0)}</td>
-                    <td>${productRows.reduce((s, r) => s + r.revenue, 0).toFixed(2)}</td>
+                    <td>{currencySymbol}{productRows.reduce((s, r) => s + r.revenue, 0).toFixed(2)}</td>
                   </tr>
                 </tfoot>
               </table>

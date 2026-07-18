@@ -9,6 +9,8 @@ type POPrintModalProps = {
   businessAddress: string;
   businessPhone: string;
   businessEmail: string;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   fmtPhone: (p: string) => string;
   getPoSignatures: (poId: string) => PoSignatures;
   onClose: () => void;
@@ -21,6 +23,7 @@ export function POPrintModal({
   businessAddress,
   businessPhone,
   businessEmail,
+  currencySymbol,
   fmtPhone,
   getPoSignatures,
   onClose,
@@ -147,8 +150,8 @@ export function POPrintModal({
                 <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
                   <td style={{ padding: "10px 12px" }}>{productMap[item.product_id] ?? "Unknown"}</td>
                   <td style={{ padding: "10px 12px", textAlign: "center" }}>{item.quantity}</td>
-                  <td style={{ padding: "10px 12px", textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
-                  <td style={{ padding: "10px 12px", textAlign: "right" }}>${Number(item.line_total).toFixed(2)}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right" }}>{currencySymbol}{Number(item.unit_cost).toFixed(2)}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right" }}>{currencySymbol}{Number(item.line_total).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -158,7 +161,7 @@ export function POPrintModal({
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0" }}>
             <div style={{ background: "#f1f5f9", border: "1px solid #94a3b8", borderTop: "none", borderRadius: "0 0 5px 5px", padding: "10px 24px", minWidth: "240px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: "14px", fontWeight: 600, color: "#475569" }}>Grand Total</span>
-              <span style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>${grandTotal.toFixed(2)}</span>
+              <span style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>{currencySymbol}{grandTotal.toFixed(2)}</span>
             </div>
           </div>
 

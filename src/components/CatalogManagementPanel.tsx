@@ -5,6 +5,8 @@ import { getTotalInventoryValue } from "../lib/product/productHelpers";
 
 type CatalogManagementPanelProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   products: ProductStock[];
   suppliers: Supplier[];
   categories: Category[];
@@ -105,7 +107,7 @@ type CatalogManagementPanelProps = {
 };
 
 export function CatalogManagementPanel({
-  visible, products, suppliers, categories, categoryMap, lowStockProducts,
+  visible, currencySymbol, products, suppliers, categories, categoryMap, lowStockProducts,
   canAddProducts, onAddProduct, newName, setNewName, newSku, setNewSku, newBarcode, setNewBarcode,
   setBarcodeAutoFill, onBarcodeLookup, newCostPrice, setNewCostPrice, newSellingPrice, setNewSellingPrice,
   newReorderLevel, setNewReorderLevel, newProductCategory, setNewProductCategory, newOverhead, setNewOverhead,
@@ -242,7 +244,7 @@ export function CatalogManagementPanel({
               <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>$</div>
               <div className="dash-card-body">
                 <div className="dash-card-label">Inventory Value</div>
-                <div className="dash-card-value">${inventoryValue.toFixed(2)}</div>
+                <div className="dash-card-value">{currencySymbol}{inventoryValue.toFixed(2)}</div>
               </div>
             </div>
             <div className="dash-card">
@@ -370,7 +372,7 @@ export function CatalogManagementPanel({
                     <td data-label="Product" style={{ fontWeight: 500 }}>{product.product_name}</td>
                     <td data-label="Category" style={{ fontSize: "13px", color: "#64748b" }}>{(product.category_id ? categoryMap[product.category_id]?.name : null) ?? "—"}</td>
                     <td data-label="SKU" style={{ color: "#64748b", fontFamily: "var(--mono)", fontSize: "13px" }}>{product.sku ?? "—"}</td>
-                    <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>${product.selling_price.toFixed(2)}</td>
+                    <td data-label="Price" style={{ textAlign: "right", fontWeight: 500 }}>{currencySymbol}{product.selling_price.toFixed(2)}</td>
                     <td data-label="Stock" style={{ textAlign: "right" }}>
                       <span style={{ fontWeight: 500 }}>{product.quantity_on_hand}</span>
                       {!inactive && isOutOfStock && (
@@ -504,11 +506,11 @@ export function CatalogManagementPanel({
                             const target = tm > 0 ? breakEven * (1 + tm / 100) : null;
                             return (
                               <div style={{ width: "100%", display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#64748b", padding: "4px 0" }}>
-                                <span>Avg Cost: <strong style={{ color: "#0f172a" }}>${avgCost.toFixed(2)}</strong></span>
-                                <span>Break-even: <strong style={{ color: "#64748b" }}>${breakEven.toFixed(2)}</strong></span>
-                                {minSafe !== null && <span>Min Safe: <strong style={{ color: "#b45309" }}>${minSafe.toFixed(2)}</strong></span>}
-                                {target !== null && <span>Target: <strong style={{ color: "#15803d" }}>${target.toFixed(2)}</strong></span>}
-                                <span>Listed: <strong style={{ color: "#1d4ed8" }}>${product.selling_price.toFixed(2)}</strong></span>
+                                <span>Avg Cost: <strong style={{ color: "#0f172a" }}>{currencySymbol}{avgCost.toFixed(2)}</strong></span>
+                                <span>Break-even: <strong style={{ color: "#64748b" }}>{currencySymbol}{breakEven.toFixed(2)}</strong></span>
+                                {minSafe !== null && <span>Min Safe: <strong style={{ color: "#b45309" }}>{currencySymbol}{minSafe.toFixed(2)}</strong></span>}
+                                {target !== null && <span>Target: <strong style={{ color: "#15803d" }}>{currencySymbol}{target.toFixed(2)}</strong></span>}
+                                <span>Listed: <strong style={{ color: "#1d4ed8" }}>{currencySymbol}{product.selling_price.toFixed(2)}</strong></span>
                               </div>
                             );
                           })()}

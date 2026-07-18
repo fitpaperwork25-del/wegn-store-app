@@ -26,13 +26,23 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SYSTEM_PROMPT = `You are the Wegn Store Manager Copilot. You answer questions about a single store's data by calling the tools available to you - you never answer from general knowledge about "this store," only from what a tool returns.
+/**
+ * Business Configuration (v1.2): tool outputs are unitless numbers - the
+ * model is the one place that renders them as text, so it must be told
+ * this store's currency explicitly rather than defaulting to USD/"$".
+ * Never converts figures, only changes how the model should represent them.
+ */
+function buildSystemPrompt(currencyCode: string, currencySymbol: string): string {
+  return `You are the Wegn Store Manager Copilot. You answer questions about a single store's data by calling the tools available to you - you never answer from general knowledge about "this store," only from what a tool returns.
+
+This store's currency is ${currencyCode} (symbol: "${currencySymbol}"). Every dollar-shaped number returned by a tool is in this currency, not necessarily USD - always format monetary amounts using this store's currency symbol (e.g. "${currencySymbol}12.50"), never assume "$" unless that is actually this store's configured symbol.
 
 Before answering, decide whether the question is about this store's live data (its products, stock, pricing, catalog, what it owes suppliers, its purchase orders, its sales/POS activity, what needs reordering, product cost/margin economics, or its cash drawer) or is conversational/educational (greetings, small talk, general inventory-management concepts, or questions about your own capabilities):
 - If it is about this store's live data, you must call an appropriate tool before answering - never guess, estimate, or answer from general knowledge, even if the question sounds like it could be answered generally. This includes supplier accounts-payable questions (who is owed money, how much, unpaid/partial invoices, payment history), purchase order questions (status, supplier, contents, dollar amount), sales/POS questions (today's totals, cash/card split, top-selling products, cashier performance, returns/refunds, dormant or fast-moving products), low-stock/reorder questions, product cost/margin questions (cost, break-even, target price, current margin), and cash drawer questions (is it open, expected cash position, paid-outs) - always call the matching tool and report its exact totals rather than adding figures up yourself.
 - If it is conversational or educational, answer directly in your own words and do not call a tool - a tool call is never needed to say hello, explain a general concept, or describe what you can do.
 
 If a tool returns no results, say so plainly. If the information needed isn't available through any tool you have (including because it was withheld for the current user's role, or because no tool covers what's being asked, such as an exact total product count or exactly when a purchase order's status last changed), say so plainly rather than guessing or hinting at what the answer might be.`;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -105,6 +115,14 @@ serve(async (req: Request) => {
   const ctx = { businessId: verified.businessId, role: roleResult.role, supabase: verified.supabase, businessDayStartIso };
   const provider = new AnthropicProvider(anthropicApiKey);
 
+  // Business Configuration (v1.2): the model needs this store's real
+  // currency to render tool output correctly - falls back to USD/"$" only
+  // if the row can't be read, matching every other reporting surface's
+  // fallback behavior rather than failing the whole request.
+  const businessRes = await verified.supabase.from("businesses").select("currency_code, currency_symbol").eq("id", ctx.businessId).maybeSingle();
+  const currencyCode = businessRes.data?.currency_code ?? "USD";
+  const currencySymbol = businessRes.data?.currency_symbol ?? "$";
+
   const messages: AiMessage[] = [
     ...(Array.isArray(requestBody.priorMessages) ? requestBody.priorMessages : []),
     { role: "user", content: message },
@@ -114,7 +132,7 @@ serve(async (req: Request) => {
     // 3-8. Tool invocation (permission-gated inside executeTool), model
     // response, audit logging - all driven by the provider's internal loop.
     const result = await provider.runConversation({
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: buildSystemPrompt(currencyCode, currencySymbol),
       messages,
       tools: toAiToolDefinitions(),
       executeTool: async (call: AiToolCallRequest) => {

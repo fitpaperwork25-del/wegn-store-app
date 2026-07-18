@@ -13,6 +13,8 @@ type SupplierStatementPrintModalProps = {
   statement: PrintableSupplierStatement | null;
   businessName: string;
   businessAddress: string;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   onClose: () => void;
   onExportPdf: () => void;
   isExportingPdf: boolean;
@@ -32,6 +34,7 @@ export function SupplierStatementPrintModal({
   statement,
   businessName,
   businessAddress,
+  currencySymbol,
   onClose,
   onExportPdf,
   isExportingPdf,
@@ -109,15 +112,15 @@ export function SupplierStatementPrintModal({
           <div style={{ display: "flex", gap: "12px", margin: "16px 0" }}>
             <div style={{ flex: 1, border: "1px solid #cbd5e1", borderRadius: "5px", padding: "10px 14px" }}>
               <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "3px" }}>Total Invoiced</div>
-              <div style={{ fontWeight: 700, fontSize: "18px" }}>${totalInvoiced.toFixed(2)}</div>
+              <div style={{ fontWeight: 700, fontSize: "18px" }}>{currencySymbol}{totalInvoiced.toFixed(2)}</div>
             </div>
             <div style={{ flex: 1, border: "1px solid #cbd5e1", borderRadius: "5px", padding: "10px 14px" }}>
               <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "3px" }}>Total Paid</div>
-              <div style={{ fontWeight: 700, fontSize: "18px", color: "#15803d" }}>${totalPaid.toFixed(2)}</div>
+              <div style={{ fontWeight: 700, fontSize: "18px", color: "#15803d" }}>{currencySymbol}{totalPaid.toFixed(2)}</div>
             </div>
             <div style={{ flex: 1, border: "1px solid #cbd5e1", borderRadius: "5px", padding: "10px 14px" }}>
               <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", marginBottom: "3px" }}>Outstanding Balance</div>
-              <div style={{ fontWeight: 700, fontSize: "18px", color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</div>
+              <div style={{ fontWeight: 700, fontSize: "18px", color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>{currencySymbol}{totalOutstanding.toFixed(2)}</div>
             </div>
           </div>
 
@@ -142,9 +145,9 @@ export function SupplierStatementPrintModal({
                   <tr key={row.session_id} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
                     <td style={{ padding: "9px 12px", fontWeight: 600 }}>{row.invoice_number}</td>
                     <td style={{ padding: "9px 12px" }}>{row.invoice_date ?? "—"}</td>
-                    <td style={{ padding: "9px 12px", textAlign: "right" }}>${row.invoice_total.toFixed(2)}</td>
-                    <td style={{ padding: "9px 12px", textAlign: "right", color: "#15803d" }}>${row.paid.toFixed(2)}</td>
-                    <td style={{ padding: "9px 12px", textAlign: "right", fontWeight: 600, color: remaining > 0 ? "#dc2626" : "#15803d" }}>${remaining.toFixed(2)}</td>
+                    <td style={{ padding: "9px 12px", textAlign: "right" }}>{currencySymbol}{row.invoice_total.toFixed(2)}</td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", color: "#15803d" }}>{currencySymbol}{row.paid.toFixed(2)}</td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", fontWeight: 600, color: remaining > 0 ? "#dc2626" : "#15803d" }}>{currencySymbol}{remaining.toFixed(2)}</td>
                     <td style={{ padding: "9px 12px", textAlign: "center" }}>{statusLabel}</td>
                   </tr>
                 );
@@ -176,10 +179,10 @@ export function SupplierStatementPrintModal({
                       <tr key={p.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                         <td style={{ padding: "6px 10px" }}>{p.payment_date}</td>
                         <td style={{ padding: "6px 10px" }}>{p.payment_method}</td>
-                        <td style={{ padding: "6px 10px", textAlign: "right" }}>${Number(p.amount).toFixed(2)}</td>
+                        <td style={{ padding: "6px 10px", textAlign: "right" }}>{currencySymbol}{Number(p.amount).toFixed(2)}</td>
                         <td style={{ padding: "6px 10px" }}>{p.reference ?? "—"}</td>
                         <td style={{ padding: "6px 10px" }}>{p.notes ?? "—"}</td>
-                        <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 600 }}>${runningBalance[i].balanceAfter.toFixed(2)}</td>
+                        <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 600 }}>{currencySymbol}{runningBalance[i].balanceAfter.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -192,7 +195,7 @@ export function SupplierStatementPrintModal({
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
             <div style={{ background: "#f1f5f9", border: "1px solid #94a3b8", borderRadius: "5px", padding: "10px 24px", minWidth: "260px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: "14px", fontWeight: 600, color: "#475569" }}>Grand Outstanding Balance</span>
-              <span style={{ fontSize: "20px", fontWeight: 800, color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</span>
+              <span style={{ fontSize: "20px", fontWeight: 800, color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>{currencySymbol}{totalOutstanding.toFixed(2)}</span>
             </div>
           </div>
 

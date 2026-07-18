@@ -9,6 +9,8 @@ export type BarcodeLabelData = {
 
 type BarcodeLabelPrintModalProps = {
   label: BarcodeLabelData | null;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   onClose: () => void;
 };
 
@@ -18,7 +20,7 @@ type BarcodeLabelPrintModalProps = {
  * label at its physical size when printed. Browser print only - no printer
  * SDK. Owns no barcode-rendering logic itself; that lives in BarcodeLabel.
  */
-export function BarcodeLabelPrintModal({ label, onClose }: BarcodeLabelPrintModalProps) {
+export function BarcodeLabelPrintModal({ label, currencySymbol, onClose }: BarcodeLabelPrintModalProps) {
   if (!label) return null;
 
   return (
@@ -66,6 +68,7 @@ export function BarcodeLabelPrintModal({ label, onClose }: BarcodeLabelPrintModa
               sku={label.sku}
               sellingPrice={label.sellingPrice}
               barcode={label.barcode}
+              currencySymbol={currencySymbol}
             />
           </div>
           <div id="barcode-label-actions" style={{ display: "flex", gap: "8px" }}>

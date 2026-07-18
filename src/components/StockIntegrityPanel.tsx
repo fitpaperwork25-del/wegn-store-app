@@ -4,6 +4,8 @@ import type { ProductStock } from "../lib/product/types";
 
 type StockIntegrityPanelProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   products: ProductStock[];
 
   // Expiration Tracking / Batches
@@ -49,7 +51,7 @@ type StockIntegrityPanelProps = {
 };
 
 export function StockIntegrityPanel({
-  visible, products,
+  visible, currencySymbol, products,
   onLoadBatches, isLoadingBatches, batches, writeOffBatchId, setWriteOffBatchId, writeOffQty, setWriteOffQty,
   isWritingOffBatch, onWriteOffBatch,
   canAdjustInventory, onAdjust, adjustProductId, setAdjustProductId, adjustType, setAdjustType,
@@ -198,7 +200,7 @@ export function StockIntegrityPanel({
           const p = products.find(pr => pr.product_id === adjustProductId);
           return p ? (
             <div style={{ marginTop: "8px", fontSize: "13px", color: "#64748b" }}>
-              Current stock: <strong>{p.quantity_on_hand}</strong> &nbsp;|&nbsp; Avg cost: <strong>${p.average_cost.toFixed(2)}</strong>
+              Current stock: <strong>{p.quantity_on_hand}</strong> &nbsp;|&nbsp; Avg cost: <strong>{currencySymbol}{p.average_cost.toFixed(2)}</strong>
             </div>
           ) : null;
         })()}

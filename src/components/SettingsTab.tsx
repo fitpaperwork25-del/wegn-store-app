@@ -22,6 +22,34 @@ type SettingsTabProps = {
   setEditBizSellingPolicy: (v: string) => void;
   userRole: string;
   onSave: (e: React.FormEvent) => void;
+
+  // Business Configuration (v1.2 foundation) - country/currency/timezone/
+  // date-format, a separate section and edit-toggle from the profile card
+  // above, though Business Name and Default Tax Rate reuse the same
+  // businessName/businessTaxRate values as their one source of truth.
+  businessCountryCode: string;
+  businessCurrencyCode: string;
+  businessCurrencySymbol: string;
+  businessTimezone: string;
+  businessDateFormat: string;
+  countryOptions: { code: string; name: string }[];
+  editingBusinessConfig: boolean;
+  setEditingBusinessConfig: (v: boolean) => void;
+  editBizConfigName: string;
+  setEditBizConfigName: (v: string) => void;
+  editBizConfigTaxRate: string;
+  setEditBizConfigTaxRate: (v: string) => void;
+  editBizCountryCode: string;
+  onCountryChange: (countryCode: string) => void;
+  editBizCurrencyCode: string;
+  setEditBizCurrencyCode: (v: string) => void;
+  editBizCurrencySymbol: string;
+  setEditBizCurrencySymbol: (v: string) => void;
+  editBizTimezone: string;
+  setEditBizTimezone: (v: string) => void;
+  editBizDateFormat: string;
+  setEditBizDateFormat: (v: string) => void;
+  onSaveBusinessConfig: (e: React.FormEvent) => void;
 };
 
 export function SettingsTab({
@@ -48,7 +76,31 @@ export function SettingsTab({
   setEditBizSellingPolicy,
   userRole,
   onSave,
+  businessCountryCode,
+  businessCurrencyCode,
+  businessCurrencySymbol,
+  businessTimezone,
+  businessDateFormat,
+  countryOptions,
+  editingBusinessConfig,
+  setEditingBusinessConfig,
+  editBizConfigName,
+  setEditBizConfigName,
+  editBizConfigTaxRate,
+  setEditBizConfigTaxRate,
+  editBizCountryCode,
+  onCountryChange,
+  editBizCurrencyCode,
+  setEditBizCurrencyCode,
+  editBizCurrencySymbol,
+  setEditBizCurrencySymbol,
+  editBizTimezone,
+  setEditBizTimezone,
+  editBizDateFormat,
+  setEditBizDateFormat,
+  onSaveBusinessConfig,
 }: SettingsTabProps) {
+  const countryName = countryOptions.find(c => c.code === businessCountryCode)?.name ?? businessCountryCode;
   return (
       <div style={{ display: visible ? '' : 'none' }}>
 
@@ -148,6 +200,127 @@ export function SettingsTab({
           <div style={{ display: "flex", gap: "8px" }}>
             <button type="submit" style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
             <button type="button" onClick={() => setEditingBusiness(false)} style={{ padding: "8px 20px", cursor: "pointer" }}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      <h3 style={{ marginTop: "32px", marginBottom: "12px" }}>Business Configuration</h3>
+      <p style={{ fontSize: "12px", color: "#888", marginTop: "-8px", marginBottom: "12px", maxWidth: "480px" }}>
+        Country, currency, time zone, and date format used across the app - POS, Dashboard, Reports, Inventory, Purchasing, Customers, Cash Drawer, Receipts, and Wegn AI.
+      </p>
+      {!editingBusinessConfig ? (
+        <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "20px", maxWidth: "480px", marginBottom: "16px" }}>
+          <p style={{ margin: "0 0 8px" }}><strong>Business Name:</strong> {businessName || "—"}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Country / Region:</strong> {countryName}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Currency:</strong> {businessCurrencyCode}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Currency Symbol:</strong> {businessCurrencySymbol}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Time Zone:</strong> {businessTimezone}</p>
+          <p style={{ margin: "0 0 8px" }}><strong>Date Format:</strong> {businessDateFormat}</p>
+          <p style={{ margin: "0 0 16px" }}><strong>Default Tax Rate:</strong> {businessTaxRate}%</p>
+          {userRole === "owner" ? (
+            <button
+              onClick={() => {
+                setEditBizConfigName(businessName);
+                setEditBizConfigTaxRate(String(businessTaxRate));
+                onCountryChange(businessCountryCode);
+                setEditBizCurrencyCode(businessCurrencyCode);
+                setEditBizCurrencySymbol(businessCurrencySymbol);
+                setEditBizTimezone(businessTimezone);
+                setEditBizDateFormat(businessDateFormat);
+                setEditingBusinessConfig(true);
+              }}
+              style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600 }}
+            >Edit Business Configuration</button>
+          ) : (
+            <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Only the business owner can change this setting</p>
+          )}
+        </div>
+      ) : (
+        <form
+          onSubmit={onSaveBusinessConfig}
+          style={{ maxWidth: "480px", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}
+        >
+          <strong>Edit Business Configuration</strong>
+          <input
+            type="text"
+            placeholder="Business name *"
+            value={editBizConfigName}
+            onChange={(e) => setEditBizConfigName(e.target.value)}
+            required
+            style={{ padding: "8px" }}
+          />
+          <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px", color: "#475569" }}>
+            Country / Region
+            <select
+              value={editBizCountryCode}
+              onChange={(e) => onCountryChange(e.target.value)}
+              style={{ padding: "8px" }}
+            >
+              {countryOptions.map(opt => (
+                <option key={opt.code} value={opt.code}>{opt.name}</option>
+              ))}
+            </select>
+          </label>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px", color: "#475569", flex: 1 }}>
+              Currency
+              <input
+                type="text"
+                placeholder="e.g. USD"
+                value={editBizCurrencyCode}
+                onChange={(e) => setEditBizCurrencyCode(e.target.value)}
+                style={{ padding: "8px" }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px", color: "#475569", width: "110px" }}>
+              Symbol
+              <input
+                type="text"
+                placeholder="e.g. $"
+                value={editBizCurrencySymbol}
+                onChange={(e) => setEditBizCurrencySymbol(e.target.value)}
+                style={{ padding: "8px" }}
+              />
+            </label>
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px", color: "#475569" }}>
+            Time Zone
+            <input
+              type="text"
+              placeholder="e.g. America/New_York"
+              value={editBizTimezone}
+              onChange={(e) => setEditBizTimezone(e.target.value)}
+              style={{ padding: "8px" }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px", color: "#475569" }}>
+            Date Format
+            <select
+              value={editBizDateFormat}
+              onChange={(e) => setEditBizDateFormat(e.target.value)}
+              style={{ padding: "8px" }}
+            >
+              <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+              <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+              <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+            </select>
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="Default tax rate %"
+              value={editBizConfigTaxRate}
+              onChange={(e) => setEditBizConfigTaxRate(e.target.value)}
+              style={{ padding: "8px", width: "150px" }}
+            />
+            <span style={{ fontSize: "13px", color: "#64748b" }}>% Default sales tax</span>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="submit" style={{ padding: "8px 20px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px" }}>Save</button>
+            <button type="button" onClick={() => setEditingBusinessConfig(false)} style={{ padding: "8px 20px", cursor: "pointer" }}>Cancel</button>
           </div>
         </form>
       )}

@@ -42,6 +42,8 @@ type RapidReceiveException = { barcode: string; reason: string };
 type InventoryTabProps = {
   visible: boolean;
   activeTab: string;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   products: ProductStock[];
   suppliers: Supplier[];
   supplierMap: Record<string, Supplier>;
@@ -183,7 +185,7 @@ type InventoryTabProps = {
 
 export function InventoryTab(props: InventoryTabProps) {
   const {
-    visible, activeTab, products, suppliers, supplierMap,
+    visible, activeTab, currencySymbol, products, suppliers, supplierMap,
     activeReceivingSession, newSessionSupplierId, setNewSessionSupplierId, newSessionNotes, setNewSessionNotes,
     onStartReceivingSession, isStartingSession, setSmartReceiveSimpleOpen, sessionScanRef, sessionScanInput, setSessionScanInput,
     onSessionScan, lastScannedProduct, sessionItems, setSessionItems, highlightedProductId,
@@ -348,7 +350,7 @@ export function InventoryTab(props: InventoryTabProps) {
                             <button onClick={() => onSessionItemQty(item.id, 1)} style={{ width: "24px", height: "24px", fontSize: "14px", cursor: "pointer", border: "1px solid #cbd5e1", borderRadius: "4px", background: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
                           </div>
                         </td>
-                        <td style={{ textAlign: "right", fontWeight: 500 }}>${lineTotal.toFixed(2)}</td>
+                        <td style={{ textAlign: "right", fontWeight: 500 }}>{currencySymbol}{lineTotal.toFixed(2)}</td>
                         <td style={{ textAlign: "center" }}>
                           <button onClick={() => onSessionItemRemove(item.id)} title="Remove" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", fontSize: "11px", fontWeight: 500, cursor: "pointer", background: "none", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px" }}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
@@ -375,7 +377,7 @@ export function InventoryTab(props: InventoryTabProps) {
                 <div style={{ display: "flex", gap: "20px", alignItems: "center", fontSize: "13px", marginTop: "10px", padding: "10px 14px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                   <span style={{ fontWeight: 600, color: "#334155" }}>Products: <span style={{ color: "#1d4ed8" }}>{sessionItems.length}</span></span>
                   <span style={{ fontWeight: 600, color: "#334155" }}>Units: <span style={{ color: "#1d4ed8" }}>{sessionItems.reduce((s, i) => s + i.quantity_received, 0)}</span></span>
-                  <span style={{ fontWeight: 600, color: "#334155", marginLeft: "auto" }}>Estimated Value: <span style={{ color: "#15803d" }}>${sessionItems.reduce((s, i) => s + i.unit_cost * i.quantity_received, 0).toFixed(2)}</span></span>
+                  <span style={{ fontWeight: 600, color: "#334155", marginLeft: "auto" }}>Estimated Value: <span style={{ color: "#15803d" }}>{currencySymbol}{sessionItems.reduce((s, i) => s + i.unit_cost * i.quantity_received, 0).toFixed(2)}</span></span>
                 </div>
               </div>
             )}
@@ -455,7 +457,7 @@ export function InventoryTab(props: InventoryTabProps) {
                 {session.notes && <span style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic" }}>{session.notes}</span>}
                 <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "auto" }}>{new Date(session.created_at).toLocaleDateString()}</span>
                 {totalProducts != null && <span style={{ fontSize: "12px", color: "#334155" }}>{totalProducts} products · {totalUnits} units</span>}
-                {totalValue != null && <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>${totalValue.toFixed(2)}</span>}
+                {totalValue != null && <span style={{ fontSize: "12px", fontWeight: 600, color: "#15803d" }}>{currencySymbol}{totalValue.toFixed(2)}</span>}
                 {session.status === "completed" && (
                   <button
                     onClick={async () => {
@@ -526,15 +528,15 @@ export function InventoryTab(props: InventoryTabProps) {
                 <div style={{ padding: "14px 16px", borderTop: "1px solid #e2e8f0", background: "#f0fdf4" }}>
                   <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "6px", color: "#0f172a" }}>Record Payment</div>
                   <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>
-                    Invoice total: <strong>${Number(session.invoice_total).toFixed(2)}</strong> &nbsp;·&nbsp;
-                    Paid: <strong>${paid.toFixed(2)}</strong> &nbsp;·&nbsp;
-                    Remaining: <strong style={{ color: "#dc2626" }}>${remaining.toFixed(2)}</strong>
+                    Invoice total: <strong>{currencySymbol}{Number(session.invoice_total).toFixed(2)}</strong> &nbsp;·&nbsp;
+                    Paid: <strong>{currencySymbol}{paid.toFixed(2)}</strong> &nbsp;·&nbsp;
+                    Remaining: <strong style={{ color: "#dc2626" }}>{currencySymbol}{remaining.toFixed(2)}</strong>
                   </div>
                   {(sessionPayments[session.id] ?? []).length > 0 && (
                     <div style={{ marginBottom: "10px" }}>
                       {(sessionPayments[session.id] ?? []).map(p => (
                         <div key={p.id} style={{ fontSize: "12px", color: "#64748b", padding: "2px 0" }}>
-                          {p.payment_date} · <strong>${Number(p.amount).toFixed(2)}</strong> · {p.payment_method}{p.reference ? ` · ${p.reference}` : ""}
+                          {p.payment_date} · <strong>{currencySymbol}{Number(p.amount).toFixed(2)}</strong> · {p.payment_method}{p.reference ? ` · ${p.reference}` : ""}
                         </div>
                       ))}
                     </div>
@@ -665,11 +667,11 @@ export function InventoryTab(props: InventoryTabProps) {
                     <div style={{ margin: "12px 0", padding: "12px 14px", background: summaryBg, border: `1px solid ${summaryBorder}`, borderRadius: "8px" }}>
                       <div style={{ fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "8px" }}>Reconciliation Preview</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: "12px" }}>
-                        <span style={{ color: "#64748b" }}>Received items</span><span style={{ textAlign: "right" }}>${previewItemsTotal.toFixed(2)}</span>
-                        <span style={{ color: "#64748b" }}>Freight</span><span style={{ textAlign: "right" }}>+${previewFreight.toFixed(2)}</span>
-                        <span style={{ color: "#64748b" }}>Additional costs</span><span style={{ textAlign: "right" }}>+${previewAdditional.toFixed(2)}</span>
-                        <span style={{ color: "#334155", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>Calculated total</span><span style={{ textAlign: "right", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>${previewCalcTotal.toFixed(2)}</span>
-                        <span style={{ color: "#334155", fontWeight: 600 }}>Invoice total</span><span style={{ textAlign: "right", fontWeight: 600 }}>${previewInvoiceTotal.toFixed(2)}</span>
+                        <span style={{ color: "#64748b" }}>Received items</span><span style={{ textAlign: "right" }}>{currencySymbol}{previewItemsTotal.toFixed(2)}</span>
+                        <span style={{ color: "#64748b" }}>Freight</span><span style={{ textAlign: "right" }}>+{currencySymbol}{previewFreight.toFixed(2)}</span>
+                        <span style={{ color: "#64748b" }}>Additional costs</span><span style={{ textAlign: "right" }}>+{currencySymbol}{previewAdditional.toFixed(2)}</span>
+                        <span style={{ color: "#334155", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>Calculated total</span><span style={{ textAlign: "right", fontWeight: 600, borderTop: "1px solid #e2e8f0", paddingTop: "4px" }}>{currencySymbol}{previewCalcTotal.toFixed(2)}</span>
+                        <span style={{ color: "#334155", fontWeight: 600 }}>Invoice total</span><span style={{ textAlign: "right", fontWeight: 600 }}>{currencySymbol}{previewInvoiceTotal.toFixed(2)}</span>
                         <span style={{ color: summaryColor, fontWeight: 700 }}>Variance</span><span style={{ textAlign: "right", fontWeight: 700, color: summaryColor }}>{previewVariance >= 0 ? "+" : ""}{previewVariance.toFixed(2)}</span>
                       </div>
                       <div style={{ marginTop: "8px", display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", background: previewMatched ? "#dcfce7" : "#fef2f2", border: `1px solid ${summaryBorder}`, borderRadius: "12px" }}>
@@ -708,7 +710,7 @@ export function InventoryTab(props: InventoryTabProps) {
                     <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>
                       Invoice: <strong>{session.invoice_number}</strong>
                       {session.invoice_date && <> · {session.invoice_date}</>}
-                      {session.invoice_total > 0 && <> · Total: <strong>${Number(session.invoice_total).toFixed(2)}</strong></>}
+                      {session.invoice_total > 0 && <> · Total: <strong>{currencySymbol}{Number(session.invoice_total).toFixed(2)}</strong></>}
                     </div>
                   )}
                   {!items ? (
@@ -734,9 +736,9 @@ export function InventoryTab(props: InventoryTabProps) {
                           <tr key={item.id}>
                             <td>{prod?.product_name ?? item.product_id.slice(0, 8)}</td>
                             <td style={{ fontFamily: "monospace" }}>{prod?.barcode ?? "—"}</td>
-                            <td style={{ textAlign: "right" }}>${Number(item.unit_cost).toFixed(2)}</td>
+                            <td style={{ textAlign: "right" }}>{currencySymbol}{Number(item.unit_cost).toFixed(2)}</td>
                             <td style={{ textAlign: "right" }}>{item.quantity_received}</td>
-                            <td style={{ textAlign: "right", fontWeight: 500 }}>${lineTotal.toFixed(2)}</td>
+                            <td style={{ textAlign: "right", fontWeight: 500 }}>{currencySymbol}{lineTotal.toFixed(2)}</td>
                           </tr>
                           );
                         })}
@@ -745,7 +747,7 @@ export function InventoryTab(props: InventoryTabProps) {
                         <tr style={{ background: "#f8fafc", fontWeight: 600 }}>
                           <td colSpan={3} style={{ textAlign: "right" }}>Total</td>
                           <td style={{ textAlign: "right" }}>{items.reduce((s, i) => s + Number(i.quantity_received), 0)}</td>
-                          <td style={{ textAlign: "right" }}>${totalValue!.toFixed(2)}</td>
+                          <td style={{ textAlign: "right" }}>{currencySymbol}{totalValue!.toFixed(2)}</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -1090,7 +1092,7 @@ export function InventoryTab(props: InventoryTabProps) {
                         </td>
                         <td style={{ padding: "8px 10px", color: p.supplier_id ? "#0f172a" : "#94a3b8", fontStyle: p.supplier_id ? "normal" : "italic" }}>{supplierName}</td>
                         <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#15803d" }}>
-                          {estimatedCost > 0 ? `$${estimatedCost.toFixed(2)}` : "—"}
+                          {estimatedCost > 0 ? `${currencySymbol}${estimatedCost.toFixed(2)}` : "—"}
                         </td>
                       </tr>
                     );

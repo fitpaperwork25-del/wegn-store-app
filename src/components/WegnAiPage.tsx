@@ -11,6 +11,8 @@ type WegnAiPageProps = {
   staffName: string | null;
   userEmail: string;
   businessName: string;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   salesTodaySummary: SalesTodaySummary;
   todaysProfit: number | null;
   lowStockCount: number;
@@ -50,6 +52,7 @@ export function WegnAiPage({
   staffName,
   userEmail,
   businessName,
+  currencySymbol,
   salesTodaySummary,
   todaysProfit,
   lowStockCount,
@@ -113,7 +116,7 @@ export function WegnAiPage({
             <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>$</div>
             <div className="dash-card-body">
               <div className="dash-card-label">Today's Sales</div>
-              <div className="dash-card-value">${salesTodaySummary.revenueToday.toFixed(2)}</div>
+              <div className="dash-card-value">{currencySymbol}{salesTodaySummary.revenueToday.toFixed(2)}</div>
               <div className="dash-card-helper">{salesTodaySummary.txnCount} transaction{salesTodaySummary.txnCount === 1 ? "" : "s"}</div>
             </div>
           </div>
@@ -123,7 +126,7 @@ export function WegnAiPage({
               <div className="dash-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>&#x1F4B0;</div>
               <div className="dash-card-body">
                 <div className="dash-card-label">Today's Profit</div>
-                <div className="dash-card-value">{todaysProfit === null ? "—" : `$${todaysProfit.toFixed(2)}`}</div>
+                <div className="dash-card-value">{todaysProfit === null ? "—" : `${currencySymbol}${todaysProfit.toFixed(2)}`}</div>
                 <div className="dash-card-helper">{todaysProfit === null ? "No cost data yet" : "Estimated"}</div>
               </div>
             </div>

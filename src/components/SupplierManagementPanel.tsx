@@ -6,6 +6,8 @@ import { SupplierStatementPanel } from "./SupplierStatementPanel";
 
 type SupplierManagementPanelProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   suppliers: Supplier[];
   supName: string;
   setSupName: (v: string) => void;
@@ -75,6 +77,7 @@ type SupplierManagementPanelProps = {
 
 export function SupplierManagementPanel({
   visible,
+  currencySymbol,
   suppliers,
   supName, setSupName,
   supContact, setSupContact,
@@ -222,7 +225,7 @@ export function SupplierManagementPanel({
                       </td>
                       <td style={{ padding: "10px 8px", fontWeight: 600 }}>{s.name}</td>
                       <td style={{ padding: "10px 8px", textAlign: "right" }}>{pos.length}</td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: 500 }}>${totalSpend.toFixed(2)}</td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: 500 }}>{currencySymbol}{totalSpend.toFixed(2)}</td>
                       <td style={{ padding: "10px 8px", fontSize: "13px", color: "#64748b" }}>{lastPO ? lastPO.toLocaleDateString() : "—"}</td>
                       <td style={{ padding: "10px 8px" }}>
                         <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: healthBg, color: healthColor }}>{healthLabel}</span>
@@ -274,12 +277,12 @@ export function SupplierManagementPanel({
                           {/* Performance Metrics */}
                           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
                             {[
-                              { label: "Total Spend", value: `$${totalSpendAll.toFixed(2)}`, color: "#1d4ed8" },
-                              { label: "Avg Order Value", value: `$${avgOrderValue.toFixed(2)}` },
+                              { label: "Total Spend", value: `${currencySymbol}${totalSpendAll.toFixed(2)}`, color: "#1d4ed8" },
+                              { label: "Avg Order Value", value: `${currencySymbol}${avgOrderValue.toFixed(2)}` },
                               { label: "Total POs", value: pos.length },
                               { label: "Products Supplied", value: supProducts.length },
                               { label: "Last Order", value: lastPO ? lastPO.toLocaleDateString() : "—" },
-                              { label: "Inventory Value", value: `$${catalogValue.toFixed(2)}` },
+                              { label: "Inventory Value", value: `${currencySymbol}${catalogValue.toFixed(2)}` },
                             ].map(card => (
                               <div key={card.label} style={{ border: "1px solid #e2e8f0", borderRadius: "6px", padding: "8px 12px", minWidth: "110px", flex: 1, background: "#fff" }}>
                                 <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em" }}>{card.label}</div>
@@ -342,7 +345,7 @@ export function SupplierManagementPanel({
                                           <td style={{ padding: "6px 8px", textAlign: "right" }}>{ordQty}</td>
                                           <td style={{ padding: "6px 8px", textAlign: "right" }}>{rcvQty}</td>
                                           <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: remQty > 0 ? "bold" : "normal", color: remQty > 0 ? "#b45309" : "#15803d" }}>{remQty}</td>
-                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>${Number(po.subtotal).toFixed(2)}</td>
+                                          <td style={{ padding: "6px 8px", textAlign: "right" }}>{currencySymbol}{Number(po.subtotal).toFixed(2)}</td>
                                           <td style={{ padding: "6px 8px", fontSize: "12px", color: "#64748b" }}>{new Date(po.created_at).toLocaleDateString()}</td>
                                         </tr>
                                       );
@@ -355,7 +358,7 @@ export function SupplierManagementPanel({
                                       <td style={{ padding: "6px 8px", textAlign: "right" }}>{totalOrderedQty}</td>
                                       <td style={{ padding: "6px 8px", textAlign: "right" }}>{totalReceivedQty}</td>
                                       <td style={{ padding: "6px 8px", textAlign: "right", color: totalRemainingQty > 0 ? "#b45309" : "#15803d" }}>{totalRemainingQty}</td>
-                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>${nonCancelledPos.reduce((sum, po) => sum + Number(po.subtotal), 0).toFixed(2)}</td>
+                                      <td style={{ padding: "6px 8px", textAlign: "right" }}>{currencySymbol}{nonCancelledPos.reduce((sum, po) => sum + Number(po.subtotal), 0).toFixed(2)}</td>
                                       <td></td>
                                     </tr>
                                   </tfoot>
@@ -399,7 +402,7 @@ export function SupplierManagementPanel({
                                         <td style={{ padding: "6px 8px" }}>{p.product_name}</td>
                                         <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.quantity_on_hand}</td>
                                         <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.reorder_level}</td>
-                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>${p.average_cost.toFixed(2)}</td>
+                                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{currencySymbol}{p.average_cost.toFixed(2)}</td>
                                         <td style={{ padding: "6px 8px", textAlign: "right" }}>
                                           <input
                                             type="number" min="1"
@@ -444,6 +447,7 @@ export function SupplierManagementPanel({
                     )}
                     {statementSupplierId === s.id && (
                       <SupplierStatementPanel
+                        currencySymbol={currencySymbol}
                         supplierId={s.id}
                         supplierName={s.name}
                         isLoadingStatement={isLoadingStatement}

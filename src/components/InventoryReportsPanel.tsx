@@ -8,6 +8,8 @@ import { getTotalInventoryValue } from "../lib/product/productHelpers";
 import { isReportableSaleStatus, isWithinSalesDateRange } from "../lib/sales/salesHelpers";
 
 type InventoryReportsPanelProps = {
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   products: ProductStock[];
   lowStockProducts: ProductStock[];
   purchaseOrders: PurchaseOrder[];
@@ -35,6 +37,7 @@ type InventoryReportsPanelProps = {
 };
 
 export function InventoryReportsPanel({
+  currencySymbol,
   products, lowStockProducts, purchaseOrders, suppliers, sales, saleItems,
   allReturnItems, returnHistory, customerMap, employeeMap, productIdMap,
   analyticsRange, setAnalyticsRange,
@@ -75,8 +78,8 @@ export function InventoryReportsPanel({
                 <tr key={p.product_id}>
                   <td>{p.product_name}</td>
                   <td>{p.quantity_on_hand}</td>
-                  <td>${p.average_cost.toFixed(2)}</td>
-                  <td>${(p.quantity_on_hand * p.average_cost).toFixed(2)}</td>
+                  <td>{currencySymbol}{p.average_cost.toFixed(2)}</td>
+                  <td>{currencySymbol}{(p.quantity_on_hand * p.average_cost).toFixed(2)}</td>
                 </tr>
               ))
             )}
@@ -85,7 +88,7 @@ export function InventoryReportsPanel({
             <tr>
               <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total Inventory Value</td>
               <td style={{ fontWeight: "bold" }}>
-                ${getTotalInventoryValue(products).toFixed(2)}
+                {currencySymbol}{getTotalInventoryValue(products).toFixed(2)}
               </td>
             </tr>
           </tfoot>
@@ -175,7 +178,7 @@ export function InventoryReportsPanel({
                       <td>{po.po_number}</td>
                       <td>{supplierMap[po.supplier_id] ?? po.supplier_id}</td>
                       <td>{po.status}</td>
-                      <td>${po.subtotal.toFixed(2)}</td>
+                      <td>{currencySymbol}{po.subtotal.toFixed(2)}</td>
                       <td>{new Date(po.created_at).toLocaleString()}</td>
                     </tr>
                   ))
@@ -184,7 +187,7 @@ export function InventoryReportsPanel({
               <tfoot>
                 <tr>
                   <td colSpan={3} style={{ fontWeight: "bold", textAlign: "right" }}>Total PO Value</td>
-                  <td style={{ fontWeight: "bold" }}>${totalPO.toFixed(2)}</td>
+                  <td style={{ fontWeight: "bold" }}>{currencySymbol}{totalPO.toFixed(2)}</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -302,15 +305,15 @@ export function InventoryReportsPanel({
             {/* P&L Summary Cards */}
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "28px" }}>
               {[
-                { label: "Gross Sales", value: `$${grossSales.toFixed(2)}`, color: "#1d4ed8" },
-                { label: "Discounts", value: `−$${totalDiscounts.toFixed(2)}`, color: totalDiscounts > 0 ? "#b45309" : "#888" },
-                { label: "Returns", value: `−$${totalReturns.toFixed(2)}`, color: totalReturns > 0 ? "#dc2626" : "#888" },
-                { label: "Net Sales (Pre-Tax)", value: `$${netSales.toFixed(2)}`, color: "#0f172a" },
-                { label: "COGS", value: `$${totalCogs.toFixed(2)}`, color: "#6b7280" },
-                { label: "Gross Profit", value: `$${grossProfit.toFixed(2)}`, color: grossProfit >= 0 ? "#15803d" : "#dc2626" },
+                { label: "Gross Sales", value: `${currencySymbol}${grossSales.toFixed(2)}`, color: "#1d4ed8" },
+                { label: "Discounts", value: `−${currencySymbol}${totalDiscounts.toFixed(2)}`, color: totalDiscounts > 0 ? "#b45309" : "#888" },
+                { label: "Returns", value: `−${currencySymbol}${totalReturns.toFixed(2)}`, color: totalReturns > 0 ? "#dc2626" : "#888" },
+                { label: "Net Sales (Pre-Tax)", value: `${currencySymbol}${netSales.toFixed(2)}`, color: "#0f172a" },
+                { label: "COGS", value: `${currencySymbol}${totalCogs.toFixed(2)}`, color: "#6b7280" },
+                { label: "Gross Profit", value: `${currencySymbol}${grossProfit.toFixed(2)}`, color: grossProfit >= 0 ? "#15803d" : "#dc2626" },
                 { label: "Gross Margin", value: `${grossMargin.toFixed(1)}%`, color: grossMargin >= 20 ? "#15803d" : grossMargin >= 0 ? "#b45309" : "#dc2626" },
-                { label: "Tax Collected", value: `$${taxCollected.toFixed(2)}`, color: "#6b7280" },
-                { label: "Total Collected (Including Tax)", value: `$${totalCollected.toFixed(2)}`, color: "#0f172a" },
+                { label: "Tax Collected", value: `${currencySymbol}${taxCollected.toFixed(2)}`, color: "#6b7280" },
+                { label: "Total Collected (Including Tax)", value: `${currencySymbol}${totalCollected.toFixed(2)}`, color: "#0f172a" },
               ].map(card => (
                 <div key={card.label} style={{ border: "1px solid #e5e7eb", borderRadius: "8px", padding: "14px 18px", minWidth: "130px", flex: 1 }}>
                   <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>
@@ -337,9 +340,9 @@ export function InventoryReportsPanel({
                             <td>{i + 1}</td>
                             <td>{row.name}</td>
                             <td>{row.soldUnits - row.returnedUnits}</td>
-                            <td>${row.netRev.toFixed(2)}</td>
-                            <td>${row.cogs.toFixed(2)}</td>
-                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>${row.gp.toFixed(2)}</td>
+                            <td>{currencySymbol}{row.netRev.toFixed(2)}</td>
+                            <td>{currencySymbol}{row.cogs.toFixed(2)}</td>
+                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>{currencySymbol}{row.gp.toFixed(2)}</td>
                             <td>{row.margin.toFixed(1)}%</td>
                           </tr>
                         ))}
@@ -347,9 +350,9 @@ export function InventoryReportsPanel({
                       <tfoot>
                         <tr style={{ fontWeight: "bold", background: "#f9fafb" }}>
                           <td colSpan={3}>Top 10 Total</td>
-                          <td>${topProfit.reduce((s, r) => s + r.netRev, 0).toFixed(2)}</td>
-                          <td>${topProfit.reduce((s, r) => s + r.cogs, 0).toFixed(2)}</td>
-                          <td style={{ color: "#15803d" }}>${topProfit.reduce((s, r) => s + r.gp, 0).toFixed(2)}</td>
+                          <td>{currencySymbol}{topProfit.reduce((s, r) => s + r.netRev, 0).toFixed(2)}</td>
+                          <td>{currencySymbol}{topProfit.reduce((s, r) => s + r.cogs, 0).toFixed(2)}</td>
+                          <td style={{ color: "#15803d" }}>{currencySymbol}{topProfit.reduce((s, r) => s + r.gp, 0).toFixed(2)}</td>
                           <td></td>
                         </tr>
                       </tfoot>
@@ -375,9 +378,9 @@ export function InventoryReportsPanel({
                             <td>{i + 1}</td>
                             <td>{row.name}</td>
                             <td>{row.soldUnits - row.returnedUnits}</td>
-                            <td>${row.netRev.toFixed(2)}</td>
-                            <td>${row.cogs.toFixed(2)}</td>
-                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>${row.gp.toFixed(2)}</td>
+                            <td>{currencySymbol}{row.netRev.toFixed(2)}</td>
+                            <td>{currencySymbol}{row.cogs.toFixed(2)}</td>
+                            <td style={{ color: row.gp >= 0 ? "#15803d" : "#dc2626", fontWeight: "bold" }}>{currencySymbol}{row.gp.toFixed(2)}</td>
                             <td style={{ color: row.margin < 20 ? "#dc2626" : "#b45309", fontWeight: "bold" }}>{row.margin.toFixed(1)}%</td>
                           </tr>
                         ))}
@@ -451,7 +454,7 @@ export function InventoryReportsPanel({
                         <td>{custName}</td>
                         <td>{empName}</td>
                         <td>{first.return_reason || first.reason || "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: "bold" }}>${refundValue.toFixed(2)}</td>
+                        <td style={{ textAlign: "right", fontWeight: "bold" }}>{currencySymbol}{refundValue.toFixed(2)}</td>
                       </tr>
                       {isExpanded && (
                         <tr>
@@ -474,8 +477,8 @@ export function InventoryReportsPanel({
                                     <tr key={r.id}>
                                       <td>{productIdMap[r.product_id]?.product_name ?? r.product_id.slice(0, 8)}</td>
                                       <td style={{ textAlign: "center" }}>{r.quantity_returned}</td>
-                                      <td style={{ textAlign: "right" }}>${unitPrice.toFixed(2)}</td>
-                                      <td style={{ textAlign: "right" }}>${(r.quantity_returned * unitPrice).toFixed(2)}</td>
+                                      <td style={{ textAlign: "right" }}>{currencySymbol}{unitPrice.toFixed(2)}</td>
+                                      <td style={{ textAlign: "right" }}>{currencySymbol}{(r.quantity_returned * unitPrice).toFixed(2)}</td>
                                     </tr>
                                   );
                                 })}

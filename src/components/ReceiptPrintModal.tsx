@@ -8,10 +8,12 @@ type ReceiptPrintModalProps = {
   businessName: string;
   businessPhone: string;
   businessAddress: string;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   onClose: () => void;
 };
 
-export function ReceiptPrintModal({ receipt, products, businessName, businessPhone, businessAddress, onClose }: ReceiptPrintModalProps) {
+export function ReceiptPrintModal({ receipt, products, businessName, businessPhone, businessAddress, currencySymbol, onClose }: ReceiptPrintModalProps) {
   if (!receipt) return null;
 
   const productMap = buildProductNameMap(products);
@@ -85,24 +87,24 @@ export function ReceiptPrintModal({ receipt, products, businessName, businessPho
           {receipt.items.map((item, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
               <span style={{ flex: 1 }}>{productMap[item.product_id] ?? item.product_id.slice(0, 8)} x{item.quantity}</span>
-              <span>${Number(item.line_total).toFixed(2)}</span>
+              <span>{currencySymbol}{Number(item.line_total).toFixed(2)}</span>
             </div>
           ))}
 
           <div style={{ borderTop: "1px dashed #333", marginTop: "8px", paddingTop: "8px" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Subtotal</span><span>${Number(receipt.sale.subtotal).toFixed(2)}</span>
+              <span>Subtotal</span><span>{currencySymbol}{Number(receipt.sale.subtotal).toFixed(2)}</span>
             </div>
             {Number(receipt.sale.discount_amount) > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}>
-                <span>Discount</span><span>−${Number(receipt.sale.discount_amount).toFixed(2)}</span>
+                <span>Discount</span><span>−{currencySymbol}{Number(receipt.sale.discount_amount).toFixed(2)}</span>
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Tax</span><span>${Number(receipt.sale.tax).toFixed(2)}</span>
+              <span>Tax</span><span>{currencySymbol}{Number(receipt.sale.tax).toFixed(2)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "15px", marginTop: "4px" }}>
-              <span>TOTAL</span><span>${Number(receipt.sale.total).toFixed(2)}</span>
+              <span>TOTAL</span><span>{currencySymbol}{Number(receipt.sale.total).toFixed(2)}</span>
             </div>
             <div style={{ marginTop: "4px" }}>Payment: {receipt.paymentMethod === "other" && receipt.paymentReference ? receipt.paymentReference : receipt.paymentMethod}{receipt.paymentMethod !== "other" && receipt.paymentReference ? ` (Ref: ${receipt.paymentReference})` : ""}</div>
           </div>

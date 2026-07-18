@@ -2,6 +2,8 @@ import type { Supplier } from "../lib/purchasing/types";
 import type { ProductStock, Category, ProductResolutionRequest } from "../lib/product/types";
 
 type ProductResolutionDialogProps = {
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   request: ProductResolutionRequest | null;
   mode: "link" | "create" | null;
   setMode: (m: "link" | "create" | null) => void;
@@ -27,6 +29,7 @@ type ProductResolutionDialogProps = {
 };
 
 export function ProductResolutionDialog({
+  currencySymbol,
   request,
   mode,
   setMode,
@@ -92,7 +95,7 @@ export function ProductResolutionDialog({
               {/* Invoice context — pre-filled info shown as reference */}
               {request.suggestedQuantity != null && (
                 <div style={{ padding: "8px 10px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "6px", fontSize: "12px", color: "#15803d", marginBottom: "10px" }}>
-                  📦 From invoice: <strong>{request.suggestedQuantity} units</strong> @ <strong>${request.suggestedCost?.toFixed(2)}</strong> each — will be added to receiving session
+                  📦 From invoice: <strong>{request.suggestedQuantity} units</strong> @ <strong>{currencySymbol}{request.suggestedCost?.toFixed(2)}</strong> each — will be added to receiving session
                 </div>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>

@@ -4,6 +4,8 @@ import type { ProductStock } from "../lib/product/types";
 
 type PurchasingTabProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   suppliers: Supplier[];
   products: ProductStock[];
 
@@ -27,6 +29,7 @@ type PurchasingTabProps = {
 
 export function PurchasingTab({
   visible,
+  currencySymbol,
   suppliers,
   products,
   reorderSuppliers, setReorderSuppliers,
@@ -104,7 +107,7 @@ export function PurchasingTab({
               <div className="dash-card-icon" style={{ background: "#faf5ff", color: "#7c3aed" }}>$</div>
               <div className="dash-card-body">
                 <div className="dash-card-label">Est. PO Value</div>
-                <div className="dash-card-value">${estValue.toFixed(2)}</div>
+                <div className="dash-card-value">{currencySymbol}{estValue.toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -223,7 +226,7 @@ export function PurchasingTab({
                   <span style={{ fontSize: "14px", color: "#64748b" }}>{isCollapsed ? "▸" : "▾"}</span>
                   <strong style={{ fontSize: "15px", color: sid === "__unassigned__" ? "#b45309" : "#0f172a" }}>{supName2}</strong>
                   <span style={{ fontSize: "13px", color: "#64748b" }}>{items.length} product{items.length !== 1 ? "s" : ""}</span>
-                  <span style={{ fontSize: "13px", color: "#64748b" }}>Est. ${groupValue.toFixed(2)}</span>
+                  <span style={{ fontSize: "13px", color: "#64748b" }}>Est. {currencySymbol}{groupValue.toFixed(2)}</span>
                   {groupSelected > 0 && <span style={{ fontSize: "12px", color: "#1d4ed8", fontWeight: 600 }}>{groupSelected} selected</span>}
                   <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }} onClick={(e) => e.stopPropagation()}>
                     {sid !== "__unassigned__" && (

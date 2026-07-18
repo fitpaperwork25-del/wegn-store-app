@@ -12,6 +12,9 @@ type BarcodeLabelProps = {
   barcode: string;
   widthMm?: number;
   heightMm?: number;
+  /** Business Configuration (v1.2) - display only, never converts amounts.
+   *  Optional, defaulting to "$", so existing call sites keep compiling. */
+  currencySymbol?: string;
 };
 
 /**
@@ -28,6 +31,7 @@ export function BarcodeLabel({
   barcode,
   widthMm = BARCODE_LABEL_WIDTH_MM,
   heightMm = BARCODE_LABEL_HEIGHT_MM,
+  currencySymbol = "$",
 }: BarcodeLabelProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -78,7 +82,7 @@ export function BarcodeLabel({
       </div>
       <svg ref={svgRef} style={{ maxWidth: "100%" }} />
       <div style={{ fontSize: "7pt", fontWeight: "bold", marginTop: "0.5mm" }}>
-        ${sellingPrice.toFixed(2)}
+        {currencySymbol}{sellingPrice.toFixed(2)}
       </div>
       {sku && (
         <div style={{ fontSize: "5pt", color: "#555", marginTop: "0.3mm" }}>

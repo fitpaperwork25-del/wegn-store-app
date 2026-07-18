@@ -16,6 +16,8 @@ import { getSupplierInvoiceStatus, computePaymentRunningBalance } from "../lib/p
  * completely unchanged.
  */
 type SupplierStatementPanelProps = {
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   supplierId: string;
   supplierName: string;
   isLoadingStatement: boolean;
@@ -43,6 +45,7 @@ type SupplierStatementPanelProps = {
 };
 
 export function SupplierStatementPanel({
+  currencySymbol,
   supplierId,
   supplierName,
   isLoadingStatement,
@@ -95,15 +98,15 @@ export function SupplierStatementPanel({
               <div style={{ display: "flex", gap: "16px", marginBottom: "14px", flexWrap: "wrap" }}>
                 <div style={{ padding: "10px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", minWidth: "140px" }}>
                   <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Total Invoiced</div>
-                  <div style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>${totalInvoiced.toFixed(2)}</div>
+                  <div style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>{currencySymbol}{totalInvoiced.toFixed(2)}</div>
                 </div>
                 <div style={{ padding: "10px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", minWidth: "140px" }}>
                   <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Total Paid</div>
-                  <div style={{ fontSize: "18px", fontWeight: 700, color: "#15803d" }}>${totalPaid.toFixed(2)}</div>
+                  <div style={{ fontSize: "18px", fontWeight: 700, color: "#15803d" }}>{currencySymbol}{totalPaid.toFixed(2)}</div>
                 </div>
                 <div style={{ padding: "10px 16px", background: totalOutstanding > 0 ? "#fef2f2" : "#f0fdf4", border: `1px solid ${totalOutstanding > 0 ? "#fecaca" : "#86efac"}`, borderRadius: "8px", minWidth: "140px" }}>
                   <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>Outstanding</div>
-                  <div style={{ fontSize: "18px", fontWeight: 700, color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</div>
+                  <div style={{ fontSize: "18px", fontWeight: 700, color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>{currencySymbol}{totalOutstanding.toFixed(2)}</div>
                 </div>
               </div>
               <table border={1} cellPadding={8} style={{ width: "100%", fontSize: "13px" }}>
@@ -134,9 +137,9 @@ export function SupplierStatementPanel({
                         {row.invoice_number}
                       </td>
                       <td style={{ color: "#64748b" }}>{row.invoice_date ?? "—"}</td>
-                      <td style={{ textAlign: "right" }}>${row.invoice_total.toFixed(2)}</td>
-                      <td style={{ textAlign: "right", color: "#15803d" }}>${row.paid.toFixed(2)}</td>
-                      <td style={{ textAlign: "right", fontWeight: 600, color: remaining > 0 ? "#dc2626" : "#15803d" }}>${remaining.toFixed(2)}</td>
+                      <td style={{ textAlign: "right" }}>{currencySymbol}{row.invoice_total.toFixed(2)}</td>
+                      <td style={{ textAlign: "right", color: "#15803d" }}>{currencySymbol}{row.paid.toFixed(2)}</td>
+                      <td style={{ textAlign: "right", fontWeight: 600, color: remaining > 0 ? "#dc2626" : "#15803d" }}>{currencySymbol}{remaining.toFixed(2)}</td>
                       <td style={{ textAlign: "center" }}>
                         <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: statusBg, color: statusColor }}>{statusLabel}</span>
                       </td>
@@ -179,11 +182,11 @@ export function SupplierStatementPanel({
                                   {payments.map((p, i) => (
                                     <tr key={p.id}>
                                       <td>{p.payment_date}</td>
-                                      <td style={{ textAlign: "right" }}>${Number(p.amount).toFixed(2)}</td>
+                                      <td style={{ textAlign: "right" }}>{currencySymbol}{Number(p.amount).toFixed(2)}</td>
                                       <td>{p.payment_method}</td>
                                       <td>{p.reference ?? "—"}</td>
                                       <td>{p.notes ?? "—"}</td>
-                                      <td style={{ textAlign: "right", fontWeight: 600 }}>${runningBalance[i].balanceAfter.toFixed(2)}</td>
+                                      <td style={{ textAlign: "right", fontWeight: 600 }}>{currencySymbol}{runningBalance[i].balanceAfter.toFixed(2)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -240,9 +243,9 @@ export function SupplierStatementPanel({
                 <tfoot>
                   <tr style={{ background: "#f1f5f9", fontWeight: 700 }}>
                     <td colSpan={2}>Total</td>
-                    <td style={{ textAlign: "right" }}>${totalInvoiced.toFixed(2)}</td>
-                    <td style={{ textAlign: "right", color: "#15803d" }}>${totalPaid.toFixed(2)}</td>
-                    <td style={{ textAlign: "right", color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>${totalOutstanding.toFixed(2)}</td>
+                    <td style={{ textAlign: "right" }}>{currencySymbol}{totalInvoiced.toFixed(2)}</td>
+                    <td style={{ textAlign: "right", color: "#15803d" }}>{currencySymbol}{totalPaid.toFixed(2)}</td>
+                    <td style={{ textAlign: "right", color: totalOutstanding > 0 ? "#dc2626" : "#15803d" }}>{currencySymbol}{totalOutstanding.toFixed(2)}</td>
                     <td />
                     <td />
                   </tr>

@@ -7,6 +7,8 @@ import { isReportableSaleStatus, computeNetRevenue } from "../lib/sales/salesHel
 
 type CustomersTabProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   customers: Customer[];
   sales: Sale[];
   saleItems: SaleItemRecord[];
@@ -44,6 +46,7 @@ type CustomersTabProps = {
 
 export function CustomersTab({
   visible,
+  currencySymbol,
   customers,
   sales,
   saleItems,
@@ -166,7 +169,7 @@ export function CustomersTab({
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
               {[
                 { label: "Total Customers", value: customers.length },
-                { label: "Store Avg Spend / Visit", value: `$${storeAvg.toFixed(2)}` },
+                { label: "Store Avg Spend / Visit", value: `${currencySymbol}${storeAvg.toFixed(2)}` },
                 { label: "Repeat Customers", value: repeatCount },
                 { label: "Total Points Outstanding", value: loyaltyTransactions.reduce((s, lt) => s + lt.points, 0) },
               ].map(card => (
@@ -199,8 +202,8 @@ export function CustomersTab({
                         <td>{i + 1}</td>
                         <td>{row.name}</td>
                         <td>{row.visits}</td>
-                        <td>${row.totalSpend.toFixed(2)}</td>
-                        <td>${row.avgPerVisit.toFixed(2)}</td>
+                        <td>{currencySymbol}{row.totalSpend.toFixed(2)}</td>
+                        <td>{currencySymbol}{row.avgPerVisit.toFixed(2)}</td>
                         <td>{row.favProduct}</td>
                       </tr>
                     ))
@@ -292,7 +295,7 @@ export function CustomersTab({
                             }}>{row.status}</span>
                           </td>
                           <td>{row.visitCount}</td>
-                          <td>${row.totalSpend.toFixed(2)}</td>
+                          <td>{currencySymbol}{row.totalSpend.toFixed(2)}</td>
                           <td>{row.lastVisit ? row.lastVisit.toLocaleDateString() : "—"}</td>
                           <td style={{ color: row.pointsBalance > 0 ? "#7c3aed" : "#888", fontWeight: row.pointsBalance > 0 ? "bold" : "normal" }}>{row.pointsBalance}</td>
                           <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
@@ -349,8 +352,8 @@ export function CustomersTab({
                                     <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
                                       {[
                                         { label: "Total Visits", value: String(row.visitCount) },
-                                        { label: "Total Spent", value: `$${row.totalSpend.toFixed(2)}` },
-                                        { label: "Avg per Visit", value: `$${avgSpend.toFixed(2)}` },
+                                        { label: "Total Spent", value: `${currencySymbol}${row.totalSpend.toFixed(2)}` },
+                                        { label: "Avg per Visit", value: `${currencySymbol}${avgSpend.toFixed(2)}` },
                                         { label: "Last Purchase", value: row.lastVisit ? row.lastVisit.toLocaleDateString() : "—" },
                                         { label: "Points Balance", value: String(row.pointsBalance), color: row.pointsBalance > 0 ? "#7c3aed" : "#888" },
                                         { label: "Items Returned", value: String(totalReturned), color: totalReturned > 0 ? "#dc2626" : "#888" },
@@ -387,11 +390,11 @@ export function CustomersTab({
                                               <span style={{ fontSize: "11px", fontWeight: "bold", padding: "2px 8px", borderRadius: "12px", background: statusBg, color: statusColor }}>{s.status}</span>
                                               <span style={{ fontSize: "13px" }}>Payment: <strong>{payMethods}</strong></span>
                                               {Number(s.discount_amount) > 0 && (
-                                                <span style={{ fontSize: "13px", color: "#b45309" }}>Discount: −${Number(s.discount_amount).toFixed(2)}</span>
+                                                <span style={{ fontSize: "13px", color: "#b45309" }}>Discount: −{currencySymbol}{Number(s.discount_amount).toFixed(2)}</span>
                                               )}
                                               {earnedPts > 0 && <span style={{ fontSize: "12px", color: "#15803d", fontWeight: "bold" }}>+{earnedPts} pts earned</span>}
                                               {redeemedPts > 0 && <span style={{ fontSize: "12px", color: "#7c3aed", fontWeight: "bold" }}>−{redeemedPts} pts redeemed</span>}
-                                              <span style={{ marginLeft: "auto", fontWeight: "bold", fontSize: "15px" }}>${Number(s.total).toFixed(2)}</span>
+                                              <span style={{ marginLeft: "auto", fontWeight: "bold", fontSize: "15px" }}>{currencySymbol}{Number(s.total).toFixed(2)}</span>
                                               <button onClick={() => onPrintReceipt(s)} style={{ padding: "2px 10px", cursor: "pointer", fontSize: "12px" }}>Receipt</button>
                                             </div>
                                             <table cellPadding={6} style={{ width: "100%", fontSize: "13px" }}>
@@ -411,8 +414,8 @@ export function CustomersTab({
                                                     <tr key={si.product_id}>
                                                       <td style={{ padding: "4px 14px" }}>{productNameMap[si.product_id] ?? si.product_id.slice(0, 8)}</td>
                                                       <td style={{ textAlign: "right", padding: "4px 14px" }}>{si.quantity}</td>
-                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>${si.unit_price.toFixed(2)}</td>
-                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>${si.line_total.toFixed(2)}</td>
+                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>{currencySymbol}{si.unit_price.toFixed(2)}</td>
+                                                      <td style={{ textAlign: "right", padding: "4px 14px" }}>{currencySymbol}{si.line_total.toFixed(2)}</td>
                                                       <td style={{ textAlign: "right", padding: "4px 14px", color: retQty > 0 ? "#dc2626" : "#ccc", fontWeight: retQty > 0 ? "bold" : "normal" }}>
                                                         {retQty > 0 ? retQty : "—"}
                                                       </td>

@@ -17,7 +17,11 @@ export type Database = {
       businesses: {
         Row: {
           address: string | null
+          country_code: string
           created_at: string
+          currency_code: string
+          currency_symbol: string
+          date_format: string
           email: string | null
           id: string
           name: string
@@ -26,10 +30,15 @@ export type Database = {
           selling_policy: string
           status: string
           tax_rate: number
+          timezone: string
         }
         Insert: {
           address?: string | null
+          country_code?: string
           created_at?: string
+          currency_code?: string
+          currency_symbol?: string
+          date_format?: string
           email?: string | null
           id?: string
           name: string
@@ -38,10 +47,15 @@ export type Database = {
           selling_policy?: string
           status?: string
           tax_rate?: number
+          timezone?: string
         }
         Update: {
           address?: string | null
+          country_code?: string
           created_at?: string
+          currency_code?: string
+          currency_symbol?: string
+          date_format?: string
           email?: string | null
           id?: string
           name?: string
@@ -50,6 +64,7 @@ export type Database = {
           selling_policy?: string
           status?: string
           tax_rate?: number
+          timezone?: string
         }
         Relationships: []
       }

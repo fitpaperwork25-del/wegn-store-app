@@ -6,6 +6,8 @@ import { getPoItemReceiptStatus } from "../lib/purchasing/purchasingHelpers";
 
 type PurchaseOrderLifecyclePanelProps = {
   visible: boolean;
+  /** Business Configuration (v1.2) - display only, never converts amounts. */
+  currencySymbol: string;
   suppliers: Supplier[];
   products: ProductStock[];
   poSupplierId: string;
@@ -80,6 +82,7 @@ type PurchaseOrderLifecyclePanelProps = {
 
 export function PurchaseOrderLifecyclePanel({
   visible,
+  currencySymbol,
   suppliers,
   products,
   poSupplierId, setPoSupplierId,
@@ -284,7 +287,7 @@ export function PurchaseOrderLifecyclePanel({
                         <td style={{ padding: "8px", textAlign: "center" }}>
                           <span style={{ fontSize: "12px", fontWeight: 700, padding: "3px 10px", borderRadius: "12px", background: badgeBg, color: badgeColor, display: "inline-block" }}>{badgeLabel}</span>
                         </td>
-                        <td style={{ padding: "8px", textAlign: "right", fontWeight: 500 }}>${Number(po.subtotal ?? 0).toFixed(2)}</td>
+                        <td style={{ padding: "8px", textAlign: "right", fontWeight: 500 }}>{currencySymbol}{Number(po.subtotal ?? 0).toFixed(2)}</td>
                         <td style={{ padding: "8px", fontSize: "13px", color: "#64748b" }}>{new Date(po.created_at).toLocaleDateString()}</td>
                         <td style={{ padding: "8px", textAlign: "right", whiteSpace: "nowrap" }}>
                           {/* Primary: View */}
@@ -437,8 +440,8 @@ export function PurchaseOrderLifecyclePanel({
                                             {rem}
                                           </td>
                                         )}
-                                        <td>${Number(item.unit_cost).toFixed(2)}</td>
-                                        <td>${Number(item.line_total).toFixed(2)}</td>
+                                        <td>{currencySymbol}{Number(item.unit_cost).toFixed(2)}</td>
+                                        <td>{currencySymbol}{Number(item.line_total).toFixed(2)}</td>
                                         {canEditItems && (
                                           <td>
                                             <button
@@ -461,7 +464,7 @@ export function PurchaseOrderLifecyclePanel({
 
                             {poItems.length > 0 && (
                               <p style={{ textAlign: "right", fontWeight: "bold", marginTop: "8px" }}>
-                                Subtotal: ${poItems.reduce((sum, i) => sum + Number(i.line_total), 0).toFixed(2)}
+                                Subtotal: {currencySymbol}{poItems.reduce((sum, i) => sum + Number(i.line_total), 0).toFixed(2)}
                               </p>
                             )}
                           </td>
@@ -584,7 +587,7 @@ export function PurchaseOrderLifecyclePanel({
                                               style={{ width: "80px", padding: "4px" }}
                                             />
                                           ) : (
-                                            <span>${Number(item.unit_cost).toFixed(2)}</span>
+                                            <span>{currencySymbol}{Number(item.unit_cost).toFixed(2)}</span>
                                           )}
                                         </td>
                                         <td>
