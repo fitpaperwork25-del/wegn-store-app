@@ -31,7 +31,7 @@ import type { ProductStock, Category, ProductResolutionRequest } from "./lib/pro
 import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips, generateWegnBarcode } from "./lib/product/productHelpers";
 import { getSalesTodaySummary, computeEndOfDaySummary, computeNetRevenue, isReportableSaleStatus, isWithinSalesDateRange } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
-import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
+import { getCustomersDashboardSummary, computeLoyaltyReturnReversal } from "./lib/customers/customersHelpers";
 import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
 import { validateExpirationBatchCapture, buildTrackingRecord, type InventoryBatchInsertRow } from "./lib/inventory/trackingCapture";
 import type { Transaction, BulkRow, InventoryBatch, StockCountLine, StockCountRecord, StockCountItemDetail, SessionItem, SessionHistoryItem, SessionPayment } from "./lib/inventory/types";
@@ -1449,25 +1449,26 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
       await supabase.from('sales').update({ status: 'returned' }).eq('id', returningSaleId);
     }
 
-    // Loyalty reversal — reverse earned points once per sale, prevent duplicate
-    const returnedSale = sales.find(s => s.id === returningSaleId);
-    if (returnedSale?.customer_id) {
-      const alreadyReversed = loyaltyTransactions.some(
-        lt => lt.sale_id === returningSaleId && lt.type === 'earn' && lt.points < 0
-      );
-      if (!alreadyReversed) {
-        const totalEarned = loyaltyTransactions
-          .filter(lt => lt.sale_id === returningSaleId && lt.type === 'earn' && lt.points > 0)
-          .reduce((sum, lt) => sum + lt.points, 0);
-        if (totalEarned > 0) {
-          await supabase.from('loyalty_transactions').insert({
-            business_id: businessId,
-            customer_id: returnedSale.customer_id,
-            sale_id: returningSaleId,
-            points: -totalEarned,
-            type: 'earn',
-          });
-        }
+    // Loyalty reversal — proportional to what was actually returned in this
+    // event, not an all-or-nothing reversal of everything ever earned on
+    // the sale (Product Owner decision). See computeLoyaltyReturnReversal.
+    if (returningSale?.customer_id) {
+      const pointsToReverse = computeLoyaltyReturnReversal({
+        saleId: returningSaleId,
+        customerId: returningSale.customer_id,
+        saleSubtotal: returningSale.subtotal,
+        returnedSubtotal,
+        isFullyReturned: allFullyReturned,
+        loyaltyTransactions,
+      });
+      if (pointsToReverse > 0) {
+        await supabase.from('loyalty_transactions').insert({
+          business_id: businessId,
+          customer_id: returningSale.customer_id,
+          sale_id: returningSaleId,
+          points: -pointsToReverse,
+          type: 'earn',
+        });
       }
     }
 
