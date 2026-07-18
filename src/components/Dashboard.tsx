@@ -209,7 +209,7 @@ export function Dashboard({
       <div style={sLabel}>Today's Operations</div>
       <div className="dash-card-row">
         <div className="dash-card">
-          <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>$</div>
+          <div className="dash-card-icon" style={{ background: "#eff6ff", color: "#1d4ed8" }}>{currencySymbol}</div>
           <div className="dash-card-body">
             <div className="dash-card-label">Revenue Today</div>
             <div className="dash-card-value">{currencySymbol}{revenueToday.toFixed(2)}</div>
