@@ -10,7 +10,6 @@ type SalesHistoryPanelProps = {
   setSalesHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
   salesDateRange: 'today' | '7d' | '30d' | 'all';
   setSalesDateRange: React.Dispatch<React.SetStateAction<'today' | '7d' | '30d' | 'all'>>;
-  sales: Sale[];
   salesSearchQuery: string;
   setSalesSearchQuery: React.Dispatch<React.SetStateAction<string>>;
 
@@ -49,7 +48,6 @@ export function SalesHistoryPanel({
   setSalesHistoryOpen,
   salesDateRange,
   setSalesDateRange,
-  sales,
   salesSearchQuery,
   setSalesSearchQuery,
   employees,
@@ -87,7 +85,7 @@ export function SalesHistoryPanel({
         <span style={{ fontSize: "16px" }}>{salesHistoryOpen ? "▼" : "▶"}</span>
         <h3 style={{ margin: 0 }}>Sales History</h3>
         <span style={{ fontSize: "13px", color: "#64748b" }}>
-          ({salesDateRange === 'today' ? 'Today' : salesDateRange === '7d' ? 'Last 7 Days' : salesDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {sales.filter(s => s.status !== 'open').length} sales)
+          ({salesDateRange === 'today' ? 'Today' : salesDateRange === '7d' ? 'Last 7 Days' : salesDateRange === '30d' ? 'Last 30 Days' : 'All Time'} — {filteredSalesHistory.length} sales)
         </span>
       </button>
       {salesHistoryOpen && <>
@@ -146,7 +144,7 @@ export function SalesHistoryPanel({
             </tr>
           </thead>
           <tbody>
-            {sales.length === 0 ? (
+            {filteredSalesHistory.length === 0 ? (
               <tr><td colSpan={8}>No sales yet</td></tr>
             ) : (
               filteredSalesHistory.map((s) => {

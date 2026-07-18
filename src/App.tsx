@@ -29,7 +29,7 @@ import { SalesAnalyticsReport } from "./components/SalesAnalyticsReport";
 import { InventoryReportsPanel } from "./components/InventoryReportsPanel";
 import type { ProductStock, Category, ProductResolutionRequest } from "./lib/product/types";
 import { buildProductIndex, filterProducts, getLowStockProducts, getCategoryChips, generateWegnBarcode } from "./lib/product/productHelpers";
-import { getSalesTodaySummary, computeEndOfDaySummary, computeNetRevenue, isReportableSaleStatus, isSameBusinessDay } from "./lib/sales/salesHelpers";
+import { getSalesTodaySummary, computeEndOfDaySummary, computeNetRevenue, isReportableSaleStatus, isWithinSalesDateRange } from "./lib/sales/salesHelpers";
 import { getPurchasingDashboardSummary } from "./lib/purchasing/purchasingHelpers";
 import { getCustomersDashboardSummary } from "./lib/customers/customersHelpers";
 import { getInventoryDashboardSummary } from "./lib/inventory/inventoryHelpers";
@@ -731,7 +731,6 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   }, [onboardingLoaded, onboardingCompleted]);
 
   useEffect(() => { loadTransactions(); }, [txDateRange]);
-  useEffect(() => { loadSales(); }, [salesDateRange]);
   // Populate the signature cache for whichever PO the Sign PO modal is opened for.
   useEffect(() => { if (signPoId) loadPoSignatures(signPoId); }, [signPoId]);
   useEffect(() => {
@@ -866,7 +865,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
       // Include fully-returned sales so a return doesn't erase the sale from
       // the Dashboard's activity/history - matches getSalesTodaySummary's
       // status filter (see salesHelpers.ts). Voided sales stay excluded.
-      .filter(s => s.status === 'completed' || s.status === 'returned')
+      .filter(s => isReportableSaleStatus(s.status))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 5),
     [sales]
@@ -879,7 +878,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const myRecentSales = useMemo(() => {
     if (!staffSession) return [];
     return [...sales]
-      .filter(s => s.cashier_id === staffSession.id && (s.status === 'completed' || s.status === 'returned'))
+      .filter(s => s.cashier_id === staffSession.id && isReportableSaleStatus(s.status))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 5);
   }, [sales, staffSession]);
@@ -911,6 +910,11 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const filteredSalesHistory = useMemo(() =>
     sales.filter(s => {
       if (s.status === 'open') return false;
+      // Sales History's own date-range narrowing, applied in-memory now
+      // that loadSales() always fetches a single range-independent window
+      // (see loadSales's comment) - matches how Reports' analyticsData
+      // narrows the same shared `sales` array for its own range control.
+      if (!isWithinSalesDateRange(s.created_at, salesDateRange)) return false;
       if (salesCashierFilter !== "all") {
         if (salesCashierFilter === "none" && s.cashier_id) return false;
         if (salesCashierFilter !== "none" && s.cashier_id !== salesCashierFilter) return false;
@@ -932,7 +936,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         return false;
       });
     }),
-    [sales, salesCashierFilter, salesSearchQuery, customerMap, saleItemsBySaleId, productIdMap]
+    [sales, salesDateRange, salesCashierFilter, salesSearchQuery, customerMap, saleItemsBySaleId, productIdMap]
   );
 
   // Analytics data — replaces the full computation IIFE that ran on every render.
@@ -945,15 +949,9 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   // (isReportableSaleStatus + computeNetRevenue) everywhere in this memo.
   const analyticsData = useMemo((): AnalyticsData => {
     const now = new Date();
-    const rangeStart: Date | null =
-      analyticsRange === '7d'  ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
-      analyticsRange === '30d' ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
-      null;
-    const periodSales = sales.filter(s => {
-      if (!isReportableSaleStatus(s.status)) return false;
-      if (analyticsRange === 'today') return isSameBusinessDay(s.created_at, 0, now);
-      return rangeStart === null || new Date(s.created_at) >= rangeStart;
-    });
+    const periodSales = sales.filter(s =>
+      isReportableSaleStatus(s.status) && isWithinSalesDateRange(s.created_at, analyticsRange, now)
+    );
     const periodSaleIds = new Set(periodSales.map(s => s.id));
     const periodItems = saleItems.filter(si => periodSaleIds.has(si.sale_id));
     const periodPayments = allPayments.filter(p => periodSaleIds.has(p.sale_id));
@@ -1422,7 +1420,18 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         reason: `Return for sale ${returningSaleId.slice(0, 8)}${returnReason ? ': ' + returnReason : ''}`,
       });
     }
-    const refundAmount = toReturn.reduce((sum, line) => sum + line.return_qty * line.unit_price, 0);
+    // Refund must be tax-inclusive: computeNetRevenue nets this payment
+    // against the tax-inclusive sale.total, so a tax-exclusive refund
+    // (return_qty * unit_price alone) leaves the tax portion of a fully
+    // returned sale stranded as phantom revenue/cash instead of netting
+    // to zero. Tax is apportioned to the returned lines in proportion to
+    // their share of the sale's pre-tax subtotal.
+    const returnedSubtotal = toReturn.reduce((sum, line) => sum + line.return_qty * line.unit_price, 0);
+    const returningSale = sales.find(s => s.id === returningSaleId);
+    const taxShare = returningSale && returningSale.subtotal > 0
+      ? (returnedSubtotal / returningSale.subtotal) * returningSale.tax
+      : 0;
+    const refundAmount = returnedSubtotal + taxShare;
     if (refundAmount > 0) {
       const originalPayment = allPayments.find(p => p.sale_id === returningSaleId && p.payment_type !== 'refund');
       await supabase.from('payments').insert({
@@ -1932,21 +1941,19 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     await loadCustomers();
   }
 
+  // Fetches a single, range-independent window of sales into the app-wide
+  // `sales` state used by Dashboard/EOD/Reports/Customers/Profit Report.
+  // Previously this query itself was scoped by `salesDateRange` - a control
+  // that belongs to the unrelated POS Sales History panel - so narrowing
+  // Sales History to e.g. "Today" silently truncated every other tab's data
+  // too. Sales History's own range selection is now applied in-memory (see
+  // filteredSalesHistory) like every other date-range control in the app.
   async function loadSales() {
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const rangeStart: string | null =
-      salesDateRange === 'today' ? startOfDay.toISOString() :
-      salesDateRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString() :
-      salesDateRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString() :
-      null;
-    let query = supabase
+    const { data, error } = await supabase
       .from("sales")
       .select("id, cashier_id, customer_id, subtotal, tax, discount_amount, total, status, created_at")
-      .order("created_at", { ascending: false });
-    if (rangeStart) query = query.gte("created_at", rangeStart);
-    else query = query.limit(2000);
-    const { data, error } = await query;
+      .order("created_at", { ascending: false })
+      .limit(2000);
     if (error) { console.error(error); return; }
     setSales((data as Sale[]) || []);
   }
@@ -5343,7 +5350,6 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         setSalesHistoryOpen={setSalesHistoryOpen}
         salesDateRange={salesDateRange}
         setSalesDateRange={setSalesDateRange}
-        sales={sales}
         salesSearchQuery={salesSearchQuery}
         setSalesSearchQuery={setSalesSearchQuery}
         employees={employees}

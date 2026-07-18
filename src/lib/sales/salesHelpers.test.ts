@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getSalesTodaySummary, isSameBusinessDay, computeNetRevenue, computeEndOfDaySummary } from "./salesHelpers.ts";
+import { getSalesTodaySummary, isSameBusinessDay, computeNetRevenue, computeEndOfDaySummary, isWithinSalesDateRange } from "./salesHelpers.ts";
 import type { Sale, SaleItemRecord, EodPayment, ReturnItemSummary } from "./types.ts";
 import type { ProductStock } from "../product/types.ts";
 import type { Employee, DrawerSession, DrawerPaidOut } from "../staff/types.ts";
@@ -135,6 +135,16 @@ test("getSalesTodaySummary computes yesterday's revenue, count, and profit from 
   assert.equal(summary.yesterdayProfit, 80);
 });
 
+test("getSalesTodaySummary keeps a fully-returned yesterday sale in yesterdaySalesCount but nets its revenue to $0", () => {
+  const sales = [makeSale({ id: "y1", total: 100, status: "returned", created_at: yesterdayAt(10) })];
+  const payments: EodPayment[] = [
+    { sale_id: "y1", payment_method: "cash", amount: 100, payment_type: "refund", created_at: yesterdayAt(10) },
+  ];
+  const summary = getSalesTodaySummary(sales, [], payments, [], {});
+  assert.equal(summary.yesterdaySalesCount, 1);
+  assert.equal(summary.yesterdayRevenue, 0);
+});
+
 test("getSalesTodaySummary yesterdayProfit is null when there's no cost data", () => {
   const sales = [makeSale({ id: "y1", total: 100, created_at: yesterdayAt(10) })];
   const saleItems = [makeSaleItem({ sale_id: "y1", product_id: "p1", quantity: 5 })];
@@ -149,7 +159,7 @@ test("getSalesTodaySummary yesterdayProfit is null when there are no items", () 
   assert.equal(summary.yesterdayProfit, null);
 });
 
-test("getSalesTodaySummary sums yesterday's cash payments, excluding refunds and other methods", () => {
+test("getSalesTodaySummary nets yesterday's cash refunds out of yesterday's cash total, excluding other methods", () => {
   const sales = [makeSale({ id: "y1", created_at: yesterdayAt(10) })];
   const payments: EodPayment[] = [
     { sale_id: "y1", payment_method: "cash", amount: 40, payment_type: "sale", created_at: yesterdayAt(10) },
@@ -157,7 +167,7 @@ test("getSalesTodaySummary sums yesterday's cash payments, excluding refunds and
     { sale_id: "y1", payment_method: "card", amount: 25, payment_type: "sale", created_at: yesterdayAt(10) },
   ];
   const summary = getSalesTodaySummary(sales, [], payments, [], {});
-  assert.equal(summary.yesterdayCash, 40);
+  assert.equal(summary.yesterdayCash, 25);
 });
 
 test("getSalesTodaySummary identifies yesterday's top-selling product by quantity", () => {
@@ -228,6 +238,42 @@ test("isSameBusinessDay: two days ago is never mistaken for yesterday", () => {
   const referenceNow = new Date(2026, 5, 15, 12, 0, 0);
   const twoDaysAgo = new Date(2026, 5, 13, 12, 0, 0).toISOString();
   assert.equal(isSameBusinessDay(twoDaysAgo, 1, referenceNow), false);
+});
+
+// ---------------------------------------------------------------------
+// isWithinSalesDateRange — the one range-matching rule shared by Reports
+// Sales Analytics, Sales History, and Profit Report (previously each had
+// its own hand-rolled copy of this exact boundary math).
+// ---------------------------------------------------------------------
+
+test("isWithinSalesDateRange: 'today' matches only the local business day", () => {
+  const referenceNow = new Date(2026, 5, 15, 12, 0, 0);
+  const earlierToday = new Date(2026, 5, 15, 0, 0, 1).toISOString();
+  const yesterday = new Date(2026, 5, 14, 23, 59, 59).toISOString();
+  assert.equal(isWithinSalesDateRange(earlierToday, "today", referenceNow), true);
+  assert.equal(isWithinSalesDateRange(yesterday, "today", referenceNow), false);
+});
+
+test("isWithinSalesDateRange: '7d' includes exactly 7 rolling days back, excludes the 8th", () => {
+  const referenceNow = new Date(2026, 5, 15, 12, 0, 0);
+  const sixDaysAgo = new Date(referenceNow.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+  const eightDaysAgo = new Date(referenceNow.getTime() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  assert.equal(isWithinSalesDateRange(sixDaysAgo, "7d", referenceNow), true);
+  assert.equal(isWithinSalesDateRange(eightDaysAgo, "7d", referenceNow), false);
+});
+
+test("isWithinSalesDateRange: '30d' includes exactly 30 rolling days back, excludes the 31st", () => {
+  const referenceNow = new Date(2026, 5, 15, 12, 0, 0);
+  const twentyNineDaysAgo = new Date(referenceNow.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString();
+  const thirtyOneDaysAgo = new Date(referenceNow.getTime() - 31 * 24 * 60 * 60 * 1000).toISOString();
+  assert.equal(isWithinSalesDateRange(twentyNineDaysAgo, "30d", referenceNow), true);
+  assert.equal(isWithinSalesDateRange(thirtyOneDaysAgo, "30d", referenceNow), false);
+});
+
+test("isWithinSalesDateRange: 'all' matches any timestamp, including far in the past", () => {
+  const referenceNow = new Date(2026, 5, 15, 12, 0, 0);
+  const longAgo = new Date(2020, 0, 1).toISOString();
+  assert.equal(isWithinSalesDateRange(longAgo, "all", referenceNow), true);
 });
 
 // ---------------------------------------------------------------------

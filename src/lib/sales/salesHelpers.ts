@@ -67,6 +67,22 @@ export function isSameBusinessDay(isoTimestamp: string, daysAgo: number, referen
   );
 }
 
+export type SalesDateRange = "today" | "7d" | "30d" | "all";
+
+/** The one "today/7d/30d/all" range-matching rule, shared by every date-range
+ * selector in the app (Reports Sales Analytics, Sales History, Profit
+ * Report) - previously each of these hand-rolled its own copy of this exact
+ * boundary math. "today" defers to isSameBusinessDay (local calendar day);
+ * "7d"/"30d" are rolling windows back from referenceNow; "all" matches
+ * everything. */
+export function isWithinSalesDateRange(isoTimestamp: string, range: SalesDateRange, referenceNow: Date = new Date()): boolean {
+  if (range === "all") return true;
+  if (range === "today") return isSameBusinessDay(isoTimestamp, 0, referenceNow);
+  const days = range === "7d" ? 7 : 30;
+  const rangeStart = new Date(referenceNow.getTime() - days * 24 * 60 * 60 * 1000);
+  return new Date(isoTimestamp) >= rangeStart;
+}
+
 export type SalesTodaySummary = {
   revenueToday: number;
   txnCount: number;
@@ -97,18 +113,27 @@ export function getSalesTodaySummary(
   const txnCount = todaySales.length;
   const avgSale = txnCount > 0 ? revenueToday / txnCount : 0;
 
+  // Same reportable-sale + net-revenue rule as "today" above (previously
+  // "completed"-only here, so a yesterday sale that was later fully
+  // refunded silently vanished from Yesterday's Summary instead of netting
+  // to reflect its refund - the same class of bug REPORT-001 fixed
+  // elsewhere).
   const yesterdaySales = sales.filter(
-    (s) => s.status === "completed" && isSameBusinessDay(s.created_at, 1, referenceNow)
+    (s) => isReportableSaleStatus(s.status) && isSameBusinessDay(s.created_at, 1, referenceNow)
   );
   const yesterdaySaleIds = new Set(yesterdaySales.map((s) => s.id));
-  const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + Number(s.total), 0);
+  const yesterdayRevenue = computeNetRevenue(yesterdaySales, allPayments);
   const yesterdayItems = saleItems.filter((si) => yesterdaySaleIds.has(si.sale_id));
   const productCostMap = Object.fromEntries(products.map((p) => [p.product_id, p.average_cost ?? 0]));
   const yesterdayCOGS = yesterdayItems.reduce((sum, si) => sum + si.quantity * (productCostMap[si.product_id] ?? 0), 0);
   const yesterdayProfit = (yesterdayItems.length > 0 && yesterdayCOGS > 0) ? yesterdayRevenue - yesterdayCOGS : null;
-  const yesterdayCash = allPayments
+  const yesterdayCashIn = allPayments
     .filter((p) => yesterdaySaleIds.has(p.sale_id) && p.payment_method === "cash" && p.payment_type !== "refund")
     .reduce((sum, p) => sum + Number(p.amount), 0);
+  const yesterdayCashRefunds = allPayments
+    .filter((p) => yesterdaySaleIds.has(p.sale_id) && p.payment_method === "cash" && p.payment_type === "refund")
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const yesterdayCash = yesterdayCashIn - yesterdayCashRefunds;
   const qtyBySku: Record<string, number> = {};
   for (const si of yesterdayItems) qtyBySku[si.product_id] = (qtyBySku[si.product_id] ?? 0) + si.quantity;
   const topYesterdayId = Object.entries(qtyBySku).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;

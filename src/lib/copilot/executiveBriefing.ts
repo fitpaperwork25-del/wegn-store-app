@@ -1,6 +1,7 @@
 import type { Sale, SaleItemRecord } from "../sales/types";
 import type { ProductStock } from "../product/types";
 import type { InventoryBatch } from "../inventory/types";
+import { isSameBusinessDay } from "../sales/salesHelpers";
 
 /**
  * Pure, stateless helpers for the Wegn AI Executive Briefing. Same
@@ -13,12 +14,6 @@ import type { InventoryBatch } from "../inventory/types";
  * its audit logging. Only the "Ask Wegn AI" chat below the briefing uses
  * the AI tool-calling flow.
  */
-
-function isToday(dateString: string): boolean {
-  const d = new Date(dateString);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-}
 
 /**
  * Today's completed-sales profit: revenue (sum of each sale's total) minus
@@ -33,7 +28,7 @@ export function getTodaysProfitEstimate(
   saleItems: SaleItemRecord[],
   productIdMap: Record<string, ProductStock>
 ): number | null {
-  const todaySales = sales.filter((s) => s.status === "completed" && isToday(s.created_at));
+  const todaySales = sales.filter((s) => s.status === "completed" && isSameBusinessDay(s.created_at, 0));
   const todaySaleIds = new Set(todaySales.map((s) => s.id));
   const revenueToday = todaySales.reduce((sum, s) => sum + Number(s.total), 0);
   const todayItems = saleItems.filter((si) => todaySaleIds.has(si.sale_id));

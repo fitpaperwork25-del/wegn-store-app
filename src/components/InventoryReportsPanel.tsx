@@ -5,6 +5,7 @@ import type { Customer } from "../lib/customers/types";
 import type { Employee } from "../lib/staff/types";
 import type { ProductStock } from "../lib/product/types";
 import { getTotalInventoryValue } from "../lib/product/productHelpers";
+import { isReportableSaleStatus, isWithinSalesDateRange } from "../lib/sales/salesHelpers";
 
 type InventoryReportsPanelProps = {
   products: ProductStock[];
@@ -192,20 +193,24 @@ export function InventoryReportsPanel({
         );
       })()}
 
-      {/* 5. Profit Reporting v1 */}
+      {/* 5. Profit Reporting */}
       <h3 style={{ marginTop: "32px", marginBottom: "8px" }}>Profit Report</h3>
       {(() => {
         const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const profitRangeStart: Date | null =
-          analyticsRange === 'today' ? startOfDay :
-          analyticsRange === '7d'   ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
-          analyticsRange === '30d'  ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) :
-          null;
-
+        // Reportable-sale + date-range rules now reuse the same shared
+        // helpers as Sales Analytics/Dashboard/EOD instead of a hand-rolled
+        // copy, so this block can't silently drift from what "Today"/"Last
+        // 7 Days"/etc. mean everywhere else. "Net Sales (Pre-Tax)" below
+        // stays a deliberately distinct, pre-tax P&L waterfall (Gross Sales
+        // − Discounts − Returns) rather than the tax-inclusive,
+        // payment-netted computeNetRevenue used for "Revenue" elsewhere -
+        // COGS/Gross Profit/Gross Margin are intentionally computed against
+        // this pre-tax figure and untouched by the reconciliation below.
+        // "Tax Collected" + "Total Collected (Including Tax)" make that
+        // relationship explicit instead of leaving Sales Analytics' Revenue
+        // and this panel's own total silently differing by the tax amount.
         const eligibleSales = sales.filter(s =>
-          (s.status === 'completed' || s.status === 'returned') &&
-          (profitRangeStart === null || new Date(s.created_at) >= profitRangeStart)
+          isReportableSaleStatus(s.status) && isWithinSalesDateRange(s.created_at, analyticsRange, now)
         );
         const eligibleSaleIds = new Set(eligibleSales.map(s => s.id));
 
@@ -250,13 +255,18 @@ export function InventoryReportsPanel({
           byProduct[si.product_id].cogs += netQty * avgCost;
         }
 
+        let taxCollected = 0;
         for (const s of eligibleSales) {
           totalDiscounts += Number(s.discount_amount);
+          taxCollected += Number(s.tax);
         }
 
         const netSales = grossSales - totalDiscounts - totalReturns;
         const grossProfit = netSales - totalCogs;
         const grossMargin = netSales > 0 ? (grossProfit / netSales) * 100 : 0;
+        // Reconciles against Sales Analytics' Revenue for the same range -
+        // see the reporting-tax-inclusivity investigation this fix closes.
+        const totalCollected = netSales + taxCollected;
 
         const productRows = Object.entries(byProduct).map(([pid, row]) => {
           const netRev = row.grossRev - row.returnedRev;
@@ -295,10 +305,12 @@ export function InventoryReportsPanel({
                 { label: "Gross Sales", value: `$${grossSales.toFixed(2)}`, color: "#1d4ed8" },
                 { label: "Discounts", value: `−$${totalDiscounts.toFixed(2)}`, color: totalDiscounts > 0 ? "#b45309" : "#888" },
                 { label: "Returns", value: `−$${totalReturns.toFixed(2)}`, color: totalReturns > 0 ? "#dc2626" : "#888" },
-                { label: "Net Sales", value: `$${netSales.toFixed(2)}`, color: "#0f172a" },
+                { label: "Net Sales (Pre-Tax)", value: `$${netSales.toFixed(2)}`, color: "#0f172a" },
                 { label: "COGS", value: `$${totalCogs.toFixed(2)}`, color: "#6b7280" },
                 { label: "Gross Profit", value: `$${grossProfit.toFixed(2)}`, color: grossProfit >= 0 ? "#15803d" : "#dc2626" },
                 { label: "Gross Margin", value: `${grossMargin.toFixed(1)}%`, color: grossMargin >= 20 ? "#15803d" : grossMargin >= 0 ? "#b45309" : "#dc2626" },
+                { label: "Tax Collected", value: `$${taxCollected.toFixed(2)}`, color: "#6b7280" },
+                { label: "Total Collected (Including Tax)", value: `$${totalCollected.toFixed(2)}`, color: "#0f172a" },
               ].map(card => (
                 <div key={card.label} style={{ border: "1px solid #e5e7eb", borderRadius: "8px", padding: "14px 18px", minWidth: "130px", flex: 1 }}>
                   <div style={{ fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>{card.label}</div>

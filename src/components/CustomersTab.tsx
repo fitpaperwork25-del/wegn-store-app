@@ -127,8 +127,11 @@ export function CustomersTab({
         // isReportableSaleStatus rule (see the other two custSales below).
         const completedSales = sales.filter(s => isReportableSaleStatus(s.status));
         const totalVisits = completedSales.length;
+        // Netted like every other revenue figure in this file (REPORT-006
+        // fixed the status filter here but left this sum gross - a fully
+        // refunded sale's original total still counted in full).
         const storeAvg = totalVisits > 0
-          ? completedSales.reduce((sum, s) => sum + Number(s.total), 0) / totalVisits
+          ? computeNetRevenue(completedSales, allPayments) / totalVisits
           : 0;
         const repeatCount = customers.filter(c =>
           completedSales.filter(s => s.customer_id === c.id).length >= 2
@@ -139,7 +142,10 @@ export function CustomersTab({
         const top5 = customers
           .map(c => {
             const custSales = completedSales.filter(s => s.customer_id === c.id);
-            const totalSpend = custSales.reduce((sum, s) => sum + Number(s.total), 0);
+            // Netted for refunds, matching Customer List/Summary's totalSpend
+            // below (previously gross here only - a customer whose sale was
+            // returned still showed the pre-refund total in this ranking).
+            const totalSpend = computeNetRevenue(custSales, allPayments);
             const visits = custSales.length;
             const avgPerVisit = visits > 0 ? totalSpend / visits : 0;
             const custSaleIds = new Set(custSales.map(s => s.id));
