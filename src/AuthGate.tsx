@@ -3,6 +3,7 @@ import { supabase } from "./supabase";
 import type { User } from "@supabase/supabase-js";
 import App from "./App";
 import { resolveMountSessionTrust } from "./lib/auth/sessionAccess";
+import { isPasswordRecoveryUrl, validateNewPassword } from "./lib/auth/passwordRecovery";
 
 // Registered Store Device / Staff Mode (Option A - shared device identity).
 // See supabase/migrations/20260716_registered_device_staff_mode.sql.
@@ -84,6 +85,17 @@ export default function AuthGate() {
   const [canReturnToStaffMode, setCanReturnToStaffMode] = useState(false);
   const restoreAttempted = useRef(false);
 
+  // Password recovery: a recovery-link session must never fall through to
+  // the normal signed-in App render (that would silently "log the user in"
+  // without ever letting them set a new password). Lazy-initialized from
+  // the URL so the very first render already knows, in addition to the
+  // authoritative PASSWORD_RECOVERY event handled in onAuthStateChange below.
+  const [passwordRecovery, setPasswordRecovery] = useState(() => isPasswordRecoveryUrl());
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       const sessionUser = data.session?.user ?? null;
@@ -152,7 +164,17 @@ export default function AuthGate() {
       setRestoringDevice(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        // Supabase has established a temporary recovery session - hold here
+        // on the Set New Password screen rather than treating this like a
+        // normal sign-in (the mount effect above may otherwise have already
+        // set loading/restoringDevice false with no session; this covers it).
+        setPasswordRecovery(true);
+        setLoading(false);
+        setRestoringDevice(false);
+        return;
+      }
       const sessionUser = session?.user ?? null;
       if (isDeviceUser(sessionUser) && session) {
         writeDeviceSessionCache({ accessToken: session.access_token, refreshToken: session.refresh_token });
@@ -210,6 +232,35 @@ export default function AuthGate() {
       setError(signInErr.message);
     }
     setSubmitting(false);
+  }
+
+  async function handleSetNewPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setRecoveryError("");
+    const validation = validateNewPassword(newPassword, confirmNewPassword);
+    if (!validation.ok) {
+      setRecoveryError(validation.error);
+      return;
+    }
+    setRecoverySubmitting(true);
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateErr) {
+      setRecoveryError(updateErr.message);
+      setRecoverySubmitting(false);
+      return;
+    }
+    await supabase.auth.signOut();
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setRecoverySubmitting(false);
+    setRecoveryError("");
+    setPasswordRecovery(false);
+    setUser(null);
+    setEmail("");
+    setPassword("");
+    setMode("login");
+    setSuccessMsg("Your password has been updated. Please sign in with your new password.");
+    window.history.replaceState(null, "", window.location.pathname);
   }
 
   async function handleSignOut() {
@@ -283,6 +334,64 @@ export default function AuthGate() {
     setOverrideActive(false);
     setCanReturnToStaffMode(false);
     return { ok: true };
+  }
+
+  if (passwordRecovery) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: "#f8fafc" }}>
+        <div style={{ width: "100%", maxWidth: "380px", padding: "40px 32px", background: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
+          <div style={{ textAlign: "center", marginBottom: "28px" }}>
+            <h1 style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a", margin: 0 }}>Set New Password</h1>
+            <p style={{ fontSize: "14px", color: "#64748b", margin: "4px 0 0" }}>Choose a new password for your account.</p>
+          </div>
+
+          <form onSubmit={handleSetNewPassword}>
+            <div style={{ marginBottom: "14px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "#374151", marginBottom: "4px" }}>New password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={6}
+                autoComplete="new-password"
+                style={{ width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
+              />
+            </div>
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "#374151", marginBottom: "4px" }}>Confirm password</label>
+              <input
+                type="password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                required
+                minLength={6}
+                autoComplete="new-password"
+                style={{ width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
+              />
+            </div>
+
+            {recoveryError && (
+              <div style={{ padding: "8px 12px", marginBottom: "14px", background: "#fef2f2", color: "#b91c1c", borderRadius: "6px", fontSize: "13px" }}>
+                {recoveryError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={recoverySubmitting}
+              style={{
+                width: "100%", padding: "10px", background: "#1d4ed8", color: "#fff", border: "none",
+                borderRadius: "6px", fontSize: "15px", fontWeight: 600, cursor: recoverySubmitting ? "not-allowed" : "pointer",
+                opacity: recoverySubmitting ? 0.7 : 1,
+              }}
+            >
+              {recoverySubmitting ? "Please wait..." : "Set New Password"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   if (loading || restoringDevice) {
