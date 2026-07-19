@@ -1463,7 +1463,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     for (const line of toReturn) {
       const product = products.find(p => p.product_id === line.product_id);
       if (!product) continue;
-      await supabase.from('return_items').insert({
+      const { error: returnItemErr } = await supabase.from('return_items').insert({
         business_id: businessId,
         sale_id: returningSaleId,
         product_id: line.product_id,
@@ -1474,6 +1474,12 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         notes: returnNotes || null,
         processed_by: processedBy,
       });
+      if (returnItemErr) {
+        console.error(returnItemErr);
+        setMessage({ text: "Failed to record return: " + returnItemErr.message, type: "error" });
+        setReturnLoading(false);
+        return;
+      }
       const newQty = product.quantity_on_hand + line.return_qty;
       await supabase.from('inventory').update({ quantity_on_hand: newQty }).eq('id', product.inventory_id);
       await supabase.from('inventory_transactions').insert({
