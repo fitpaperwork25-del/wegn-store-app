@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 import type { User } from "@supabase/supabase-js";
 import App from "./App";
 import { resolveMountSessionTrust } from "./lib/auth/sessionAccess";
-import { isPasswordRecoveryUrl, validateNewPassword } from "./lib/auth/passwordRecovery";
+import { isPasswordRecoveryUrl, validateNewPassword, validateRecoveryEmail, PRODUCTION_APP_URL } from "./lib/auth/passwordRecovery";
 
 // Registered Store Device / Staff Mode (Option A - shared device identity).
 // See supabase/migrations/20260716_registered_device_staff_mode.sql.
@@ -95,6 +95,17 @@ export default function AuthGate() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [recoverySubmitting, setRecoverySubmitting] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
+
+  // Forgot password: a small "request a reset email" form shown inline on
+  // the sign-in card, distinct from the passwordRecovery screen above
+  // (which only appears after the user has already clicked the emailed
+  // link). Its own email field, not the sign-in form's, since it must
+  // still work even if the sign-in email field is empty or wrong.
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [forgotSuccess, setForgotSuccess] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -261,6 +272,44 @@ export default function AuthGate() {
     setMode("login");
     setSuccessMsg("Your password has been updated. Please sign in with your new password.");
     window.history.replaceState(null, "", window.location.pathname);
+  }
+
+  function openForgotPassword() {
+    setForgotEmail(email);
+    setForgotError("");
+    setForgotSuccess("");
+    setShowForgotPassword(true);
+  }
+
+  function closeForgotPassword() {
+    setShowForgotPassword(false);
+    setForgotEmail("");
+    setForgotSubmitting(false);
+    setForgotError("");
+    setForgotSuccess("");
+  }
+
+  async function handleForgotPassword() {
+    setForgotError("");
+    setForgotSuccess("");
+    const validation = validateRecoveryEmail(forgotEmail);
+    if (!validation.ok) {
+      setForgotError(validation.error);
+      return;
+    }
+    setForgotSubmitting(true);
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: PRODUCTION_APP_URL,
+    });
+    setForgotSubmitting(false);
+    if (resetErr) {
+      setForgotError(resetErr.message);
+      return;
+    }
+    // Deliberately generic - Supabase itself does not error for an unknown
+    // email (to avoid confirming which addresses have accounts), so this
+    // message must never imply "your account was found."
+    setForgotSuccess("If an account exists for that email, a password reset link has been sent.");
   }
 
   async function handleSignOut() {
@@ -453,6 +502,66 @@ export default function AuthGate() {
               style={{ width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
             />
           </div>
+
+          {mode === "login" && !showForgotPassword && (
+            <div style={{ textAlign: "right", margin: "-10px 0 14px" }}>
+              <button
+                type="button"
+                onClick={openForgotPassword}
+                style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontSize: "13px", padding: 0 }}
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
+
+          {mode === "login" && showForgotPassword && (
+            <div style={{ marginBottom: "20px", padding: "14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+              <p style={{ fontSize: "13px", color: "#374151", margin: "0 0 10px", fontWeight: 500 }}>Reset your password</p>
+              <input
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="Email address"
+                autoComplete="email"
+                style={{ width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box", marginBottom: "10px" }}
+              />
+
+              {forgotSuccess && (
+                <div style={{ padding: "8px 12px", marginBottom: "10px", background: "#f0fdf4", color: "#15803d", borderRadius: "6px", fontSize: "13px" }}>
+                  {forgotSuccess}
+                </div>
+              )}
+
+              {forgotError && (
+                <div style={{ padding: "8px 12px", marginBottom: "10px", background: "#fef2f2", color: "#b91c1c", borderRadius: "6px", fontSize: "13px" }}>
+                  {forgotError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={forgotSubmitting}
+                  style={{
+                    flex: 1, padding: "9px", background: "#1d4ed8", color: "#fff", border: "none",
+                    borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: forgotSubmitting ? "not-allowed" : "pointer",
+                    opacity: forgotSubmitting ? 0.7 : 1,
+                  }}
+                >
+                  {forgotSubmitting ? "Sending..." : "Send Reset Link"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeForgotPassword}
+                  style={{ padding: "9px 12px", background: "#fff", color: "#374151", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "13px", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {successMsg && (
             <div style={{ padding: "8px 12px", marginBottom: "14px", background: "#f0fdf4", color: "#15803d", borderRadius: "6px", fontSize: "13px" }}>

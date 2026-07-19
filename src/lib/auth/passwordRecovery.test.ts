@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isPasswordRecoveryUrl, validateNewPassword } from "./passwordRecovery.ts";
+import { isPasswordRecoveryUrl, validateNewPassword, validateRecoveryEmail } from "./passwordRecovery.ts";
 
 test("isPasswordRecoveryUrl detects type=recovery in the hash", () => {
   assert.equal(isPasswordRecoveryUrl({ hash: "#access_token=abc&type=recovery", search: "" }), true);
@@ -32,4 +32,17 @@ test("validateNewPassword rejects mismatched passwords", () => {
 
 test("validateNewPassword accepts a valid, matching password", () => {
   assert.deepEqual(validateNewPassword("abcdef", "abcdef"), { ok: true });
+});
+
+test("validateRecoveryEmail rejects an empty or whitespace-only email", () => {
+  assert.deepEqual(validateRecoveryEmail(""), { ok: false, error: "Please enter your email address." });
+  assert.deepEqual(validateRecoveryEmail("   "), { ok: false, error: "Please enter your email address." });
+});
+
+test("validateRecoveryEmail rejects a malformed email", () => {
+  assert.deepEqual(validateRecoveryEmail("not-an-email"), { ok: false, error: "Please enter a valid email address." });
+});
+
+test("validateRecoveryEmail accepts a well-formed, whitespace-padded email", () => {
+  assert.deepEqual(validateRecoveryEmail("  owner@example.com  "), { ok: true });
 });

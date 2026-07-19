@@ -35,3 +35,26 @@ export function validateNewPassword(password: string, confirmPassword: string): 
   }
   return { ok: true };
 }
+
+export type EmailValidationResult = { ok: true } | { ok: false; error: string };
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function validateRecoveryEmail(email: string): EmailValidationResult {
+  const trimmed = email.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Please enter your email address." };
+  }
+  if (!EMAIL_PATTERN.test(trimmed)) {
+    return { ok: false, error: "Please enter a valid email address." };
+  }
+  return { ok: true };
+}
+
+/**
+ * Where Supabase's recovery email links back to. Hardcoded to the live
+ * production URL rather than window.location.origin - a recovery email
+ * must always return the user to the real app regardless of what host
+ * (e.g. localhost during development) issued the request.
+ */
+export const PRODUCTION_APP_URL = "https://wegn-store-app.vercel.app";
