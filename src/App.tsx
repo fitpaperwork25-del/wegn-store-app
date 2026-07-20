@@ -1261,6 +1261,19 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     setBusinessTaxRate(taxRate);
   }
 
+  // Onboarding's currency step now saves for real (previously recorded
+  // only in business_onboarding_state.step_data, never applied to the
+  // business) - same update-then-set-local-state shape as tax rate above.
+  async function handleOnboardingSaveCurrency(currencyCode: string, currencySymbol: string) {
+    const { error } = await supabase
+      .from("businesses")
+      .update({ currency_code: currencyCode, currency_symbol: currencySymbol })
+      .eq("id", businessId);
+    if (error) { console.error("Failed to save currency:", error); return; }
+    setBusinessCurrencyCode(currencyCode);
+    setBusinessCurrencySymbol(currencySymbol);
+  }
+
   // Staff Mode Phase 2: PIN verification and identity now live entirely
   // server-side (employee-pin-login), not in a local employees.find()
   // compare - see supabase/functions/employee-pin-login. A match returns
@@ -6136,6 +6149,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         onOnboardingComplete={handleOnboardingComplete}
         onOnboardingSaveBusinessProfile={handleOnboardingSaveBusinessProfile}
         onOnboardingSaveTaxRate={handleOnboardingSaveTaxRate}
+        onOnboardingSaveCurrency={handleOnboardingSaveCurrency}
       />
 
       {/* Smart Receive — Receive Inventory Modal */}

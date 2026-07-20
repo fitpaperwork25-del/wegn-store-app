@@ -36,6 +36,7 @@ type WegnAiPageProps = {
   onOnboardingComplete: (data: Partial<OnboardingStepData>) => void;
   onOnboardingSaveBusinessProfile: (fields: { phone: string; email: string; address: string }) => void;
   onOnboardingSaveTaxRate: (taxRate: number) => void;
+  onOnboardingSaveCurrency: (currencyCode: string, currencySymbol: string) => void;
 };
 
 /**
@@ -75,6 +76,7 @@ export function WegnAiPage({
   onOnboardingComplete,
   onOnboardingSaveBusinessProfile,
   onOnboardingSaveTaxRate,
+  onOnboardingSaveCurrency,
 }: WegnAiPageProps) {
   const greetingName = deriveGreetingName(staffName, userEmail);
   const inventoryHealthy = lowStockCount === 0 && outOfStockCount === 0;
@@ -97,6 +99,7 @@ export function WegnAiPage({
         onComplete={onOnboardingComplete}
         onSaveBusinessProfile={onOnboardingSaveBusinessProfile}
         onSaveTaxRate={onOnboardingSaveTaxRate}
+        onSaveCurrency={onOnboardingSaveCurrency}
       />
     );
   }

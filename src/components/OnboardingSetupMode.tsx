@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import type { OnboardingStepData } from "../lib/onboarding/types";
 import {
   getOnboardingProgress, normalizeTeamSize, normalizeIndustry, INDUSTRY_OPTIONS,
-  normalizeTaxRateInput, normalizeCurrency, CURRENCY_OPTIONS,
+  normalizeTaxRateInput, normalizeCurrency, currencySymbolFor, CURRENCY_OPTIONS,
+  WORLD_CURRENCIES, DEFAULT_CURRENCY,
 } from "../lib/onboarding/onboardingHelpers";
 
 type OnboardingSetupModeProps = {
@@ -19,6 +20,7 @@ type OnboardingSetupModeProps = {
   onComplete: (data: Partial<OnboardingStepData>) => void;
   onSaveBusinessProfile: (fields: { phone: string; email: string; address: string }) => void;
   onSaveTaxRate: (taxRate: number) => void;
+  onSaveCurrency: (currencyCode: string, currencySymbol: string) => void;
 };
 
 const cardStyle: React.CSSProperties = {
@@ -72,7 +74,7 @@ function ProgressIndicator({ step }: { step: number }) {
 export function OnboardingSetupMode({
   visible, businessName, currentStep, stepData,
   businessPhone, businessEmail, businessAddress, businessTaxRate,
-  onBack, onAdvance, onComplete, onSaveBusinessProfile, onSaveTaxRate,
+  onBack, onAdvance, onComplete, onSaveBusinessProfile, onSaveTaxRate, onSaveCurrency,
 }: OnboardingSetupModeProps) {
   return (
     <div style={{ display: visible ? '' : 'none' }}>
@@ -96,7 +98,7 @@ export function OnboardingSetupMode({
         {currentStep === 5 && (
           <TaxCurrencyStep
             businessTaxRate={businessTaxRate} stepData={stepData}
-            onBack={onBack} onComplete={onComplete} onSaveTaxRate={onSaveTaxRate}
+            onBack={onBack} onComplete={onComplete} onSaveTaxRate={onSaveTaxRate} onSaveCurrency={onSaveCurrency}
           />
         )}
       </div>
@@ -306,26 +308,38 @@ function BusinessProfileStep({
 }
 
 function TaxCurrencyStep({
-  businessTaxRate, stepData, onBack, onComplete, onSaveTaxRate,
+  businessTaxRate, stepData, onBack, onComplete, onSaveTaxRate, onSaveCurrency,
 }: {
   businessTaxRate: number;
   stepData: OnboardingStepData;
   onBack: (prevStep: number) => void;
   onComplete: (data: Partial<OnboardingStepData>) => void;
   onSaveTaxRate: (taxRate: number) => void;
+  onSaveCurrency: (currencyCode: string, currencySymbol: string) => void;
 }) {
   const [taxRateInput, setTaxRateInput] = useState(String(businessTaxRate));
   const [currency, setCurrency] = useState<string | null>(stepData.currency ?? null);
+  // "More currencies" starts open if the resumed/stored selection is
+  // already outside the quick-pick set, so a returning user sees their
+  // actual choice rather than an apparently-blank quick-pick row.
+  const [showMoreCurrencies, setShowMoreCurrencies] = useState(
+    () => !!stepData.currency && !CURRENCY_OPTIONS.some((opt) => opt.code === stepData.currency)
+  );
+
+  function finishCurrency(currencyCode: string) {
+    const normalized = normalizeCurrency(currencyCode);
+    onSaveCurrency(normalized, currencySymbolFor(normalized));
+    onComplete({ currency: normalized });
+  }
 
   function handleFinish() {
-    const taxRate = normalizeTaxRateInput(taxRateInput);
-    onSaveTaxRate(taxRate);
-    onComplete({ currency: normalizeCurrency(currency) });
+    onSaveTaxRate(normalizeTaxRateInput(taxRateInput));
+    finishCurrency(currency ?? DEFAULT_CURRENCY);
   }
 
   function handleSkip() {
     onSaveTaxRate(0);
-    onComplete({ currency: normalizeCurrency(null) });
+    finishCurrency(DEFAULT_CURRENCY);
   }
 
   return (
@@ -347,24 +361,48 @@ function TaxCurrencyStep({
 
         <div>
           <label style={{ display: "block", fontSize: "13px", color: "#64748b", marginBottom: "6px" }}>Currency</label>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             {CURRENCY_OPTIONS.map((opt) => (
               <button
-                key={opt.key}
+                key={opt.code}
                 type="button"
-                onClick={() => setCurrency(opt.key)}
+                onClick={() => { setCurrency(opt.code); setShowMoreCurrencies(false); }}
                 style={{
                   padding: "8px 16px", borderRadius: "20px", fontSize: "14px", cursor: "pointer",
-                  border: currency === opt.key ? "1px solid #1d4ed8" : "1px solid #d1d5db",
-                  background: currency === opt.key ? "#eff6ff" : "#fff",
-                  color: currency === opt.key ? "#1d4ed8" : "#334155",
-                  fontWeight: currency === opt.key ? 600 : 400,
+                  border: currency === opt.code && !showMoreCurrencies ? "1px solid #1d4ed8" : "1px solid #d1d5db",
+                  background: currency === opt.code && !showMoreCurrencies ? "#eff6ff" : "#fff",
+                  color: currency === opt.code && !showMoreCurrencies ? "#1d4ed8" : "#334155",
+                  fontWeight: currency === opt.code && !showMoreCurrencies ? 600 : 400,
                 }}
               >
                 {opt.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowMoreCurrencies((v) => !v)}
+              style={{
+                padding: "8px 16px", borderRadius: "20px", fontSize: "14px", cursor: "pointer",
+                border: showMoreCurrencies ? "1px solid #1d4ed8" : "1px dashed #d1d5db",
+                background: showMoreCurrencies ? "#eff6ff" : "#fff",
+                color: showMoreCurrencies ? "#1d4ed8" : "#64748b",
+              }}
+            >
+              More currencies…
+            </button>
           </div>
+          {showMoreCurrencies && (
+            <select
+              value={CURRENCY_OPTIONS.some((opt) => opt.code === currency) ? "" : (currency ?? "")}
+              onChange={(e) => setCurrency(e.target.value)}
+              style={{ ...fieldStyle, marginTop: "8px", width: "260px" }}
+            >
+              <option value="" disabled>Select a currency…</option>
+              {WORLD_CURRENCIES.map((opt) => (
+                <option key={opt.code} value={opt.code}>{opt.label} ({opt.code})</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 

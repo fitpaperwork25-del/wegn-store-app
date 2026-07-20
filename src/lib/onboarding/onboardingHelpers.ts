@@ -4,6 +4,8 @@
  * this codebase: no Supabase, no React state.
  */
 
+import { COUNTRY_DEFAULTS, WORLD_CURRENCIES, getCurrencyOption, type CurrencyOption } from "../business/businessConfig.ts";
+
 export const TOTAL_ONBOARDING_STEPS = 15;
 
 const PHASE_LABELS: Record<number, string> = {
@@ -90,19 +92,38 @@ export function normalizeTaxRateInput(raw: string): number {
   return Math.min(100, Math.max(0, Number.isFinite(parsed) ? parsed : 0));
 }
 
-export type CurrencyOption = { key: string; label: string };
+/**
+ * Quick-pick currency options for the onboarding UI's primary buttons -
+ * derived from COUNTRY_DEFAULTS (businessConfig.ts) so this list can never
+ * drift from what Settings' own Country picker already offers. The full
+ * WORLD_CURRENCIES list (re-exported below) covers everything else via a
+ * "More currencies" dropdown in the UI, so a business isn't limited to
+ * just these five.
+ */
+export const CURRENCY_OPTIONS: CurrencyOption[] = Object.values(COUNTRY_DEFAULTS).map((c) => ({
+  code: c.currencyCode,
+  label: c.currencyCode === "USD" ? "US Dollar (USD)" : `${c.currencyCode} (${c.countryName})`,
+  symbol: c.currencySymbol,
+}));
 
-export const CURRENCY_OPTIONS: CurrencyOption[] = [
-  { key: "USD", label: "US Dollar (USD)" },
-  { key: "EUR", label: "Euro (EUR)" },
-  { key: "GBP", label: "British Pound (GBP)" },
-  { key: "CAD", label: "Canadian Dollar (CAD)" },
-];
+export { WORLD_CURRENCIES };
+export type { CurrencyOption };
 
 export const DEFAULT_CURRENCY = "USD";
 
-/** Currency default rule, matching the industry pattern: unrecognized/skipped answers map to USD. */
-export function normalizeCurrency(key: string | null | undefined): string {
-  if (!key) return DEFAULT_CURRENCY;
-  return CURRENCY_OPTIONS.some((opt) => opt.key === key) ? key : DEFAULT_CURRENCY;
+/** Currency default rule, matching the industry pattern: unrecognized/skipped
+ *  answers map to USD. Accepts any code from WORLD_CURRENCIES, not just the
+ *  quick-pick set - a "More currencies" selection must not get silently
+ *  reset back to USD just for not being one of the five buttons. */
+export function normalizeCurrency(code: string | null | undefined): string {
+  if (!code) return DEFAULT_CURRENCY;
+  return getCurrencyOption(code) ? code : DEFAULT_CURRENCY;
+}
+
+/** Resolves the display symbol for a currency code, falling back to the
+ *  code itself if it's outside WORLD_CURRENCIES (should not happen for a
+ *  value that passed through normalizeCurrency, but keeps this safe for
+ *  any stored/legacy value that predates this list). */
+export function currencySymbolFor(code: string): string {
+  return getCurrencyOption(code)?.symbol ?? code;
 }
