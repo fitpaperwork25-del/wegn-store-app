@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --test src/**/*.test.ts",
+    "check:deploy-parity": "bash scripts/check-deploy-parity.sh",
     "preview": "vite preview"
   },
   "dependencies": {
