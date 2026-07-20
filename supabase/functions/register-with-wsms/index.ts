@@ -12,16 +12,17 @@ import { verifyAuth } from "../_shared/verifyAuth.ts";
  * businesses (see WSMS's self-register-subscription for the enforced
  * boundary).
  *
- * externalBusinessId/businessDisplayName come from the caller (the
- * business row already exists by the time this runs) rather than being
- * re-derived from auth_business_id(), because handleCreateBusiness can
- * create additional businesses beyond the caller's own default one -
+ * externalBusinessId comes from the caller rather than being re-derived
+ * from auth_business_id(), because handleCreateBusiness can create
+ * additional businesses beyond the caller's own default one -
  * verifyAuth alone would only ever resolve the session's primary
- * business. The caller is still required to be authenticated; this
- * endpoint does not accept an arbitrary businessId with no proof the
- * caller has any relationship to this tenant, ownership of the specific
- * business row is enforced by RLS if the caller looks it up themselves
- * before calling this.
+ * business. To keep this safe, the businessId is looked up through
+ * verified.supabase (the caller's own RLS-scoped client, not the
+ * service role) before ever being forwarded to WSMS - businesses'
+ * owner_select policy (owner_id = auth.uid()) means this lookup
+ * returns nothing for a business the caller doesn't own, so an
+ * authenticated caller cannot register an arbitrary business that
+ * isn't theirs.
  */
 
 const CORS_HEADERS = {
@@ -63,15 +64,25 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Not authenticated" }, 401);
   }
 
-  let body: { businessId?: string; businessDisplayName?: string };
+  let body: { businessId?: string };
   try {
     body = await req.json();
   } catch {
     return jsonResponse({ error: "Invalid JSON body" }, 400);
   }
   const businessId = typeof body.businessId === "string" ? body.businessId : "";
-  const businessDisplayName = typeof body.businessDisplayName === "string" ? body.businessDisplayName : null;
   if (!businessId) return jsonResponse({ error: "businessId is required" }, 400);
+
+  // Ownership check via the caller's own RLS-scoped client - see header
+  // comment. Also gives us the authoritative name, rather than trusting
+  // a client-supplied display name.
+  const { data: business, error: bizErr } = await verified.supabase
+    .from("businesses")
+    .select("id, name")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (bizErr) { console.error("[register-with-wsms] business lookup failed:", bizErr); return jsonResponse({ ok: false, error: "Lookup failed" }, 500); }
+  if (!business) return jsonResponse({ ok: false, error: "Business not found, or you do not have access to it" }, 403);
 
   try {
     const wsmsRes = await fetch(wsmsUrl, {
@@ -80,8 +91,8 @@ serve(async (req: Request) => {
       body: JSON.stringify({
         productKey: "wegn-store",
         secret: wsmsSecret,
-        externalBusinessId: businessId,
-        businessDisplayName,
+        externalBusinessId: business.id,
+        businessDisplayName: business.name,
       }),
     });
     const wsmsBody = await wsmsRes.json().catch(() => ({}));

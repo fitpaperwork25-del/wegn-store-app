@@ -60,12 +60,14 @@ export async function checkSubscription(): Promise<SubscriptionCheckResult> {
  * Registers a business as a WSMS trialing subscriber. Fire-and-forget by
  * design at every call site - a failure here must never block business
  * creation, which has already succeeded by the time this is called.
- * Never throws.
+ * Never throws. The business's display name is looked up server-side
+ * (via the caller's own RLS-scoped session, which also enforces that
+ * the caller actually owns this business) - not passed from here.
  */
-export async function registerBusinessWithWsms(businessId: string, businessDisplayName: string | null): Promise<void> {
+export async function registerBusinessWithWsms(businessId: string): Promise<void> {
   try {
     const { error } = await supabase.functions.invoke("register-with-wsms", {
-      body: { businessId, businessDisplayName },
+      body: { businessId },
     });
     if (error) console.error("[registerBusinessWithWsms] registration failed (non-blocking):", error);
   } catch (err) {

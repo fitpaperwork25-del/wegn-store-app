@@ -1438,7 +1438,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     if (error || !newBusiness) { console.error(error); setMessage({ text: "Failed to create business: " + (error?.message ?? "unknown error"), type: "error" }); return; }
     // Fire-and-forget — a WSMS failure must never block business
     // creation. See src/lib/wsms/subscriptionClient.ts.
-    void registerBusinessWithWsms(newBusiness.id, name);
+    void registerBusinessWithWsms(newBusiness.id);
     setEditBizName("");
     setEditBizPhone("");
     setEditBizEmail("");

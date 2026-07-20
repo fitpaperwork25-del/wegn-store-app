@@ -273,14 +273,14 @@ export default function AuthGate() {
         const { data: newBusiness, error: bizErr } = await supabase.from("businesses").insert({
           owner_id: signUpData.user.id,
           name: "My Store",
-        }).select("id, name").single();
+        }).select("id").single();
         if (bizErr) {
           setError("Account created but store setup failed: " + bizErr.message);
         } else if (newBusiness) {
           // Fire-and-forget — a WSMS failure must never block signup, the
           // business already exists and works regardless. See
           // src/lib/wsms/subscriptionClient.ts.
-          void registerBusinessWithWsms(newBusiness.id, newBusiness.name);
+          void registerBusinessWithWsms(newBusiness.id);
         }
         // onAuthStateChange will fire and render App automatically.
       } else {
