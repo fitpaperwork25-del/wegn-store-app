@@ -74,7 +74,13 @@ serve(async (req: Request) => {
       console.error("[check-subscription] WSMS returned an error:", wsmsRes.status, wsmsBody);
       return jsonResponse({ known: false, active: null, status: null });
     }
-    return jsonResponse({ known: !!wsmsBody.found, active: wsmsBody.active ?? null, status: wsmsBody.status ?? null, currentPeriodEnd: wsmsBody.currentPeriodEnd ?? null });
+    return jsonResponse({
+      known: !!wsmsBody.found,
+      active: wsmsBody.active ?? null,
+      status: wsmsBody.status ?? null,
+      currentPeriodEnd: wsmsBody.currentPeriodEnd ?? null,
+      gracePeriodEndsAt: wsmsBody.gracePeriodEndsAt ?? null,
+    });
   } catch (err) {
     console.error("[check-subscription] request to WSMS failed:", err);
     return jsonResponse({ known: false, active: null, status: null });

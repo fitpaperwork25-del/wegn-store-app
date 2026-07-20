@@ -7,7 +7,8 @@ import { SettingsTab } from "./components/SettingsTab";
 import { DeviceManagementPanel } from "./components/DeviceManagementPanel";
 import { isOwnerAccessGranted } from "./lib/auth/sessionAccess";
 import { employeePinLogin, setEmployeePin } from "./lib/staff/pinLoginClient";
-import { checkSubscription } from "./lib/wsms/subscriptionClient";
+import { checkSubscription, registerBusinessWithWsms } from "./lib/wsms/subscriptionClient";
+import { deriveSubscriptionBanner, type SubscriptionBanner } from "./lib/wsms/subscriptionBanner";
 import { WegnAiPage } from "./components/WegnAiPage";
 import { getTodaysProfitEstimate, getPriorityAlerts } from "./lib/copilot/executiveBriefing";
 import { CustomersTab } from "./components/CustomersTab";
@@ -120,7 +121,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   // WSMS - never treated as a problem). Dismissed locally per session, not
   // persisted - reappears on next sign-in, which is fine for an
   // informational, non-blocking notice.
-  const [subscriptionNotice, setSubscriptionNotice] = useState<{ status: string } | null>(null);
+  const [subscriptionBanner, setSubscriptionBanner] = useState<SubscriptionBanner | null>(null);
   const [subscriptionNoticeDismissed, setSubscriptionNoticeDismissed] = useState(false);
   // Wegn AI Onboarding Blueprint, Phase 1 (Steps 1-3). onboardingLoaded
   // mirrors businessLoaded's guard pattern - WegnAiPage renders nothing
@@ -1181,20 +1182,34 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     }
   }, [sessionKind, userId, employees, staffSession]);
 
-  // WSMS integration, observe-only phase. Fires once per business load,
-  // owner sessions only - a device/employee mid-shift has no reason to
-  // see a billing notice. known=false (WSMS has no record for this
-  // business yet, e.g. during rollout) never produces a notice; only an
-  // explicitly non-active known subscription does.
-  const subscriptionCheckedRef = useRef(false);
+  // WSMS integration. Owner sessions only - a device/employee mid-shift
+  // has no reason to see a billing notice. Checks once on business load,
+  // then re-checks if the tab is reopened/refocused after being stale
+  // for more than 12 hours - not on every render, not on token refresh.
+  // All six conceptual states (trial/active/grace/expired/suspended/
+  // cancelled) are derived by the pure deriveSubscriptionBanner - see
+  // src/lib/wsms/subscriptionBanner.ts for the Phase 1 policy (every
+  // banner is informational only, nothing here blocks any action).
+  const SUBSCRIPTION_STALE_MS = 12 * 60 * 60 * 1000;
+  const subscriptionLastCheckedRef = useRef(0);
   useEffect(() => {
-    if (sessionKind !== "owner" || !businessId || subscriptionCheckedRef.current) return;
-    subscriptionCheckedRef.current = true;
-    checkSubscription().then((result) => {
-      if (result.known && result.active === false) {
-        setSubscriptionNotice({ status: result.status ?? "inactive" });
-      }
-    });
+    if (sessionKind !== "owner" || !businessId) return;
+
+    async function runCheck() {
+      subscriptionLastCheckedRef.current = Date.now();
+      const result = await checkSubscription();
+      setSubscriptionBanner(deriveSubscriptionBanner(result));
+      setSubscriptionNoticeDismissed(false);
+    }
+    void runCheck();
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - subscriptionLastCheckedRef.current < SUBSCRIPTION_STALE_MS) return;
+      void runCheck();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [sessionKind, businessId]);
 
   // Wegn AI Onboarding Blueprint, Phase 1. A missing row means either a
@@ -1421,6 +1436,9 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
       tax_rate: Math.min(100, Math.max(0, parseFloat(editBizTaxRate) || 0)),
     }).select("id").single();
     if (error || !newBusiness) { console.error(error); setMessage({ text: "Failed to create business: " + (error?.message ?? "unknown error"), type: "error" }); return; }
+    // Fire-and-forget — a WSMS failure must never block business
+    // creation. See src/lib/wsms/subscriptionClient.ts.
+    void registerBusinessWithWsms(newBusiness.id, name);
     setEditBizName("");
     setEditBizPhone("");
     setEditBizEmail("");
@@ -5358,16 +5376,16 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         </div>
       )}
 
-      {subscriptionNotice && !subscriptionNoticeDismissed && (
+      {subscriptionBanner && !subscriptionNoticeDismissed && (
         <div style={{
           padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
-          background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a",
+          background: subscriptionBanner.tone === "danger" ? "#fef2f2" : subscriptionBanner.tone === "warning" ? "#fffbeb" : "#eff6ff",
+          color: subscriptionBanner.tone === "danger" ? "#b91c1c" : subscriptionBanner.tone === "warning" ? "#92400e" : "#1d4ed8",
+          border: `1px solid ${subscriptionBanner.tone === "danger" ? "#fecaca" : subscriptionBanner.tone === "warning" ? "#fde68a" : "#bfdbfe"}`,
           borderRadius: "6px", fontSize: "14px", marginBottom: "16px",
         }}>
-          <span>
-            Your Wegn Store subscription shows as <strong>{subscriptionNotice.status.replace("_", " ")}</strong>. This is an informational notice only - nothing in the app is affected.
-          </span>
-          <button onClick={() => setSubscriptionNoticeDismissed(true)} style={{ background: "none", border: "none", color: "#92400e", cursor: "pointer", fontSize: "13px", textDecoration: "underline", whiteSpace: "nowrap" }}>Dismiss</button>
+          <span>{subscriptionBanner.message}</span>
+          <button onClick={() => setSubscriptionNoticeDismissed(true)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: "13px", textDecoration: "underline", whiteSpace: "nowrap" }}>Dismiss</button>
         </div>
       )}
 

@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import App from "./App";
 import { resolveMountSessionTrust } from "./lib/auth/sessionAccess";
 import { isPasswordRecoveryUrl, validateNewPassword, validateRecoveryEmail, PRODUCTION_APP_URL } from "./lib/auth/passwordRecovery";
+import { registerBusinessWithWsms } from "./lib/wsms/subscriptionClient";
 
 // Registered Store Device / Staff Mode (Option A - shared device identity).
 // See supabase/migrations/20260716_registered_device_staff_mode.sql.
@@ -269,12 +270,17 @@ export default function AuthGate() {
       }
       if (signUpData.session && signUpData.user) {
         // Email confirmation disabled — session is live, create the business now.
-        const { error: bizErr } = await supabase.from("businesses").insert({
+        const { data: newBusiness, error: bizErr } = await supabase.from("businesses").insert({
           owner_id: signUpData.user.id,
           name: "My Store",
-        });
+        }).select("id, name").single();
         if (bizErr) {
           setError("Account created but store setup failed: " + bizErr.message);
+        } else if (newBusiness) {
+          // Fire-and-forget — a WSMS failure must never block signup, the
+          // business already exists and works regardless. See
+          // src/lib/wsms/subscriptionClient.ts.
+          void registerBusinessWithWsms(newBusiness.id, newBusiness.name);
         }
         // onAuthStateChange will fire and render App automatically.
       } else {
