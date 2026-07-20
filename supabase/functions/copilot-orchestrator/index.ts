@@ -168,7 +168,19 @@ serve(async (req: Request) => {
           return { toolCallId: call.toolCallId, toolName: call.toolName, output: { error: "Not permitted for your role" } };
         }
 
-        const execResult = await tool.execute(call.input, ctx);
+        // A single tool throwing (e.g. an unexpected database error) must
+        // never take down the whole Copilot request - caught here and
+        // turned into the same {ok:false} shape a tool's own validation
+        // failure already produces, so the model gets a normal tool result
+        // and can tell the user the data isn't available right now instead
+        // of the request 502ing.
+        let execResult: { ok: true; value: unknown } | { ok: false; error: string };
+        try {
+          execResult = await tool.execute(call.input, ctx);
+        } catch (err) {
+          console.error(`[copilot-orchestrator] tool "${call.toolName}" threw:`, err);
+          execResult = { ok: false, error: "This data isn't available right now - please try again shortly." };
+        }
 
         await writeAuditLog(verified.supabase, {
           businessId: ctx.businessId,

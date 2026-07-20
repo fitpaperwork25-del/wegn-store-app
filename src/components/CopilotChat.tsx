@@ -39,6 +39,12 @@ export function CopilotChat({ visible, employeeId }: CopilotChatProps) {
 
     if ("error" in result) {
       setError(result.error);
+      // Roll back the optimistic user turn so a failed request can't leave
+      // conversation history ending in an unanswered "user" message - the
+      // next question would otherwise be sent with two consecutive "user"
+      // turns, which the model API rejects, cascading this failure onto
+      // every later question in the same chat.
+      setMessages(priorMessages);
     } else {
       setMessages((prev) => [...prev, { role: "assistant", content: result.text }]);
     }
