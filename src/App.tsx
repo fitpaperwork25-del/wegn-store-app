@@ -7,6 +7,7 @@ import { SettingsTab } from "./components/SettingsTab";
 import { DeviceManagementPanel } from "./components/DeviceManagementPanel";
 import { isOwnerAccessGranted } from "./lib/auth/sessionAccess";
 import { employeePinLogin, setEmployeePin } from "./lib/staff/pinLoginClient";
+import { checkSubscription } from "./lib/wsms/subscriptionClient";
 import { WegnAiPage } from "./components/WegnAiPage";
 import { getTodaysProfitEstimate, getPriorityAlerts } from "./lib/copilot/executiveBriefing";
 import { CustomersTab } from "./components/CustomersTab";
@@ -113,6 +114,14 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const [businessId, setBusinessId] = useState("");
   const [businessLoaded, setBusinessLoaded] = useState(false);
   const [businessError, setBusinessError] = useState("");
+  // WSMS integration, observe-only phase - see lib/wsms/subscriptionClient.ts.
+  // null = not checked yet or WSMS has nothing on record for this business
+  // (expected during rollout, before every business has been created in
+  // WSMS - never treated as a problem). Dismissed locally per session, not
+  // persisted - reappears on next sign-in, which is fine for an
+  // informational, non-blocking notice.
+  const [subscriptionNotice, setSubscriptionNotice] = useState<{ status: string } | null>(null);
+  const [subscriptionNoticeDismissed, setSubscriptionNoticeDismissed] = useState(false);
   // Wegn AI Onboarding Blueprint, Phase 1 (Steps 1-3). onboardingLoaded
   // mirrors businessLoaded's guard pattern - WegnAiPage renders nothing
   // until this is true, so it never flashes the wrong mode. A missing row
@@ -1171,6 +1180,22 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
       setActiveCashierName(emp.name);
     }
   }, [sessionKind, userId, employees, staffSession]);
+
+  // WSMS integration, observe-only phase. Fires once per business load,
+  // owner sessions only - a device/employee mid-shift has no reason to
+  // see a billing notice. known=false (WSMS has no record for this
+  // business yet, e.g. during rollout) never produces a notice; only an
+  // explicitly non-active known subscription does.
+  const subscriptionCheckedRef = useRef(false);
+  useEffect(() => {
+    if (sessionKind !== "owner" || !businessId || subscriptionCheckedRef.current) return;
+    subscriptionCheckedRef.current = true;
+    checkSubscription().then((result) => {
+      if (result.known && result.active === false) {
+        setSubscriptionNotice({ status: result.status ?? "inactive" });
+      }
+    });
+  }, [sessionKind, businessId]);
 
   // Wegn AI Onboarding Blueprint, Phase 1. A missing row means either a
   // business that predates this feature and wasn't caught by the migration
@@ -5330,6 +5355,19 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
           borderRadius: "6px", fontSize: "14px", marginBottom: "16px",
         }}>
           {message.text}
+        </div>
+      )}
+
+      {subscriptionNotice && !subscriptionNoticeDismissed && (
+        <div style={{
+          padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
+          background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a",
+          borderRadius: "6px", fontSize: "14px", marginBottom: "16px",
+        }}>
+          <span>
+            Your Wegn Store subscription shows as <strong>{subscriptionNotice.status.replace("_", " ")}</strong>. This is an informational notice only - nothing in the app is affected.
+          </span>
+          <button onClick={() => setSubscriptionNoticeDismissed(true)} style={{ background: "none", border: "none", color: "#92400e", cursor: "pointer", fontSize: "13px", textDecoration: "underline", whiteSpace: "nowrap" }}>Dismiss</button>
         </div>
       )}
 
