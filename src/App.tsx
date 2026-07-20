@@ -1481,7 +1481,11 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         return;
       }
       const newQty = product.quantity_on_hand + line.return_qty;
-      await supabase.from('inventory').update({ quantity_on_hand: newQty }).eq('id', product.inventory_id);
+      const { error: restockErr } = await supabase.from('inventory').update({ quantity_on_hand: newQty }).eq('id', product.inventory_id);
+      if (restockErr) {
+        console.error(restockErr);
+        setMessage({ text: `Return recorded but restocking ${product.product_name} failed: ${restockErr.message}. Adjust stock manually.`, type: "error" });
+      }
       await supabase.from('inventory_transactions').insert({
         business_id: product.business_id,
         product_id: line.product_id,
@@ -1506,7 +1510,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     const refundAmount = returnedSubtotal + taxShare;
     if (refundAmount > 0) {
       const originalPayment = allPayments.find(p => p.sale_id === returningSaleId && p.payment_type !== 'refund');
-      await supabase.from('payments').insert({
+      const { error: refundErr } = await supabase.from('payments').insert({
         business_id: businessId,
         sale_id: returningSaleId,
         payment_method: originalPayment?.payment_method ?? 'cash',
@@ -1514,11 +1518,19 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         payment_type: 'refund',
         reference: retNum,
       });
+      if (refundErr) {
+        console.error(refundErr);
+        setMessage({ text: `Return recorded but the refund payment failed to save: ${refundErr.message}. Cash Drawer reconciliation may be off.`, type: "error" });
+      }
     }
     // Mark fully returned when every returnable line has been exhausted
     const allFullyReturned = returnLines.every(l => (l.already_returned + l.return_qty) >= l.original_qty);
     if (allFullyReturned) {
-      await supabase.from('sales').update({ status: 'returned' }).eq('id', returningSaleId);
+      const { error: statusErr } = await supabase.from('sales').update({ status: 'returned' }).eq('id', returningSaleId);
+      if (statusErr) {
+        console.error(statusErr);
+        setMessage({ text: `Return recorded but the sale's status failed to update: ${statusErr.message}. Reports may double-count this sale.`, type: "error" });
+      }
     }
 
     // Loyalty reversal — proportional to what was actually returned in this
@@ -2691,10 +2703,16 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
       const quantityBefore = product.quantity_on_hand;
       const quantityAfter = quantityBefore + item.quantity;
 
-      await supabase
+      const { error: voidInvErr } = await supabase
         .from("inventory")
         .update({ quantity_on_hand: quantityAfter })
         .eq("id", product.inventory_id);
+
+      if (voidInvErr) {
+        console.error(voidInvErr);
+        setMessage({ text: `Sale voided but restocking ${product.product_name} failed: ${voidInvErr.message}. Adjust stock manually.`, type: "error" });
+        continue;
+      }
 
       await supabase
         .from("inventory_transactions")
@@ -2851,10 +2869,16 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
       const quantityBefore = product.quantity_on_hand;
       const quantityAfter = quantityBefore - item.quantity;
 
-      await supabase
+      const { error: saleInvErr } = await supabase
         .from("inventory")
         .update({ quantity_on_hand: quantityAfter })
         .eq("id", product.inventory_id);
+
+      if (saleInvErr) {
+        console.error(saleInvErr);
+        setMessage({ text: `Sale completed but stock for ${product.product_name} failed to update: ${saleInvErr.message}. Adjust stock manually.`, type: "error" });
+        continue;
+      }
 
       await supabase
         .from("inventory_transactions")
