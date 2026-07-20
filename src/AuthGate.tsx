@@ -63,6 +63,59 @@ function isDeviceUser(user: User | null): boolean {
   return !!user && (user.user_metadata as Record<string, unknown> | undefined)?.kind === "device";
 }
 
+// Employee PIN login (Staff Mode Phase 2 - see
+// supabase/migrations/20260720_employee_pin_hashing.sql and
+// supabase/functions/employee-pin-login). A parallel, independent
+// instance of the device-cache/override pattern above, not a
+// modification to it: an employee session is layered on top of
+// whichever session (device's or owner's un-overridden own) was already
+// live, the same shape as Owner Access override layering on top of a
+// device session. Kept as its own cache key and its own pair of
+// functions deliberately - the owner-override code above is
+// bug-sensitive (see sessionAccess.ts's documented Bug #1/#2), and this
+// case differs from it in one load-bearing way: the "parent" session
+// here can be either a device session OR the owner's own un-overridden
+// session (the PIN screen already renders on both today when
+// hasStaffPins is true), which DEVICE_SESSION_CACHE_KEY was never
+// designed to capture.
+const EMPLOYEE_PARENT_SESSION_CACHE_KEY = "wegn_employee_parent_session_v1";
+
+function readEmployeeParentSessionCache(): CachedDeviceSession | null {
+  try {
+    const raw = window.localStorage.getItem(EMPLOYEE_PARENT_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.accessToken === "string" && typeof parsed?.refreshToken === "string") {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeEmployeeParentSessionCache(tokens: CachedDeviceSession) {
+  try {
+    window.localStorage.setItem(EMPLOYEE_PARENT_SESSION_CACHE_KEY, JSON.stringify(tokens));
+  } catch {
+    // Best-effort - a failed cache write only affects whether exiting the
+    // employee session can restore the parent session afterward, never
+    // the employee session that's about to become live.
+  }
+}
+
+function clearEmployeeParentSessionCache() {
+  try {
+    window.localStorage.removeItem(EMPLOYEE_PARENT_SESSION_CACHE_KEY);
+  } catch {
+    // Ignore - nothing to clean up if storage is unavailable.
+  }
+}
+
+function isEmployeeUser(user: User | null): boolean {
+  return !!user && (user.user_metadata as Record<string, unknown> | undefined)?.kind === "employee";
+}
+
 export default function AuthGate() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,6 +167,7 @@ export default function AuthGate() {
       const decision = resolveMountSessionTrust({
         hasLiveSession: !!sessionUser,
         liveSessionIsDevice: isDeviceUser(sessionUser),
+        liveSessionIsEmployee: isEmployeeUser(sessionUser),
         hasDeviceCache: !!cachedBeforeDecision,
       });
 
@@ -385,6 +439,54 @@ export default function AuthGate() {
     return { ok: true };
   }
 
+  // Employee PIN login: captures whichever session is currently live
+  // (device's or the owner's own un-overridden session - both are valid
+  // "parents" the PIN screen can render under) before swapping to the
+  // employee's session, mirroring enterOwnerOverride's capture-before-swap
+  // idiom but generalized to capture whichever session is live rather
+  // than assuming a device.
+  async function enterEmployeeSession(tokens: { accessToken: string; refreshToken: string }): Promise<{ ok: boolean; error?: string }> {
+    const { data: currentSession } = await supabase.auth.getSession();
+    if (currentSession.session) {
+      writeEmployeeParentSessionCache({
+        accessToken: currentSession.session.access_token,
+        refreshToken: currentSession.session.refresh_token,
+      });
+    }
+    const { data: activated, error: activateErr } = await supabase.auth.setSession({
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+    });
+    if (activateErr || !activated.session) {
+      clearEmployeeParentSessionCache();
+      return { ok: false, error: activateErr?.message ?? "Could not start the employee session." };
+    }
+    return { ok: true };
+  }
+
+  // Returns from an employee session back to whichever session (device's
+  // or owner's) was live before the employee logged in. Mirrors
+  // restoreDeviceSession(); only ever called from UI reached while an
+  // employee session is genuinely live, so reaching here with no cache
+  // would itself indicate a state-tracking bug, not an expected
+  // user-facing outcome.
+  async function exitEmployeeSession(): Promise<{ ok: boolean; error?: string }> {
+    const cached = readEmployeeParentSessionCache();
+    if (!cached) return { ok: false, error: "No prior session found on this browser." };
+    const { data: restored, error: restoreErr } = await supabase.auth.setSession({
+      access_token: cached.accessToken,
+      refresh_token: cached.refreshToken,
+    });
+    clearEmployeeParentSessionCache();
+    if (restoreErr || !restored.session) {
+      return { ok: false, error: "Could not return to the previous session. Please sign in again." };
+    }
+    if (isDeviceUser(restored.session.user)) {
+      writeDeviceSessionCache({ accessToken: restored.session.access_token, refreshToken: restored.session.refresh_token });
+    }
+    return { ok: true };
+  }
+
   if (passwordRecovery) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: "#f8fafc" }}>
@@ -457,12 +559,14 @@ export default function AuthGate() {
         userId={user.id}
         userEmail={user.email ?? ""}
         onSignOut={handleSignOut}
-        sessionKind={isDeviceUser(user) ? "device" : "owner"}
+        sessionKind={isDeviceUser(user) ? "device" : isEmployeeUser(user) ? "employee" : "owner"}
         overrideActive={overrideActive}
         canReturnToStaffMode={canReturnToStaffMode}
         enterOwnerOverride={enterOwnerOverride}
         restoreDeviceSession={restoreDeviceSession}
         activateDeviceSession={activateDeviceSession}
+        enterEmployeeSession={enterEmployeeSession}
+        exitEmployeeSession={exitEmployeeSession}
       />
     );
   }

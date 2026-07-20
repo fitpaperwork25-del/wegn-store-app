@@ -5,7 +5,13 @@ export type Employee = {
   employee_code: string;
   role: string;
   status: string;
-  pin: string | null;
+  // Staff Mode Phase 2: PIN is hashed server-side and never selected by
+  // the client - pin_set is a client-safe boolean replacement for the
+  // old plaintext `pin` field's truthiness checks. auth_user_id is
+  // populated at first PIN-login (see employee-pin-login) and used to
+  // rehydrate staffSession after a page refresh - see App.tsx.
+  pin_set: boolean;
+  auth_user_id: string | null;
   created_at: string;
 };
 

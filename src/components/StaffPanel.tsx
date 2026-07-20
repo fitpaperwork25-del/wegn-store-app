@@ -28,6 +28,15 @@ type StaffPanelProps = {
   setEditEmpCode: React.Dispatch<React.SetStateAction<string>>;
   onSaveEmployeeEdit: (emp: Employee) => Promise<void>;
   onToggleEmployeeStatus: (emp: Employee) => Promise<void>;
+
+  /** Set/reset PIN - retry path when Add Employee's insert-then-set-PIN
+   *  leaves an employee with pin_set false, and the general way to reset
+   *  any employee's PIN. */
+  settingPinEmpId: string | null;
+  setSettingPinEmpId: React.Dispatch<React.SetStateAction<string | null>>;
+  newPinValue: string;
+  setNewPinValue: React.Dispatch<React.SetStateAction<string>>;
+  onSetEmployeePin: (employeeId: string) => Promise<void>;
 };
 
 export function StaffPanel({
@@ -53,6 +62,11 @@ export function StaffPanel({
   setEditEmpCode,
   onSaveEmployeeEdit,
   onToggleEmployeeStatus,
+  settingPinEmpId,
+  setSettingPinEmpId,
+  newPinValue,
+  setNewPinValue,
+  onSetEmployeePin,
 }: StaffPanelProps) {
   return (
       <div style={{ display: visible ? '' : 'none' }}>
@@ -153,7 +167,36 @@ export function StaffPanel({
                         emp.employee_code
                       )}
                     </td>
-                    <td style={{ fontFamily: "monospace", fontSize: "13px", color: "#64748b" }}>{emp.pin ? "****" : "—"}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: "13px", color: "#64748b" }}>
+                      {settingPinEmpId === emp.id ? (
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="4-6 digits"
+                            value={newPinValue}
+                            onChange={(e) => setNewPinValue(e.target.value.replace(/\D/g, ""))}
+                            maxLength={6}
+                            style={{ padding: "4px 6px", fontSize: "13px", width: "80px" }}
+                            autoFocus
+                          />
+                          <button onClick={() => onSetEmployeePin(emp.id)} style={{ padding: "2px 8px", cursor: "pointer", background: "#1d4ed8", color: "#fff", border: "none", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" }}>Save</button>
+                          <button onClick={() => { setSettingPinEmpId(null); setNewPinValue(""); }} style={{ padding: "2px 8px", cursor: "pointer", border: "1px solid #ccc", borderRadius: "4px", fontSize: "12px", background: "#fff" }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                          <span>{emp.pin_set ? "****" : "not set"}</span>
+                          {canManageStaff && (
+                            <button
+                              onClick={() => { setSettingPinEmpId(emp.id); setNewPinValue(""); }}
+                              style={{ padding: "1px 8px", cursor: "pointer", borderRadius: "4px", background: emp.pin_set ? "#f3f4f6" : "#fef3c7", color: emp.pin_set ? "#374151" : "#92400e", border: "none", fontSize: "11px" }}
+                            >
+                              {emp.pin_set ? "Reset" : "Set PIN"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       {isEditing ? (
                         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>

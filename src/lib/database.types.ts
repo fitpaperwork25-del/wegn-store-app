@@ -14,6 +14,104 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_tool_invocations: {
+        Row: {
+          auth_user_id: string
+          business_id: string
+          conversation_id: string
+          created_at: string
+          employee_id: string | null
+          error_message: string | null
+          fields_restricted: string[]
+          id: string
+          input_json: Json
+          resolved_role: string
+          status: string
+          tool_name: string
+        }
+        Insert: {
+          auth_user_id: string
+          business_id: string
+          conversation_id: string
+          created_at?: string
+          employee_id?: string | null
+          error_message?: string | null
+          fields_restricted?: string[]
+          id?: string
+          input_json: Json
+          resolved_role: string
+          status: string
+          tool_name: string
+        }
+        Update: {
+          auth_user_id?: string
+          business_id?: string
+          conversation_id?: string
+          created_at?: string
+          employee_id?: string | null
+          error_message?: string | null
+          fields_restricted?: string[]
+          id?: string
+          input_json?: Json
+          resolved_role?: string
+          status?: string
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_tool_invocations_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_tool_invocations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_onboarding_state: {
+        Row: {
+          business_id: string
+          completed: boolean
+          created_at: string
+          current_step: number
+          id: string
+          step_data: Json
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          completed?: boolean
+          created_at?: string
+          current_step?: number
+          id?: string
+          step_data?: Json
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          completed?: boolean
+          created_at?: string
+          current_step?: number
+          id?: string
+          step_data?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_onboarding_state_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       businesses: {
         Row: {
           address: string | null
@@ -65,36 +163,6 @@ export type Database = {
           status?: string
           tax_rate?: number
           timezone?: string
-        }
-        Relationships: []
-      }
-      business_onboarding_state: {
-        Row: {
-          business_id: string
-          completed: boolean
-          created_at: string
-          current_step: number
-          id: string
-          step_data: Json
-          updated_at: string
-        }
-        Insert: {
-          business_id: string
-          completed?: boolean
-          created_at?: string
-          current_step?: number
-          id?: string
-          step_data?: Json
-          updated_at?: string
-        }
-        Update: {
-          business_id?: string
-          completed?: boolean
-          created_at?: string
-          current_step?: number
-          id?: string
-          step_data?: Json
-          updated_at?: string
         }
         Relationships: []
       }
@@ -164,6 +232,108 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "customers_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_audit_log: {
+        Row: {
+          actor_auth_id: string | null
+          business_id: string
+          created_at: string
+          device_id: string | null
+          employee_id: string | null
+          event_type: string
+          id: string
+          metadata: Json | null
+        }
+        Insert: {
+          actor_auth_id?: string | null
+          business_id: string
+          created_at?: string
+          device_id?: string | null
+          employee_id?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json | null
+        }
+        Update: {
+          actor_auth_id?: string | null
+          business_id?: string
+          created_at?: string
+          device_id?: string | null
+          employee_id?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_audit_log_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_audit_log_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "device_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_registrations: {
+        Row: {
+          auth_user_id: string
+          business_id: string
+          device_label: string
+          id: string
+          last_seen_at: string | null
+          registered_at: string
+          registered_by: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+        }
+        Insert: {
+          auth_user_id: string
+          business_id: string
+          device_label: string
+          id?: string
+          last_seen_at?: string | null
+          registered_at?: string
+          registered_by: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+        }
+        Update: {
+          auth_user_id?: string
+          business_id?: string
+          device_label?: string
+          id?: string
+          last_seen_at?: string | null
+          registered_at?: string
+          registered_by?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_registrations_business_id_fkey"
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
@@ -279,11 +449,15 @@ export type Database = {
           business_id: string
           created_at: string | null
           employee_code: string
+          failed_pin_attempts: number
           id: string
           invite_status: string | null
           invited_at: string | null
           name: string
           pin: string | null
+          pin_hash: string | null
+          pin_locked_until: string | null
+          pin_set: boolean
           role: string
           status: string
         }
@@ -292,11 +466,15 @@ export type Database = {
           business_id: string
           created_at?: string | null
           employee_code: string
+          failed_pin_attempts?: number
           id?: string
           invite_status?: string | null
           invited_at?: string | null
           name: string
           pin?: string | null
+          pin_hash?: string | null
+          pin_locked_until?: string | null
+          pin_set?: boolean
           role?: string
           status?: string
         }
@@ -305,11 +483,15 @@ export type Database = {
           business_id?: string
           created_at?: string | null
           employee_code?: string
+          failed_pin_attempts?: number
           id?: string
           invite_status?: string | null
           invited_at?: string | null
           name?: string
           pin?: string | null
+          pin_hash?: string | null
+          pin_locked_until?: string | null
+          pin_set?: boolean
           role?: string
           status?: string
         }
@@ -319,108 +501,6 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      device_registrations: {
-        Row: {
-          auth_user_id: string
-          business_id: string
-          device_label: string
-          id: string
-          last_seen_at: string | null
-          registered_at: string
-          registered_by: string
-          revoked_at: string | null
-          revoked_by: string | null
-          status: string
-        }
-        Insert: {
-          auth_user_id: string
-          business_id: string
-          device_label: string
-          id?: string
-          last_seen_at?: string | null
-          registered_at?: string
-          registered_by: string
-          revoked_at?: string | null
-          revoked_by?: string | null
-          status?: string
-        }
-        Update: {
-          auth_user_id?: string
-          business_id?: string
-          device_label?: string
-          id?: string
-          last_seen_at?: string | null
-          registered_at?: string
-          registered_by?: string
-          revoked_at?: string | null
-          revoked_by?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "device_registrations_business_id_fkey"
-            columns: ["business_id"]
-            isOneToOne: false
-            referencedRelation: "businesses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      device_audit_log: {
-        Row: {
-          actor_auth_id: string | null
-          business_id: string
-          created_at: string
-          device_id: string | null
-          employee_id: string | null
-          event_type: string
-          id: string
-          metadata: Json | null
-        }
-        Insert: {
-          actor_auth_id?: string | null
-          business_id: string
-          created_at?: string
-          device_id?: string | null
-          employee_id?: string | null
-          event_type: string
-          id?: string
-          metadata?: Json | null
-        }
-        Update: {
-          actor_auth_id?: string | null
-          business_id?: string
-          created_at?: string
-          device_id?: string | null
-          employee_id?: string | null
-          event_type?: string
-          id?: string
-          metadata?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "device_audit_log_business_id_fkey"
-            columns: ["business_id"]
-            isOneToOne: false
-            referencedRelation: "businesses"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "device_audit_log_device_id_fkey"
-            columns: ["device_id"]
-            isOneToOne: false
-            referencedRelation: "device_registrations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "device_audit_log_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
@@ -1604,34 +1684,34 @@ export type Database = {
       }
       supplier_invoices: {
         Row: {
-          id: string
           business_id: string
-          supplier_id: string
-          purchase_order_id: string
-          invoice_number: string
-          invoice_date: string
-          original_amount: number
           created_at: string
+          id: string
+          invoice_date: string
+          invoice_number: string
+          original_amount: number
+          purchase_order_id: string
+          supplier_id: string
         }
         Insert: {
-          id?: string
           business_id: string
-          supplier_id: string
-          purchase_order_id: string
-          invoice_number: string
-          invoice_date: string
-          original_amount?: number
           created_at?: string
+          id?: string
+          invoice_date: string
+          invoice_number: string
+          original_amount?: number
+          purchase_order_id: string
+          supplier_id: string
         }
         Update: {
-          id?: string
           business_id?: string
-          supplier_id?: string
-          purchase_order_id?: string
-          invoice_number?: string
-          invoice_date?: string
-          original_amount?: number
           created_at?: string
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          original_amount?: number
+          purchase_order_id?: string
+          supplier_id?: string
         }
         Relationships: [
           {
@@ -1642,17 +1722,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "supplier_invoices_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "supplier_invoices_purchase_order_id_fkey"
             columns: ["purchase_order_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoices_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -1667,9 +1747,9 @@ export type Database = {
           payment_date: string
           payment_method: string
           receiving_session_id: string | null
-          supplier_invoice_id: string | null
           reference: string | null
           supplier_id: string
+          supplier_invoice_id: string | null
         }
         Insert: {
           amount?: number
@@ -1680,9 +1760,9 @@ export type Database = {
           payment_date: string
           payment_method: string
           receiving_session_id?: string | null
-          supplier_invoice_id?: string | null
           reference?: string | null
           supplier_id: string
+          supplier_invoice_id?: string | null
         }
         Update: {
           amount?: number
@@ -1693,9 +1773,9 @@ export type Database = {
           payment_date?: string
           payment_method?: string
           receiving_session_id?: string | null
-          supplier_invoice_id?: string | null
           reference?: string | null
           supplier_id?: string
+          supplier_invoice_id?: string | null
         }
         Relationships: [
           {
@@ -1713,17 +1793,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "supplier_payments_supplier_invoice_id_fkey"
-            columns: ["supplier_invoice_id"]
-            isOneToOne: false
-            referencedRelation: "supplier_invoices"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "supplier_payments_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_payments_supplier_invoice_id_fkey"
+            columns: ["supplier_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_invoices"
             referencedColumns: ["id"]
           },
         ]
@@ -1782,6 +1862,21 @@ export type Database = {
     Functions: {
       auth_business_id: { Args: never; Returns: string }
       auth_user_role: { Args: never; Returns: string }
+      set_employee_pin_hash: {
+        Args: { p_employee_id: string; p_pin: string }
+        Returns: undefined
+      }
+      verify_and_consume_employee_pin: {
+        Args: { p_business_id: string; p_employee_code: string; p_pin: string }
+        Returns: {
+          employee_id: string
+          employee_name: string
+          employee_role: string
+          existing_auth_user_id: string
+          locked: boolean
+          matched: boolean
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

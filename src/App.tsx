@@ -6,6 +6,7 @@ import { jsPDF } from "jspdf";
 import { SettingsTab } from "./components/SettingsTab";
 import { DeviceManagementPanel } from "./components/DeviceManagementPanel";
 import { isOwnerAccessGranted } from "./lib/auth/sessionAccess";
+import { employeePinLogin, setEmployeePin } from "./lib/staff/pinLoginClient";
 import { WegnAiPage } from "./components/WegnAiPage";
 import { getTodaysProfitEstimate, getPriorityAlerts } from "./lib/copilot/executiveBriefing";
 import { CustomersTab } from "./components/CustomersTab";
@@ -48,10 +49,13 @@ type AppProps = {
   onSignOut: () => void;
   // Registered Store Device / Staff Mode (Option A). "device" means the
   // live Supabase session backing this render is a shared device
-  // identity, not the owner's own account - see AuthGate.tsx. Every
-  // owner-only affordance below that used to assume "reached this screen"
-  // implies "authenticated as the owner" must check this instead.
-  sessionKind: "owner" | "device";
+  // identity, not the owner's own account - see AuthGate.tsx. "employee"
+  // (Phase 2) means it's a real per-employee session minted by
+  // employee-pin-login, layered on top of whichever device/owner session
+  // was live before. Every owner-only affordance below that used to
+  // assume "reached this screen" implies "authenticated as the owner"
+  // must check this instead.
+  sessionKind: "owner" | "device" | "employee";
   // True while owner access has been temporarily entered via Owner Access
   // (rather than the owner's own standing session), pending an explicit
   // exit. Does not by itself mean there is a device session to return to
@@ -67,9 +71,11 @@ type AppProps = {
   enterOwnerOverride: (email: string, password: string) => Promise<{ error?: string }>;
   restoreDeviceSession: () => Promise<{ ok: boolean; error?: string }>;
   activateDeviceSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<{ ok: boolean; error?: string }>;
+  enterEmployeeSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<{ ok: boolean; error?: string }>;
+  exitEmployeeSession: () => Promise<{ ok: boolean; error?: string }>;
 };
 
-function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canReturnToStaffMode, enterOwnerOverride, restoreDeviceSession, activateDeviceSession }: AppProps) {
+function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canReturnToStaffMode, enterOwnerOverride, restoreDeviceSession, activateDeviceSession, enterEmployeeSession, exitEmployeeSession }: AppProps) {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -524,9 +530,19 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const [employeeCodeInput, setEmployeeCodeInput] = useState("");
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
+  // Guards against a double-submit (double-click, retry-on-timeout) racing
+  // itself: employee-pin-login rotates a fresh throwaway password on every
+  // call, so two near-simultaneous requests for the same employee can
+  // invalidate each other's sign-in.
+  const [pinLoginSubmitting, setPinLoginSubmitting] = useState(false);
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [editEmpRole, setEditEmpRole] = useState("");
   const [editEmpCode, setEditEmpCode] = useState("");
+  // Set/reset PIN - retry path for handleAddEmployee's non-atomic
+  // insert-then-set-PIN (see Phase 3 plan Risk 6), and the general way to
+  // reset any employee's PIN going forward.
+  const [settingPinEmpId, setSettingPinEmpId] = useState<string | null>(null);
+  const [newPinValue, setNewPinValue] = useState("");
   const [salesCashierFilter, setSalesCashierFilter] = useState<string>("all");
   const [salesSearchQuery, setSalesSearchQuery] = useState("");
   const [salesDateRange, setSalesDateRange] = useState<'today' | '7d' | '30d' | 'all'>('30d');
@@ -584,7 +600,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   const [editBizDateFormat, setEditBizDateFormat] = useState("MM/DD/YYYY");
   const [editBizConfigTaxRate, setEditBizConfigTaxRate] = useState("");
 
-  const hasStaffPins = employees.some(e => e.pin && e.status === "active");
+  const hasStaffPins = employees.some(e => e.pin_set && e.status === "active");
 
   // Security fix: userRole previously reported "owner" whenever
   // sessionKind === "owner", regardless of whether owner access had
@@ -1116,7 +1132,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   // condition that screen renders under, below) - not on every render.
   const staffModeEnteredLoggedRef = useRef(false);
   useEffect(() => {
-    const showingPinScreen = sessionKind === "device" && businessId && !staffSession && !ownerBypass && employees.some(e => e.pin && e.status === "active");
+    const showingPinScreen = sessionKind === "device" && businessId && !staffSession && !ownerBypass && employees.some(e => e.pin_set && e.status === "active");
     if (showingPinScreen && !staffModeEnteredLoggedRef.current) {
       staffModeEnteredLoggedRef.current = true;
       writeDeviceAuditEvent("staff_mode_entered");
@@ -1128,6 +1144,33 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKind, businessId, staffSession, ownerBypass, employees, overrideActive]);
+
+  // staffSession is local React state with no persistence of its own - a
+  // page refresh mid-shift starts it back at null, even though the
+  // underlying Supabase session (and sessionKind resolution) correctly
+  // survives via AuthGate's mount logic (see sessionAccess.ts's
+  // liveSessionIsEmployee branch). Without this, a refreshed employee
+  // session would resolve sessionKind === "employee" with no matching
+  // staffSession - userRole would fall through to "locked" and the
+  // employee would be stranded on neither the app nor the PIN screen
+  // (that screen's guard requires sessionKind === "device"). Rehydrates
+  // by matching this session's own userId (== employees.auth_user_id,
+  // populated at PIN-login time) against the already-loaded employees list.
+  useEffect(() => {
+    if (sessionKind !== "employee" || staffSession || employees.length === 0) return;
+    const emp = employees.find(e => e.auth_user_id === userId);
+    if (emp) {
+      // Safe here, matching DeviceManagementPanel's loadDevices precedent:
+      // this effect only re-runs on an explicit sessionKind/userId/
+      // employees/staffSession change, not on every render, and the guard
+      // above (staffSession already set) prevents it from ever firing
+      // again once rehydration succeeds.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStaffSession({ id: emp.id, name: emp.name, role: emp.role });
+      setActiveCashierId(emp.id);
+      setActiveCashierName(emp.name);
+    }
+  }, [sessionKind, userId, employees, staffSession]);
 
   // Wegn AI Onboarding Blueprint, Phase 1. A missing row means either a
   // business that predates this feature and wasn't caught by the migration
@@ -1218,30 +1261,56 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     setBusinessTaxRate(taxRate);
   }
 
-  function handlePinLogin() {
+  // Staff Mode Phase 2: PIN verification and identity now live entirely
+  // server-side (employee-pin-login), not in a local employees.find()
+  // compare - see supabase/functions/employee-pin-login. A match returns
+  // a real, dedicated session for that employee, which enterEmployeeSession
+  // (AuthGate) swaps the live Supabase session to - only then is
+  // staffSession set, so it's never out of sync with which session is
+  // actually live.
+  async function handlePinLogin() {
+    if (pinLoginSubmitting) return;
     const code = employeeCodeInput.trim();
     const pin = pinInput.trim();
     if (!code || !pin) return;
-    // Staff Authentication Redesign: identify by Employee ID first, then
-    // verify active status and PIN - but never reveal which check failed.
-    // Every failure path (unknown code, inactive account, wrong PIN) hits
-    // the exact same generic message.
-    const emp = employees.find(e => e.employee_code.toLowerCase() === code.toLowerCase());
-    if (!emp || emp.status !== "active" || emp.pin !== pin) {
-      setPinError("Invalid Employee ID or PIN");
+    setPinLoginSubmitting(true);
+    setPinError("");
+    const result = await employeePinLogin(code, pin);
+    if (!result.ok) {
+      setPinError(result.error);
+      setPinLoginSubmitting(false);
       return;
     }
-    setStaffSession({ id: emp.id, name: emp.name, role: emp.role });
-    setActiveCashierId(emp.id);
-    setActiveCashierName(emp.name);
+    const activated = await enterEmployeeSession({ accessToken: result.accessToken, refreshToken: result.refreshToken });
+    if (!activated.ok) {
+      setPinError(activated.error ?? "Could not start the employee session. Please try again.");
+      setPinLoginSubmitting(false);
+      return;
+    }
+    setStaffSession({ id: result.employeeId, name: result.name, role: result.role });
+    setActiveCashierId(result.employeeId);
+    setActiveCashierName(result.name);
     setEmployeeCodeInput("");
     setPinInput("");
     setPinError("");
-    const tabs = tabAccess[emp.role] ?? tabAccess.owner;
+    setPinLoginSubmitting(false);
+    const tabs = tabAccess[result.role] ?? tabAccess.owner;
     setActiveTab(tabs[0]);
   }
 
-  function handleStaffLogout() {
+  async function handleStaffLogout() {
+    // Only a real "Switch User" (staffSession set) has an actual employee
+    // session to exit - "Back to Employee Login" (staffSession already
+    // null, an owner returning to the PIN screen) must keep behaving
+    // exactly as it always has: local UI state only, live session
+    // untouched.
+    if (staffSession) {
+      const exited = await exitEmployeeSession();
+      if (!exited.ok) {
+        console.error("[handleStaffLogout] exitEmployeeSession failed:", exited.error);
+        setMessage({ text: exited.error ?? "Could not fully sign out. Please sign in again if anything looks wrong.", type: "error" });
+      }
+    }
     setStaffSession(null);
     setOwnerBypass(false);
     setShowOwnerLoginForm(false);
@@ -2063,7 +2132,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
   async function loadEmployees() {
     const { data, error } = await supabase
       .from("employees")
-      .select("id, business_id, name, employee_code, role, status, pin, created_at")
+      .select("id, business_id, name, employee_code, role, status, pin_set, auth_user_id, created_at")
       .order("created_at", { ascending: false });
     if (error) { console.error(error); return; }
     setEmployees((data as Employee[]) || []);
@@ -3379,23 +3448,52 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     if (!/^\d{4,6}$/.test(pin)) { setMessage({ text: "PIN must be 4–6 digits", type: "error" }); return; }
     const duplicateCode = employees.find(emp => emp.employee_code.toUpperCase() === code);
     if (duplicateCode) { setMessage({ text: `Employee ID already assigned to ${duplicateCode.name}`, type: "error" }); return; }
-    const duplicate = employees.find(emp => emp.pin === pin);
-    if (duplicate) { setMessage({ text: `PIN already assigned to ${duplicate.name}`, type: "error" }); return; }
-    const { error } = await supabase.from("employees").insert({
+    // Duplicate-PIN check removed: PINs are hashed server-side (Staff Mode
+    // Phase 2) and never round-trip to the client, so there's no plaintext
+    // left here to compare against. Not a real security property either -
+    // login already requires the specific employee_code, not PIN alone,
+    // so a shared PIN across two employees doesn't let one impersonate
+    // the other.
+    const { data: insertedEmp, error } = await supabase.from("employees").insert({
       business_id: businessId,
       name: newEmpName.trim(),
       employee_code: code,
-      pin,
       role: newEmpRole,
       status: "active",
-    });
-    if (error) { console.error(error); setMessage({ text: "Failed to add employee: " + error.message, type: "error" }); return; }
+    }).select("id").single();
+    if (error || !insertedEmp) { console.error(error); setMessage({ text: "Failed to add employee: " + (error?.message ?? "unknown error"), type: "error" }); return; }
+    const pinResult = await setEmployeePin(insertedEmp.id, pin);
+    if (!pinResult.ok) {
+      // Employee row exists but pin_set is still false - StaffPanel's "Set
+      // PIN" affordance (shown for any employee in that state) is the
+      // retry path, reusing the same set-employee-pin call.
+      console.error(pinResult.error);
+      setMessage({ text: `Employee added, but the PIN could not be set: ${pinResult.error}. Use "Set PIN" to try again.`, type: "error" });
+      setNewEmpName("");
+      setNewEmpCode("");
+      setNewEmpPin("");
+      setNewEmpRole("cashier");
+      await loadEmployees();
+      return;
+    }
     setNewEmpName("");
     setNewEmpCode("");
     setNewEmpPin("");
     setNewEmpRole("cashier");
     setOwnerBypass(true);
     setMessage({ text: `Employee added — ID: ${code}, PIN: ${pin}`, type: "success" });
+    await loadEmployees();
+  }
+
+  async function handleSetEmployeePin(employeeId: string) {
+    if (!canManageStaff) return;
+    const pin = newPinValue.trim();
+    if (!/^\d{4,6}$/.test(pin)) { setMessage({ text: "PIN must be 4–6 digits", type: "error" }); return; }
+    const result = await setEmployeePin(employeeId, pin);
+    if (!result.ok) { setMessage({ text: "Failed to set PIN: " + result.error, type: "error" }); return; }
+    setSettingPinEmpId(null);
+    setNewPinValue("");
+    setMessage({ text: "PIN updated", type: "success" });
     await loadEmployees();
   }
 
@@ -5244,7 +5342,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         </div>
       )}
 
-      {businessId && !staffSession && !ownerAccessGranted && (sessionKind === "device" || employees.some(e => e.pin && e.status === "active")) && (
+      {businessId && !staffSession && !ownerAccessGranted && (sessionKind === "device" || employees.some(e => e.pin_set && e.status === "active")) && (
         <div style={{ position: "relative", maxWidth: "380px", margin: "40px auto", padding: "32px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", textAlign: "center" }}>
             {/* Security fix: this card no longer has its own escalation
                 icon. It previously offered a one-click "Continue as
@@ -5258,7 +5356,7 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
                 sessionKind, and always requires the re-authentication
                 modal below. */}
             <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "#0f172a" }}>Staff Login</h2>
-            {employees.some(e => e.pin && e.status === "active") ? (
+            {employees.some(e => e.pin_set && e.status === "active") ? (
               <>
                 <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: "14px" }}>Enter your Employee ID and PIN to start your shift</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
@@ -5943,6 +6041,11 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         setEditEmpCode={setEditEmpCode}
         onSaveEmployeeEdit={handleSaveEmployeeEdit}
         onToggleEmployeeStatus={handleToggleEmployeeStatus}
+        settingPinEmpId={settingPinEmpId}
+        setSettingPinEmpId={setSettingPinEmpId}
+        newPinValue={newPinValue}
+        setNewPinValue={setNewPinValue}
+        onSetEmployeePin={handleSetEmployeePin}
       />
 
       {/* ── SETTINGS TAB ── */}

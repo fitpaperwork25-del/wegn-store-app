@@ -27,10 +27,25 @@ export type MountSessionDecision = "use_live_session" | "restore_device_cache";
 export function resolveMountSessionTrust(input: {
   hasLiveSession: boolean;
   liveSessionIsDevice: boolean;
+  /**
+   * True when the live session is an employee's own PIN-login identity
+   * (Staff Mode Phase 2 - see supabase/migrations/20260720_employee_pin_hashing.sql
+   * and supabase/functions/employee-pin-login). An employee session is
+   * layered on top of a device or owner session the same way an Owner
+   * Access override is - which means a browser with an employee session
+   * live almost always also has a device cache sitting present. Without
+   * this check, a mid-shift page refresh would incorrectly match the Bug
+   * #1 condition below and kick the employee back to the device's own
+   * Staff Mode session (the PIN screen), rather than staying signed in.
+   * An employee session is trusted directly on mount, exactly like a
+   * device session - restoration works because Supabase persists the
+   * live session itself; nothing needs to be read back from a cache.
+   */
+  liveSessionIsEmployee: boolean;
   hasDeviceCache: boolean;
 }): MountSessionDecision {
   if (!input.hasLiveSession) return "use_live_session";
-  if (input.liveSessionIsDevice) return "use_live_session";
+  if (input.liveSessionIsDevice || input.liveSessionIsEmployee) return "use_live_session";
   if (input.hasDeviceCache) return "restore_device_cache";
   return "use_live_session";
 }
@@ -38,7 +53,12 @@ export function resolveMountSessionTrust(input: {
 export type OwnerAccessGrantedInput = {
   /** Set only by a successful, fresh Owner Access re-authentication (or its restore-to-false counterpart). */
   ownerBypass: boolean;
-  sessionKind: "owner" | "device";
+  /** "employee" (Staff Mode Phase 2) behaves exactly like "device" here -
+   *  sessionKind === "owner" is false for both, so access is granted only
+   *  via ownerBypass, never merely by holding the session. No logic
+   *  change needed, just widening the type this already-correct
+   *  comparison accepts. */
+  sessionKind: "owner" | "device" | "employee";
   /** True when no PIN-enabled employees exist yet - the legacy single-operator convenience, where there is no Staff Mode gate to bypass in the first place. */
   hasStaffPins: boolean;
 };
