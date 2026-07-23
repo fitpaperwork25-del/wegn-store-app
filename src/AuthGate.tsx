@@ -5,6 +5,7 @@ import App from "./App";
 import { resolveMountSessionTrust } from "./lib/auth/sessionAccess";
 import { isPasswordRecoveryUrl, validateNewPassword, validateRecoveryEmail, PRODUCTION_APP_URL } from "./lib/auth/passwordRecovery";
 import { registerBusinessWithWsms } from "./lib/wsms/subscriptionClient";
+import { linkIdentityAccount } from "./lib/identity/identityClient";
 
 // Registered Store Device / Staff Mode (Option A - shared device identity).
 // See supabase/migrations/20260716_registered_device_staff_mode.sql.
@@ -301,6 +302,12 @@ export default function AuthGate() {
     });
     if (signInErr) {
       setError(signInErr.message);
+    } else {
+      // Sprint 2 Task 4: the standalone owner login only - see
+      // src/lib/identity/identityClient.ts. Deliberately not called from
+      // enterOwnerOverride below, which is a Staff Mode / shared-device
+      // elevation, not a standalone login (out of scope per Task 4).
+      void linkIdentityAccount();
     }
     setSubmitting(false);
   }
