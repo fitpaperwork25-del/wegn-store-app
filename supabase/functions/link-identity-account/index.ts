@@ -2,11 +2,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * Sprint 2 Task 4: links the caller's own Wegn Store owner account to the
- * WEGN Identity Service, fire-and-forget from AuthGate.tsx's standalone
- * owner login only. Mirrors QRWegn's link-identity-account exactly (same
- * repo shape, same contract) - see wegn-identity's README.md "Security
- * model" section for why this uses the one shared bootstrap secret.
+ * Sprint 2 Task 4, credential updated in Task 5: links the caller's own
+ * Wegn Store owner account to the WEGN Identity Service, fire-and-forget
+ * from AuthGate.tsx's standalone owner login only. Mirrors QRWegn's
+ * link-identity-account exactly (same repo shape, same contract). Holds
+ * IDENTITY_CREDENTIAL server-side only - a credential scoped in
+ * wegn-identity to link-account + productKey "wegn-store" only (see
+ * wegn-identity's README.md "Security model" section and
+ * credentialRegistry.ts). No longer the old shared bootstrap secret
+ * every consumer used through Task 4.
  *
  * Deliberately does NOT use this repo's shared _shared/verifyAuth.ts -
  * that helper also resolves auth_business_id(), which every one of its
@@ -51,7 +55,7 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const identityUrl = Deno.env.get("IDENTITY_LINK_ACCOUNT_URL");
-  const identitySecret = Deno.env.get("IDENTITY_SERVICE_SECRET");
+  const identitySecret = Deno.env.get("IDENTITY_CREDENTIAL");
 
   if (!supabaseUrl || !supabaseAnonKey || !identityUrl || !identitySecret) {
     return jsonResponse({ error: "Server is not configured (missing required secrets)" }, 500);
