@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { verifyAuth } from "../_shared/verifyAuth.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
  * Sprint 2 Task 4: links the caller's own Wegn Store owner account to the
@@ -8,10 +8,19 @@ import { verifyAuth } from "../_shared/verifyAuth.ts";
  * repo shape, same contract) - see wegn-identity's README.md "Security
  * model" section for why this uses the one shared bootstrap secret.
  *
+ * Deliberately does NOT use this repo's shared _shared/verifyAuth.ts -
+ * that helper also resolves auth_business_id(), which every one of its
+ * other 7 consumers legitimately needs but this one does not. Identity
+ * linking is about proving who the authenticated caller is, not what
+ * business they own; requiring a resolvable business here would be an
+ * unrelated coupling and would silently fail linking for a caller whose
+ * business lookup has any hiccup, even though their login itself is
+ * completely valid. So this does its own minimal, self-contained JWT
+ * verification instead - the same shape QRWegn's own verifyAuth.ts uses
+ * (verify the token, read the user's id/email, nothing about tenancy).
+ *
  * No email or auth_user_id is ever trusted from the client - both come
- * from verifyAuth's server-side verification of the caller's own JWT.
- * businessId isn't needed here at all - linking is about the owner's own
- * identity, not any particular business.
+ * from Supabase's own server-side verification of the caller's JWT.
  *
  * Fire-and-forget from the frontend's perspective - a failure here must
  * never block or fail a Wegn Store login, which has already succeeded by
@@ -48,15 +57,20 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Server is not configured (missing required secrets)" }, 500);
   }
 
-  const verified = await verifyAuth({
-    supabaseUrl,
-    supabaseAnonKey,
-    authorizationHeader: req.headers.get("Authorization"),
-  });
-  if (!verified) {
+  const authorizationHeader = req.headers.get("Authorization");
+  if (!authorizationHeader) {
     return jsonResponse({ error: "Not authenticated" }, 401);
   }
-  if (!verified.email) {
+  const callerClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authorizationHeader } },
+  });
+  const { data: userData, error: userErr } = await callerClient.auth.getUser();
+  if (userErr || !userData?.user) {
+    return jsonResponse({ error: "Not authenticated" }, 401);
+  }
+  const authUserId = userData.user.id;
+  const email = userData.user.email ?? null;
+  if (!email) {
     // No email on the session (should not happen for a password-based
     // owner login, but link-account requires one) - fail quiet, this
     // must never surface as a login error.
@@ -70,8 +84,8 @@ serve(async (req: Request) => {
       body: JSON.stringify({
         secret: identitySecret,
         productKey: "wegn-store",
-        productAuthUserId: verified.authUserId,
-        email: verified.email,
+        productAuthUserId: authUserId,
+        email,
       }),
     });
     const identityBody = await identityRes.json().catch(() => ({}));

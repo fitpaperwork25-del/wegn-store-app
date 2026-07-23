@@ -15,11 +15,6 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 export type VerifiedRequest = {
   authUserId: string;
   businessId: string;
-  /** Added for Sprint 2 Task 4 (WEGN Identity linking) - already available
-   *  on userData.user below, just not previously surfaced. Additive only;
-   *  every existing caller destructures a subset of this object, so this
-   *  cannot change their behavior. */
-  email: string | null;
   /** A Supabase client scoped to the caller's own JWT - RLS applies to
    *  every query made with this client, exactly as it does for the app's
    *  own reads. Never use the service-role key for tool data queries. */
@@ -43,5 +38,5 @@ export async function verifyAuth(params: {
   const { data: businessId, error: bizErr } = await supabase.rpc("auth_business_id");
   if (bizErr || !businessId) return null;
 
-  return { authUserId: userData.user.id, businessId: businessId as string, email: userData.user.email ?? null, supabase };
+  return { authUserId: userData.user.id, businessId: businessId as string, supabase };
 }
