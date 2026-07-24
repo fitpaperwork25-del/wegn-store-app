@@ -53,6 +53,8 @@ serve(async (req: Request) => {
     issuedAt?: unknown;
     expiresAt?: unknown;
     externalBusinessIds?: unknown;
+    activityCursor?: unknown;
+    activityLimit?: unknown;
   };
   try {
     body = await req.json();
@@ -82,6 +84,50 @@ serve(async (req: Request) => {
 
   const admin = createClient(url, serviceRoleKey);
   const allowed = new Set(ids);
+
+  // Phase 2A-3: single-business paginated activity read for the Business
+  // Workspace Activity Timeline. Deliberately a separate branch, not a
+  // change to the batched query above it - the existing multi-business
+  // path (Overview's 3-item summary) is untouched, this only activates
+  // when the caller explicitly asks for a page beyond the default.
+  if (ids.length === 1 && (body.activityCursor !== undefined || body.activityLimit !== undefined)) {
+    const cursor = typeof body.activityCursor === "string" && body.activityCursor ? body.activityCursor : null;
+    if (cursor !== null && !Number.isFinite(Date.parse(cursor))) {
+      return json({ error: "Invalid activity cursor" }, 400);
+    }
+    const requestedLimit = typeof body.activityLimit === "number" ? Math.trunc(body.activityLimit) : 20;
+    const activityLimit = Math.min(Math.max(requestedLimit, 1), 50);
+
+    let query = admin
+      .from("inventory_transactions")
+      .select("id, business_id, created_at")
+      .eq("business_id", ids[0])
+      .order("created_at", { ascending: false })
+      .limit(activityLimit);
+    if (cursor !== null) query = query.lt("created_at", cursor);
+
+    const { data: pageRows, error: pageError } = await query;
+    if (pageError) return json({ error: "Portfolio lookup failed" }, 500);
+
+    const recentActivity = (pageRows ?? []).map((row) => ({
+      id: row.id, category: "inventory_updated", summary: "Inventory updated", occurredAt: row.created_at,
+    }));
+    const nextCursor = recentActivity.length === activityLimit ? recentActivity[recentActivity.length - 1].occurredAt : null;
+
+    return json({
+      requestId,
+      productKey: PRODUCT_KEY,
+      sourceSchemaVersion: "1",
+      asOf: new Date().toISOString(),
+      businesses: [{
+        externalBusinessId: ids[0],
+        sourceUpdatedAt: new Date().toISOString(),
+        setup: null,
+        recentActivity,
+      }],
+      nextCursor,
+    });
+  }
 
   const [{ data: rows, error: businessError }, { data: activityRows, error: activityError }] = await Promise.all([
     admin.from("businesses").select("id").in("id", ids),
