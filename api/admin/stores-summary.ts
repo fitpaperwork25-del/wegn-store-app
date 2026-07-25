@@ -23,7 +23,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 // function slot isn't worth it for what is structurally the same
 // "shared-secret, service-role, read-only" call. email is already a
 // direct column on businesses (added by
-// 20260621_add_business_profile_fields.sql) — no join needed, and this
+// 20260621000002_add_business_profile_fields.sql) — no join needed, and this
 // query never selects phone/address or any other profile field.
 //
 // Matching is case-insensitive and partial (ilike with wildcards) —

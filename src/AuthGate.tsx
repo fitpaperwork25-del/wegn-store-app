@@ -8,7 +8,7 @@ import { registerBusinessWithWsms } from "./lib/wsms/subscriptionClient";
 import { linkIdentityAccount } from "./lib/identity/identityClient";
 
 // Registered Store Device / Staff Mode (Option A - shared device identity).
-// See supabase/migrations/20260716_registered_device_staff_mode.sql.
+// See supabase/migrations/20260716000005_registered_device_staff_mode.sql.
 //
 // Supabase's client only ever holds ONE live session at a time. On a
 // shared store device that session is normally the device's own minimal
@@ -66,7 +66,7 @@ function isDeviceUser(user: User | null): boolean {
 }
 
 // Employee PIN login (Staff Mode Phase 2 - see
-// supabase/migrations/20260720_employee_pin_hashing.sql and
+// supabase/migrations/20260720000001_employee_pin_hashing.sql and
 // supabase/functions/employee-pin-login). A parallel, independent
 // instance of the device-cache/override pattern above, not a
 // modification to it: an employee session is layered on top of

@@ -1165,7 +1165,7 @@ Every table has a `business_id` column. RLS policies enforce `business_id = auth
 ### Barcode Handling
 
 - Barcodes are stored on `products.barcode`.
-- A partial unique index enforces one barcode per business (exact migration name: `20260621_barcode_unique_index.sql`).
+- A partial unique index enforces one barcode per business (exact migration name: `20260621000006_barcode_unique_index.sql`).
 - At POS and receiving, barcode lookup is: `products.find(p => String(p.barcode || "").trim() === code)`.
 - Lookup is exact-match only (no fuzzy).
 - If barcode is not found, a Product Resolution dialog opens to link or create the product.

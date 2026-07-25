@@ -29,7 +29,7 @@ export function resolveMountSessionTrust(input: {
   liveSessionIsDevice: boolean;
   /**
    * True when the live session is an employee's own PIN-login identity
-   * (Staff Mode Phase 2 - see supabase/migrations/20260720_employee_pin_hashing.sql
+   * (Staff Mode Phase 2 - see supabase/migrations/20260720000001_employee_pin_hashing.sql
    * and supabase/functions/employee-pin-login). An employee session is
    * layered on top of a device or owner session the same way an Owner
    * Access override is - which means a browser with an employee session
