@@ -67,14 +67,19 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Server is not configured (missing required secrets)" }, 500);
   }
 
-  let requestBody: { message?: string; conversationId?: string; employeeId?: string | null; priorMessages?: AiMessage[]; businessDayStartIso?: string };
+  // Note: a client-supplied `employeeId` field may still arrive in the body
+  // from older frontend builds - it is deliberately not read anywhere below.
+  // Role is resolved entirely server-side from the caller's own verified
+  // JWT (see resolveRoleForRequest); a client-asserted employee identity is
+  // never trusted for authorization. See resolveRole.ts for why.
+  let requestBody: { message?: string; conversationId?: string; priorMessages?: AiMessage[]; businessDayStartIso?: string };
   try {
     requestBody = await req.json();
   } catch {
     return jsonResponse({ error: "Invalid JSON body" }, 400);
   }
 
-  const { message, conversationId, employeeId } = requestBody;
+  const { message, conversationId } = requestBody;
   if (typeof message !== "string" || message.trim().length === 0) {
     return jsonResponse({ error: "message is required" }, 400);
   }
@@ -92,11 +97,11 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Not authenticated" }, 401);
   }
 
-  // 2. Full role-permission resolution - never a tenant-only fallback.
+  // 2. Full role-permission resolution - derived only from the caller's own
+  // verified JWT via auth_user_role(), never a client-supplied claim.
   const roleResult = await resolveRoleForRequest(verified.supabase, {
     businessId: verified.businessId,
     authUserId: verified.authUserId,
-    requestedEmployeeId: typeof employeeId === "string" ? employeeId : null,
   });
   if (!roleResult.ok) {
     return jsonResponse({ error: `Not authorized (${roleResult.reason})` }, 403);

@@ -2,77 +2,59 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { determineRole } from "./resolveRole.ts";
 
-const BUSINESS_A = "11111111-1111-1111-1111-111111111111";
-const BUSINESS_B = "22222222-2222-2222-2222-222222222222";
-
-test("owner identity is always granted the owner role, regardless of any employee claim", () => {
-  const result = determineRole({
-    isOwner: true,
-    verifiedBusinessId: BUSINESS_A,
-    requestedEmployeeId: "some-employee-id",
-    employeeLookup: null,
-  });
+test("owner role from auth_user_role() is granted the owner role with no employeeId", () => {
+  const result = determineRole("owner", null);
   assert.deepEqual(result, { ok: true, role: "owner", employeeId: null });
 });
 
-test("non-owner with no employee claim is rejected, not granted a default role", () => {
-  const result = determineRole({
-    isOwner: false,
-    verifiedBusinessId: BUSINESS_A,
-    requestedEmployeeId: null,
-    employeeLookup: null,
-  });
-  assert.deepEqual(result, { ok: false, reason: "not_owner_and_no_employee_claim" });
+test("owner role from auth_user_role() ignores any employeeId passed alongside it", () => {
+  // Regression guard for the original C-1 bug shape: even if some caller
+  // still threads an employeeId through, an owner-resolved role must never
+  // carry a stray employeeId - owner is never "acting as" an employee row.
+  const result = determineRole("owner", "some-employee-id");
+  assert.deepEqual(result, { ok: true, role: "owner", employeeId: null });
 });
 
-test("employee id that doesn't resolve to any row is rejected", () => {
-  const result = determineRole({
-    isOwner: false,
-    verifiedBusinessId: BUSINESS_A,
-    requestedEmployeeId: "does-not-exist",
-    employeeLookup: null,
-  });
-  assert.deepEqual(result, { ok: false, reason: "employee_not_found" });
+test("null role (auth_user_role() resolved nothing) is rejected, not granted a default role", () => {
+  const result = determineRole(null, null);
+  assert.deepEqual(result, { ok: false, reason: "not_authenticated" });
 });
 
-test("employee belonging to a different business is rejected - tenant isolation", () => {
-  const result = determineRole({
-    isOwner: false,
-    verifiedBusinessId: BUSINESS_A,
-    requestedEmployeeId: "emp-1",
-    employeeLookup: { id: "emp-1", business_id: BUSINESS_B, role: "manager", status: "active" },
-  });
-  assert.deepEqual(result, { ok: false, reason: "employee_business_mismatch" });
+test("a bare device session (auth_user_role() = 'device') is rejected - not a Copilot-eligible role", () => {
+  const result = determineRole("device", null);
+  assert.deepEqual(result, { ok: false, reason: "unknown_role" });
 });
 
-test("inactive employee is rejected even with a matching business and valid role", () => {
-  const result = determineRole({
-    isOwner: false,
-    verifiedBusinessId: BUSINESS_A,
-    requestedEmployeeId: "emp-1",
-    employeeLookup: { id: "emp-1", business_id: BUSINESS_A, role: "manager", status: "inactive" },
-  });
-  assert.deepEqual(result, { ok: false, reason: "employee_inactive" });
-});
-
-test("employee with an unrecognized role value is rejected, not silently defaulted", () => {
-  const result = determineRole({
-    isOwner: false,
-    verifiedBusinessId: BUSINESS_A,
-    requestedEmployeeId: "emp-1",
-    employeeLookup: { id: "emp-1", business_id: BUSINESS_A, role: "district_manager", status: "active" },
-  });
+test("an unrecognized role value is rejected, not silently defaulted", () => {
+  const result = determineRole("district_manager", null);
   assert.deepEqual(result, { ok: false, reason: "unknown_role" });
 });
 
 for (const role of ["manager", "cashier", "inventory_clerk"] as const) {
-  test(`active employee with role "${role}" in the correct business resolves to that role`, () => {
-    const result = determineRole({
-      isOwner: false,
-      verifiedBusinessId: BUSINESS_A,
-      requestedEmployeeId: "emp-1",
-      employeeLookup: { id: "emp-1", business_id: BUSINESS_A, role, status: "active" },
-    });
+  test(`role "${role}" from auth_user_role() resolves to that role with its own employeeId`, () => {
+    const result = determineRole(role, "emp-1");
     assert.deepEqual(result, { ok: true, role, employeeId: "emp-1" });
   });
 }
+
+test(
+  "C-1 regression: a lower-privileged caller's own resolved role cannot be overridden by " +
+    "an employeeId belonging to someone else - determineRole only ever reads the resolved " +
+    "role string, never an employeeId, to decide the role",
+  () => {
+    // A cashier's own auth_user_role() result is "cashier", full stop - no
+    // parameter to this function lets a caller substitute a different
+    // employee's id to obtain a different role. This is the structural
+    // fix: the vulnerable version of this function accepted a client-
+    // supplied employeeId and used it to look up (and grant) a DIFFERENT
+    // employee's role. That employeeLookup parameter no longer exists.
+    const asCashier = determineRole("cashier", "cashiers-own-employee-id");
+    assert.deepEqual(asCashier, { ok: true, role: "cashier", employeeId: "cashiers-own-employee-id" });
+
+    const asCashierWithSomeoneElsesId = determineRole("cashier", "managers-employee-id");
+    // Even if an employeeId belonging to a different employee is threaded
+    // through, the granted ROLE still comes only from the resolved role
+    // string - "cashier" in, "cashier" out, never "manager".
+    assert.equal(asCashierWithSomeoneElsesId.ok && asCashierWithSomeoneElsesId.role, "cashier");
+  }
+);

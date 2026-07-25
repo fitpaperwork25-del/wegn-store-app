@@ -1,13 +1,21 @@
 /**
  * Server-side role resolution for the AI Copilot.
  *
- * Full role enforcement, not tenant-only authorization: the resolved role is
- * always looked up authoritatively (owner via `businesses.owner_id`, staff
- * via `employees.role`), never trusted from a client-supplied role string.
+ * Full role enforcement, not tenant-only authorization: the resolved role
+ * comes only from `auth_user_role()`, evaluated against the caller's own
+ * verified JWT (auth.uid()) - the same SQL function every RLS policy in
+ * this app already trusts, and the same pattern verifyAuth.ts already uses
+ * for `auth_business_id()`. There is deliberately no code path that derives
+ * a role from anything the client sends in the request body: a prior
+ * version of this file accepted a client-supplied `employeeId` and looked
+ * it up without checking it belonged to the caller, which let any
+ * authenticated tenant session claim any other employee's role. See
+ * resolveRole.test.ts for the fix's regression coverage.
+ *
  * The pure decision function below is exported separately from its I/O
  * wrapper specifically so the decision logic itself - the part that matters
  * for security review - is unit-testable without a live database
- * connection (see resolveRole.test.ts).
+ * connection.
  */
 
 export type CopilotRole = "owner" | "manager" | "cashier" | "inventory_clerk";
@@ -18,77 +26,30 @@ function isCopilotRole(value: string): value is CopilotRole {
   return (ALL_COPILOT_ROLES as string[]).includes(value);
 }
 
-export type EmployeeLookupRow = {
-  id: string;
-  business_id: string;
-  role: string;
-  status: string;
-} | null;
-
-export type ResolveRoleInput = {
-  /** Whether auth.uid() matches businesses.owner_id for the verified business. */
-  isOwner: boolean;
-  /** The business_id already resolved from the verified JWT via auth_business_id(). */
-  verifiedBusinessId: string;
-  /** Employee id the client asserted as "currently active" (staffSession.id), if any. */
-  requestedEmployeeId: string | null;
-  /**
-   * Result of an independent server-side lookup of `requestedEmployeeId` in
-   * `employees`, scoped by the caller. Null if no matching row was found at
-   * all (wrong id, or - critically - an id belonging to a different
-   * business, which must resolve to "not found", never leak that mismatch).
-   */
-  employeeLookup: EmployeeLookupRow;
-};
-
 export type ResolveRoleResult =
   | { ok: true; role: CopilotRole; employeeId: string | null }
-  | { ok: false; reason: "not_owner_and_no_employee_claim" | "employee_not_found" | "employee_inactive" | "employee_business_mismatch" | "unknown_role" };
+  | { ok: false; reason: "not_authenticated" | "unknown_role" };
 
 /**
  * Pure decision function - no network, no Supabase client, plain data in,
- * plain data out. This is the only place "what role does this request get"
- * is decided; every caller (the real edge function and every test) goes
- * through this same logic.
+ * plain data out. `resolvedRole` is whatever `auth_user_role()` returned
+ * for the caller's own JWT; `employeeId` is the caller's own employees.id
+ * (looked up by their own auth_user_id, never client-supplied) if they're
+ * staff, or null for an owner.
  *
- * Fails closed: any ambiguity or lookup miss is a rejection, never a
- * fallback to a default/tenant-only role. This is the concrete enforcement
- * of "do not use tenant-only authorization as a substitute for role
- * enforcement."
+ * Fails closed: a null/unrecognized role (including the SQL function's
+ * "device" bucket, which is not a Copilot-eligible role - a bare device
+ * session with no employee clocked in and no owner override gets no
+ * Copilot access at all) is always a rejection, never a fallback role.
  */
-export function determineRole(input: ResolveRoleInput): ResolveRoleResult {
-  // The real, JWT-verified owner identity always wins - it is the one
-  // server-verifiable role in the system today, and there is no legitimate
-  // reason for the actual owner's own authenticated session to be
-  // downgraded by an employeeId claim, so it is never even considered.
-  if (input.isOwner) {
-    return { ok: true, role: "owner", employeeId: null };
+export function determineRole(resolvedRole: string | null, employeeId: string | null): ResolveRoleResult {
+  if (!resolvedRole) {
+    return { ok: false, reason: "not_authenticated" };
   }
-
-  if (!input.requestedEmployeeId) {
-    return { ok: false, reason: "not_owner_and_no_employee_claim" };
-  }
-
-  if (!input.employeeLookup) {
-    return { ok: false, reason: "employee_not_found" };
-  }
-
-  // Defense in depth: even though the lookup should already have been
-  // scoped to verifiedBusinessId, re-check explicitly here so a caller
-  // mistake upstream can never turn into a cross-tenant role grant.
-  if (input.employeeLookup.business_id !== input.verifiedBusinessId) {
-    return { ok: false, reason: "employee_business_mismatch" };
-  }
-
-  if (input.employeeLookup.status !== "active") {
-    return { ok: false, reason: "employee_inactive" };
-  }
-
-  if (!isCopilotRole(input.employeeLookup.role)) {
+  if (!isCopilotRole(resolvedRole)) {
     return { ok: false, reason: "unknown_role" };
   }
-
-  return { ok: true, role: input.employeeLookup.role, employeeId: input.employeeLookup.id };
+  return { ok: true, role: resolvedRole, employeeId: resolvedRole === "owner" ? null : employeeId };
 }
 
 /**
@@ -99,51 +60,45 @@ export function determineRole(input: ResolveRoleInput): ResolveRoleResult {
  * satisfies this shape.
  */
 export type RoleLookupClient = {
+  rpc(fn: string): Promise<{ data: unknown; error: unknown }>;
   from(table: string): {
     select(columns: string): {
       eq(column: string, value: string): {
         eq(column: string, value: string): { maybeSingle(): Promise<{ data: unknown; error: unknown }> };
-        maybeSingle(): Promise<{ data: unknown; error: unknown }>;
       };
     };
   };
 };
 
 /**
- * I/O wrapper: performs the owner check and (if needed) the employee
- * lookup, then defers to the pure determineRole() above for the actual
- * decision. Not unit-tested directly (requires a live Supabase client) -
- * covered by code review and by determineRole()'s own tests, which exercise
- * every branch of the decision this function feeds into.
+ * I/O wrapper: resolves the caller's role via `auth_user_role()` on their
+ * own verified JWT, then (for staff only) looks up their own employees.id
+ * by their own auth_user_id - purely for audit-log attribution, never for
+ * authorization - before deferring to the pure determineRole() above.
+ *
+ * `supabase` must be a client scoped to the caller's own JWT (the same
+ * client verifyAuth.ts already builds), so `auth_user_role()`/`auth.uid()`
+ * resolve to the real caller, not any client-asserted identity.
  */
 export async function resolveRoleForRequest(
   supabase: RoleLookupClient,
-  params: { businessId: string; authUserId: string; requestedEmployeeId: string | null }
+  params: { businessId: string; authUserId: string }
 ): Promise<ResolveRoleResult> {
-  const { data: ownerRow, error: ownerErr } = await supabase
-    .from("businesses")
-    .select("id")
-    .eq("id", params.businessId)
-    .eq("owner_id", params.authUserId)
-    .maybeSingle();
-  if (ownerErr) throw ownerErr;
-  const isOwner = !!ownerRow;
+  const { data: roleData, error: roleErr } = await supabase.rpc("auth_user_role");
+  if (roleErr) throw roleErr;
+  const resolvedRole = typeof roleData === "string" ? roleData : null;
 
-  let employeeLookup: EmployeeLookupRow = null;
-  if (!isOwner && params.requestedEmployeeId) {
+  let employeeId: string | null = null;
+  if (resolvedRole && resolvedRole !== "owner") {
     const { data, error } = await supabase
       .from("employees")
-      .select("id, business_id, role, status")
-      .eq("id", params.requestedEmployeeId)
+      .select("id")
+      .eq("business_id", params.businessId)
+      .eq("auth_user_id", params.authUserId)
       .maybeSingle();
     if (error) throw error;
-    employeeLookup = (data as EmployeeLookupRow) ?? null;
+    employeeId = (data as { id: string } | null)?.id ?? null;
   }
 
-  return determineRole({
-    isOwner,
-    verifiedBusinessId: params.businessId,
-    requestedEmployeeId: params.requestedEmployeeId,
-    employeeLookup,
-  });
+  return determineRole(resolvedRole, employeeId);
 }
