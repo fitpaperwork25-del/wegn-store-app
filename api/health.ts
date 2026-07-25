@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { secureCompare } from "./_lib/security/timingSafeEqual.ts";
-import { createRateLimitStore, checkRateLimit } from "./_lib/security/rateLimiter.ts";
+import { secureCompare } from "./_lib/security/timingSafeEqual.js";
+import { createRateLimitStore, checkRateLimit } from "./_lib/security/rateLimiter.js";
 
 // Health check for Platform Admin's Health Engine. Same response contract
 // as qrwegn's and qrbooker's api/health.ts so Platform Admin can consume
