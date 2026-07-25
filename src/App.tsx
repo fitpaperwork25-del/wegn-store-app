@@ -5345,16 +5345,25 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
                 email/password re-authentication; no auth/session logic
                 changed here beyond removing the bypass. */}
             {!overrideActive && !ownerAccessGranted && (
+              // UI polish: was a borderless 26px button with a 15px icon in
+              // #cbd5e1 (slate-300) - easy to miss against a white header.
+              // Now a defined, brand-blue container (same palette as the
+              // role badge / "Return to Staff Mode" button right next to
+              // it: #eff6ff / #1d4ed8 / #bfdbfe) with a soft shadow so it
+              // reads as a real control, not a stray mark. Same click
+              // target semantics, same position (marginLeft: auto keeps it
+              // pinned to the row's right edge); only size/color/container
+              // changed.
               <button
                 type="button"
                 onClick={() => { setShowOwnerLoginForm(true); setOwnerLoginError(""); setNavOpen(false); }}
                 title="Owner access"
                 aria-label="Owner access"
-                style={{ width: "26px", height: "26px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", borderRadius: "6px", marginLeft: "auto" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.background = "#f1f5f9"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "#cbd5e1"; e.currentTarget.style.background = "none"; }}
+                style={{ width: "36px", height: "36px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", cursor: "pointer", borderRadius: "10px", marginLeft: "auto", boxShadow: "0 1px 3px rgba(29,78,216,0.15)", transition: "background 0.15s, border-color 0.15s, box-shadow 0.15s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#dbeafe"; e.currentTarget.style.borderColor = "#93c5fd"; e.currentTarget.style.boxShadow = "0 2px 6px rgba(29,78,216,0.25)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "#eff6ff"; e.currentTarget.style.borderColor = "#bfdbfe"; e.currentTarget.style.boxShadow = "0 1px 3px rgba(29,78,216,0.15)"; }}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="5" y="11" width="14" height="10" rx="2" />
                   <path d="M8 11V7a4 4 0 0 1 8 0v4" />
                 </svg>
