@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { secureCompare } from "../_lib/security/timingSafeEqual.ts";
 
 // Read-only Super Admin / Store Success data foundation — server-only,
 // service-role access (never sent to the client), shared-secret
@@ -119,7 +120,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  if (!sharedSecret || getSharedSecretHeader(req) !== sharedSecret) {
+  const providedSecret = getSharedSecretHeader(req);
+  if (!sharedSecret || !providedSecret || !secureCompare(providedSecret, sharedSecret)) {
     res.status(401).json({ error: "Unauthorized." });
     return;
   }

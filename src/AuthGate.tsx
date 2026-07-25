@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 import type { User } from "@supabase/supabase-js";
 import App from "./App";
 import { resolveMountSessionTrust } from "./lib/auth/sessionAccess";
-import { isPasswordRecoveryUrl, validateNewPassword, validateRecoveryEmail, PRODUCTION_APP_URL } from "./lib/auth/passwordRecovery";
+import { isPasswordRecoveryUrl, validateNewPassword, validatePasswordLength, validateRecoveryEmail, MIN_PASSWORD_LENGTH, PRODUCTION_APP_URL } from "./lib/auth/passwordRecovery";
 import { registerBusinessWithWsms } from "./lib/wsms/subscriptionClient";
 import { linkIdentityAccount } from "./lib/identity/identityClient";
 
@@ -259,6 +259,15 @@ export default function AuthGate() {
     setSubmitting(true);
 
     if (mode === "signup") {
+      // M-1: explicit length check before the network call - the input's
+      // own minLength (below) already blocks this in a normal browser, but
+      // this is the actual enforcement point, not decoration on top of it.
+      const lengthCheck = validatePasswordLength(password);
+      if (!lengthCheck.ok) {
+        setError(lengthCheck.error);
+        setSubmitting(false);
+        return;
+      }
       const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -517,7 +526,7 @@ export default function AuthGate() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={MIN_PASSWORD_LENGTH}
                 autoComplete="new-password"
                 style={{ width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
               />
@@ -529,7 +538,7 @@ export default function AuthGate() {
                 value={confirmNewPassword}
                 onChange={(e) => setConfirmNewPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={MIN_PASSWORD_LENGTH}
                 autoComplete="new-password"
                 style={{ width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
               />
@@ -614,7 +623,12 @@ export default function AuthGate() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              // M-1: only gate NEW passwords (sign-up) to the raised minimum.
+              // Login must accept whatever length an existing account's
+              // password already is - an account created before this
+              // change can be shorter than MIN_PASSWORD_LENGTH, and this
+              // field is shared between both modes.
+              minLength={mode === "signup" ? MIN_PASSWORD_LENGTH : undefined}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               style={{ width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" }}
             />

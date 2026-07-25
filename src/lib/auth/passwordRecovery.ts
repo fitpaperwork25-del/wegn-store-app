@@ -19,17 +19,34 @@ export function isPasswordRecoveryUrl(location: Pick<Location, "hash" | "search"
 
 export type NewPasswordValidationResult = { ok: true } | { ok: false; error: string };
 
-/** Matches the minimum the existing sign-up form's own minLength already
- *  assumes (and Supabase's own default) - not a new rule being introduced. */
-export const MIN_PASSWORD_LENGTH = 6;
+/** Production-approved minimum (raised from the prior 6 - see the Phase 1
+ *  security audit's M-1 finding: 6 characters is below current OWASP/NIST
+ *  guidance for an account that can reach full tenant data and Owner
+ *  Access override). Applies only to NEW passwords being chosen (sign-up,
+ *  password reset) - never to the login field, so an existing account
+ *  whose password predates this change can still sign in. */
+export const MIN_PASSWORD_LENGTH = 10;
+
+/** Length-only check, reused by both the sign-up form (single password
+ *  field, no confirm field) and validateNewPassword below (which also
+ *  needs the confirm-match check). Kept separate so each caller only
+ *  pulls in the validation it actually needs. */
+export function validatePasswordLength(password: string): NewPasswordValidationResult {
+  if (!password) {
+    return { ok: false, error: "Please enter a password." };
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { ok: false, error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+  }
+  return { ok: true };
+}
 
 export function validateNewPassword(password: string, confirmPassword: string): NewPasswordValidationResult {
   if (!password || !confirmPassword) {
     return { ok: false, error: "Please enter and confirm your new password." };
   }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return { ok: false, error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
-  }
+  const lengthResult = validatePasswordLength(password);
+  if (!lengthResult.ok) return lengthResult;
   if (password !== confirmPassword) {
     return { ok: false, error: "Passwords do not match." };
   }

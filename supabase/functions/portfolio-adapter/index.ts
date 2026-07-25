@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { secureCompare } from "../_shared/timingSafeEqual.ts";
 
 /**
  * Sprint 5 Phase 1D: WEGN Store's read-only portfolio adapter for
@@ -43,7 +44,8 @@ function validWindow(issuedAt: string, expiresAt: string): boolean {
 serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const expectedSecret = Deno.env.get("WEGN_PORTFOLIO_ADAPTER_SECRET");
-  if (!expectedSecret || req.headers.get("x-wegn-portfolio-secret") !== expectedSecret) {
+  const providedSecret = req.headers.get("x-wegn-portfolio-secret");
+  if (!expectedSecret || !providedSecret || !secureCompare(providedSecret, expectedSecret)) {
     return json({ error: "Invalid credentials" }, 401);
   }
 

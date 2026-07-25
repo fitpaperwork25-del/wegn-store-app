@@ -1,11 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { secureCompare } from "./_lib/security/timingSafeEqual.ts";
+import { createRateLimitStore, checkRateLimit } from "./_lib/security/rateLimiter.ts";
 
-// Real health check for Platform Admin's Health Engine — every field
-// below reflects an actual check performed on each request, not a
-// static or fabricated value. Same response contract as qrwegn's and
-// qrbooker's api/health.ts so Platform Admin can consume all three
-// products uniformly.
+// Health check for Platform Admin's Health Engine. Same response contract
+// as qrwegn's and qrbooker's api/health.ts so Platform Admin can consume
+// all three products uniformly - but see the Phase 1 security audit's L-2
+// finding: this endpoint used to run its service-role-backed database and
+// auth.admin checks for EVERY caller, unauthenticated, with no rate limit.
+// It now runs those checks only for a caller presenting the correct
+// HEALTH_CHECK_SECRET header; anyone else gets a minimal, safe response
+// (still a real 200/503 and a timestamp, enough for uptime monitoring)
+// with no service-role call made on their behalf at all. Platform Admin's
+// Health Engine needs to send `x-health-check-secret` going forward to
+// keep receiving the detailed response.
 //
 // version is "1.1" (git tag v1.1-documentation-freeze), not
 // package.json's stale "0.0.0" (never bumped) — matching the same
@@ -16,6 +24,15 @@ const ENVIRONMENT = process.env.VERCEL_ENV ?? "production";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const healthCheckSecret = process.env.HEALTH_CHECK_SECRET;
+
+// Per-instance, best-effort - see rateLimiter.ts for why this is the
+// "reasonable" bar for this endpoint rather than a distributed limiter.
+const rateLimitStore = createRateLimitStore();
+const RATE_LIMIT_WINDOW_MS = 60_000;
+// Generous enough for a legitimate monitor polling every 30-60s from a
+// handful of source IPs, low enough to meaningfully blunt abuse.
+const RATE_LIMIT_MAX_REQUESTS = 30;
 
 interface CheckResult {
   status: "ok" | "error";
@@ -53,15 +70,42 @@ async function checkAuthentication(): Promise<CheckResult> {
   }
 }
 
+function isAuthorizedForDetailedHealth(req: VercelRequest): boolean {
+  if (!healthCheckSecret) return false;
+  const header = req.headers["x-health-check-secret"];
+  const provided = typeof header === "string" ? header : null;
+  return !!provided && secureCompare(provided, healthCheckSecret);
+}
+
+function getClientKey(req: VercelRequest): string {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const ip = typeof forwardedFor === "string" ? forwardedFor.split(",")[0].trim() : null;
+  return ip || "unknown";
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startedAt = Date.now();
 
-  // Health status only, no user/business data — safe to expose to any
-  // origin so Platform Admin's browser-side Health Engine can read it
-  // (a bare fetch() without this header is opaque to the browser and
-  // surfaces as a generic "Failed to fetch", even when the server
-  // responds successfully).
+  // Health status only, no user/business data in the minimal response —
+  // safe to expose to any origin so a browser-side monitor can read it (a
+  // bare fetch() without this header is opaque to the browser and surfaces
+  // as a generic "Failed to fetch", even when the server responds
+  // successfully).
   res.setHeader("Access-Control-Allow-Origin", "*");
+
+  const rateLimit = checkRateLimit(rateLimitStore, getClientKey(req), Date.now(), RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS);
+  if (rateLimit.limited) {
+    res.status(429).json({ status: "error", error: "Too many requests.", timestamp: new Date().toISOString() });
+    return;
+  }
+
+  if (!isAuthorizedForDetailedHealth(req)) {
+    // Minimal safe response: confirms the function is reachable and
+    // responding, with no service-role-backed check performed and no
+    // internal detail (version, environment, latencies) disclosed.
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+    return;
+  }
 
   // The handler executing at all is the API health signal.
   const api: CheckResult = { status: "ok" };
