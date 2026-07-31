@@ -578,6 +578,7 @@ export default function AuthGate() {
   if (user) {
     return (
       <App
+        key={user.id}
         userId={user.id}
         userEmail={user.email ?? ""}
         onSignOut={handleSignOut}
