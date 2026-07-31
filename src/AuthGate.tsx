@@ -5,7 +5,12 @@ import App from "./App";
 import { resolveMountSessionTrust } from "./lib/auth/sessionAccess";
 import { isPasswordRecoveryUrl, validateNewPassword, validatePasswordLength, validateRecoveryEmail, MIN_PASSWORD_LENGTH, PRODUCTION_APP_URL } from "./lib/auth/passwordRecovery";
 import { registerBusinessWithWsms } from "./lib/wsms/subscriptionClient";
-import { linkIdentityAccount } from "./lib/identity/identityClient";
+import { linkIdentityAccount, registerBusinessWithIdentity } from "./lib/identity/identityClient";
+
+// Cross-product signup Phase A: WEGN Home's canonical production URL.
+// Not read from an env var - no existing convention for cross-product
+// URLs exists in this codebase to follow.
+const WEGN_HOME_URL = "https://wegn-home.vercel.app";
 
 // Registered Store Device / Staff Mode (Option A - shared device identity).
 // See supabase/migrations/20260716000005_registered_device_staff_mode.sql.
@@ -286,13 +291,39 @@ export default function AuthGate() {
         }).select("id").single();
         if (bizErr) {
           setError("Account created but store setup failed: " + bizErr.message);
-        } else if (newBusiness) {
+          setSubmitting(false);
+          return;
+        }
+        if (newBusiness) {
           // Fire-and-forget — a WSMS failure must never block signup, the
           // business already exists and works regardless. See
           // src/lib/wsms/subscriptionClient.ts.
           void registerBusinessWithWsms(newBusiness.id);
+
+          // Cross-product signup Phase A: account-link, then (Phase C
+          // stub, currently automatic — see registerBusinessWithIdentity's
+          // own header comment) business-link, awaited in order because
+          // register-business-link requires an existing account_links
+          // row. Neither call may block or fail signup — the store
+          // already exists and works regardless — so any failure here
+          // just lets onAuthStateChange render App as before, instead of
+          // sending the owner to WEGN Home with nothing to show there yet.
+          try {
+            const linkResult = await linkIdentityAccount();
+            if (linkResult.ok && linkResult.wegnAccountId) {
+              const bizLinkResult = await registerBusinessWithIdentity(newBusiness.id);
+              if (bizLinkResult.ok) {
+                window.location.href = `${WEGN_HOME_URL}/login?email=${encodeURIComponent(email.trim())}`;
+                return;
+              }
+            }
+          } catch (err) {
+            console.error("[signup] identity linking failed (non-blocking):", err);
+          }
         }
-        // onAuthStateChange will fire and render App automatically.
+        // Falls through to here whenever WEGN Home linking didn't
+        // complete — onAuthStateChange will fire and render App
+        // automatically, exactly as before this change.
       } else {
         // Email confirmation is required — no session yet, business will be created
         // after the user confirms and logs in (App shows "Set Up Your Business").
