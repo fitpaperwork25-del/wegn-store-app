@@ -126,7 +126,13 @@ function isEmployeeUser(user: User | null): boolean {
 export default function AuthGate() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  // Cross-product journey: the marketing site's WEGN Store CTA has no
+  // route to link to (this app has no router) - it links here with
+  // ?intent=signup instead, so a visitor who clicked "Start Free Trial"
+  // lands directly in signup mode rather than the default login form.
+  const [mode, setMode] = useState<"login" | "signup">(
+    () => (new URLSearchParams(window.location.search).get("intent") === "signup" ? "signup" : "login"),
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
