@@ -24,6 +24,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * canonical config were ever misentered - the token's HMAC signature
  * already proves wegn-identity produced it, this is a second, cheap
  * check on top.
+ *
+ * Owner-verify handoff (WEGN Store SSO integration fix): once this
+ * request's own token has been fully verified above - proving a real
+ * WEGN Home session, an active wegn_business_memberships row, and an
+ * active wegn_business_product_links row all lined up for this exact
+ * business - that is at least as strong a signal of present owner
+ * intent as the in-app Owner Access password re-entry that
+ * ownerBypass otherwise requires (see sso-owner-verify's own header).
+ * Mints a second, separate, single-purpose 30s token for that specific
+ * question only and appends it to redirectTo so the frontend can ask
+ * sso-owner-verify to confirm it landed here via a genuine SSO handoff,
+ * not merely that a session exists.
  */
 
 const FALLBACK_URL = "https://wegn-store-app.vercel.app";
@@ -37,6 +49,10 @@ function base64UrlDecode(input: string): string {
   let b64 = input.replace(/-/g, "+").replace(/_/g, "/");
   while (b64.length % 4) b64 += "=";
   return atob(b64);
+}
+
+function base64UrlEncode(input: string): string {
+  return btoa(input).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 async function hmacSha256Hex(secret: string, message: string): Promise<string> {
@@ -88,11 +104,16 @@ serve(async (req: Request) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) return redirect(FALLBACK_URL);
 
+  const ownerVerifyPayload = base64UrlEncode(JSON.stringify({ purpose: "sso_owner_verify", exp: Math.floor(Date.now() / 1000) + 30 }));
+  const ownerVerifySignature = await hmacSha256Hex(secret, ownerVerifyPayload);
+  const ownerVerifyToken = `${ownerVerifyPayload}.${ownerVerifySignature}`;
+  const redirectToWithOwnerVerify = `${redirectTo}${redirectTo.includes("?") ? "&" : "?"}ssoOwner=${encodeURIComponent(ownerVerifyToken)}`;
+
   const admin = createClient(supabaseUrl, serviceRoleKey);
   const { data, error } = await admin.auth.admin.generateLink({
     type: "magiclink",
     email: payload.email,
-    options: { redirectTo },
+    options: { redirectTo: redirectToWithOwnerVerify },
   });
   const actionLink = (data as { properties?: { action_link?: string } } | null)?.properties?.action_link;
   if (error || !actionLink) return redirect(FALLBACK_URL);

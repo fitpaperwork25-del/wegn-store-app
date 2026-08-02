@@ -700,6 +700,35 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
     }
   }, [sessionKind]);
 
+  // Cross-product SSO integration fix: WEGN Home's Launch button lands
+  // here via a real, freshly-authenticated owner session, but that alone
+  // must not (and per the security invariant above, does not) satisfy
+  // ownerBypass for a business with active staff PINs - see
+  // sso-owner-verify's own header for why this additional, narrow path
+  // is at least as strong a signal as the password re-entry ownerBypass
+  // otherwise requires. Only ever runs for a genuine owner session
+  // (never device/employee, matching the invariant above), only ever
+  // consumes a short-lived, single-purpose, HMAC-signed token minted by
+  // sso-login moments earlier, and strips the token from the URL
+  // immediately regardless of outcome so it can never be reused, shared,
+  // or bookmarked. A failed/missing/expired token silently changes
+  // nothing - the existing password-based Owner Access path is always
+  // still there.
+  useEffect(() => {
+    if (sessionKind !== "owner") return;
+    const params = new URLSearchParams(window.location.search);
+    const ssoOwnerToken = params.get("ssoOwner");
+    if (!ssoOwnerToken) return;
+
+    params.delete("ssoOwner");
+    const cleanedSearch = params.toString();
+    window.history.replaceState(window.history.state, "", window.location.pathname + (cleanedSearch ? `?${cleanedSearch}` : "") + window.location.hash);
+
+    supabase.functions.invoke("sso-owner-verify", { body: { token: ssoOwnerToken } }).then(({ data }) => {
+      if (data?.verified) setOwnerBypass(true);
+    });
+  }, [sessionKind]);
+
   // Role-permissions revision: Manager gets Cash Drawer (the reporting/EOD
   // view, split out from the owner-only Staff tab below) but not Settings or
   // Staff (system administration). Cashier and Inventory Clerk lose Wegn AI -
