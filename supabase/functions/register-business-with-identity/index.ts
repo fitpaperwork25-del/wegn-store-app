@@ -21,6 +21,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * Ownership is verified server-side (businesses.owner_id = caller's own
  * auth id from their verified JWT) - the caller only supplies which of
  * their own businesses to register, never whose.
+ *
+ * Reliable Business Registration Phase 2: the call to Identity's
+ * register-business-link is now retried, bounded, with backoff, instead
+ * of a single best-effort attempt. All attempts reuse the exact same
+ * requestId/issuedAt/expiresAt envelope generated once below, so retries
+ * land inside wegn-identity's own business_registry_requests idempotency
+ * window as the same logical request, not as separate ones - this
+ * function does not own that window and does not change its length.
+ * Only transient failures are retried (network errors and 5xx); a 4xx
+ * from Identity (e.g. already-linked conflicts) is a real outcome, not a
+ * transient one, and is returned immediately as before.
  */
 
 const CORS_HEADERS = {
@@ -97,37 +108,66 @@ serve(async (req: Request) => {
   const requestId = crypto.randomUUID();
   const issuedAt = new Date();
   const expiresAt = new Date(issuedAt.getTime() + 4 * 60 * 1000);
+  const requestBody = JSON.stringify({
+    secret: identitySecret,
+    productKey: "wegn-store",
+    productAuthUserId: authUserId,
+    externalBusinessId: business.id,
+    ownerConfirmed: true,
+    displayName: business.name,
+    businessType: null,
+    countryCode: business.country_code ?? null,
+    requestId,
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  });
 
-  try {
-    const identityRes = await fetch(identityUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Request-ID": requestId },
-      body: JSON.stringify({
-        secret: identitySecret,
-        productKey: "wegn-store",
-        productAuthUserId: authUserId,
-        externalBusinessId: business.id,
-        ownerConfirmed: true,
-        displayName: business.name,
-        businessType: null,
-        countryCode: business.country_code ?? null,
-        requestId,
-        issuedAt: issuedAt.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-      }),
-    });
-    const identityBody = await identityRes.json().catch(() => ({}));
-    if (!identityRes.ok) {
-      console.error("[register-business-with-identity] Identity service returned an error:", identityRes.status, identityBody);
-      return jsonResponse({ ok: false, error: "Business registration failed" }, 502);
+  // Bounded retry/backoff, reusing the single requestId envelope above on
+  // every attempt so retries fall inside Identity's own
+  // business_registry_requests idempotency window as the same request.
+  // 3 attempts, short delays (300ms/900ms) - total worst case well under
+  // a second of backoff, nowhere near the envelope's own expiry.
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAYS_MS = [300, 900];
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const identityRes = await fetch(identityUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Request-ID": requestId },
+        body: requestBody,
+      });
+      const identityBody = await identityRes.json().catch(() => ({}));
+
+      if (identityRes.ok) {
+        return jsonResponse({
+          ok: true,
+          wegnBusinessId: identityBody.wegnBusinessId ?? null,
+          alreadyLinked: !!identityBody.alreadyLinked,
+        });
+      }
+
+      // 4xx from Identity (bad request, conflict, etc.) is a real,
+      // non-transient outcome for this same requestId - retrying it
+      // would just get the same answer again.
+      if (identityRes.status < 500) {
+        console.error("[register-business-with-identity] Identity service returned a non-retryable error:", identityRes.status, identityBody);
+        return jsonResponse({ ok: false, error: "Business registration failed" }, 502);
+      }
+
+      console.error(`[register-business-with-identity] Identity service returned a retryable error (attempt ${attempt}/${MAX_ATTEMPTS}):`, identityRes.status, identityBody);
+      lastError = identityBody;
+    } catch (err) {
+      console.error(`[register-business-with-identity] request to Identity service failed (attempt ${attempt}/${MAX_ATTEMPTS}):`, err);
+      lastError = err;
     }
-    return jsonResponse({
-      ok: true,
-      wegnBusinessId: identityBody.wegnBusinessId ?? null,
-      alreadyLinked: !!identityBody.alreadyLinked,
-    });
-  } catch (err) {
-    console.error("[register-business-with-identity] request to Identity service failed:", err);
-    return jsonResponse({ ok: false, error: "Request to Identity service failed" }, 502);
+
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt - 1]));
+    }
   }
+
+  console.error("[register-business-with-identity] all attempts to reach Identity service failed:", lastError);
+  return jsonResponse({ ok: false, error: "Request to Identity service failed" }, 502);
 });

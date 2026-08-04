@@ -75,9 +75,18 @@ type AppProps = {
   activateDeviceSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<{ ok: boolean; error?: string }>;
   enterEmployeeSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<{ ok: boolean; error?: string }>;
   exitEmployeeSession: () => Promise<{ ok: boolean; error?: string }>;
+  // Reliable Business Registration Phase 2: set by AuthGate.tsx's signup
+  // branch when the WEGN Identity account-link + business-link chain
+  // (registerBusinessWithIdentity, which already retries bounded
+  // server-side) still hasn't completed by the time the owner lands here.
+  // Optional because most renders of App are not the signup branch at all
+  // (returning owners, staff devices, etc.) and never set these.
+  registrationIncomplete?: boolean;
+  registrationRetrying?: boolean;
+  onRetryBusinessRegistration?: () => void;
 };
 
-function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canReturnToStaffMode, enterOwnerOverride, restoreDeviceSession, activateDeviceSession, enterEmployeeSession, exitEmployeeSession }: AppProps) {
+function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canReturnToStaffMode, enterOwnerOverride, restoreDeviceSession, activateDeviceSession, enterEmployeeSession, exitEmployeeSession, registrationIncomplete, registrationRetrying, onRetryBusinessRegistration }: AppProps) {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -5424,6 +5433,24 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
         }}>
           <span>{subscriptionBanner.message}</span>
           <button onClick={() => setSubscriptionNoticeDismissed(true)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: "13px", textDecoration: "underline", whiteSpace: "nowrap" }}>Dismiss</button>
+        </div>
+      )}
+
+      {registrationIncomplete && (
+        <div style={{
+          padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
+          background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a",
+          borderRadius: "6px", fontSize: "14px", marginBottom: "16px",
+        }}>
+          <span>Registration incomplete — we couldn't finish linking this business to WEGN Home. Your Store account is unaffected.</span>
+          <button
+            type="button"
+            onClick={() => onRetryBusinessRegistration?.()}
+            disabled={registrationRetrying}
+            style={{ background: "none", border: "none", color: "inherit", cursor: registrationRetrying ? "default" : "pointer", fontSize: "13px", textDecoration: "underline", whiteSpace: "nowrap", opacity: registrationRetrying ? 0.6 : 1 }}
+          >
+            {registrationRetrying ? "Retrying…" : "Retry"}
+          </button>
         </div>
       )}
 

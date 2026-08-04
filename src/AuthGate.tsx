@@ -173,6 +173,17 @@ export default function AuthGate() {
   const [forgotError, setForgotError] = useState("");
   const [forgotSuccess, setForgotSuccess] = useState("");
 
+  // Reliable Business Registration Phase 2: visible failure state for the
+  // cross-product signup branch's WEGN Home linking chain (below). Set
+  // when that chain has exhausted its attempts (registerBusinessWithIdentity
+  // already retries, bounded, server-side - see its edge function) without
+  // completing, so the owner isn't left silently unregistered with no way
+  // to find out or retry. businessRegistrationBusinessId is the specific
+  // business the retry button (surfaced in App via props) should target.
+  const [businessRegistrationIncomplete, setBusinessRegistrationIncomplete] = useState(false);
+  const [businessRegistrationRetrying, setBusinessRegistrationRetrying] = useState(false);
+  const [businessRegistrationBusinessId, setBusinessRegistrationBusinessId] = useState<string | null>(null);
+
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       const sessionUser = data.session?.user ?? null;
@@ -262,6 +273,38 @@ export default function AuthGate() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // Reliable Business Registration Phase 2: the account-link + business-link
+  // chain (register-business-with-identity's edge function already retries,
+  // bounded, against Identity itself - see its own header comment), shared
+  // between the initial signup attempt below and the manual retry surfaced
+  // in App via businessRegistrationIncomplete. Never throws - both
+  // linkIdentityAccount and registerBusinessWithIdentity already catch
+  // internally; this try/catch is defense in depth only.
+  async function attemptBusinessRegistration(businessId: string): Promise<boolean> {
+    try {
+      const linkResult = await linkIdentityAccount();
+      if (linkResult.ok && linkResult.wegnAccountId) {
+        const bizLinkResult = await registerBusinessWithIdentity(businessId);
+        return bizLinkResult.ok;
+      }
+      return false;
+    } catch (err) {
+      console.error("[businessRegistration] identity linking failed (non-blocking):", err);
+      return false;
+    }
+  }
+
+  async function handleRetryBusinessRegistration() {
+    if (!businessRegistrationBusinessId || businessRegistrationRetrying) return;
+    setBusinessRegistrationRetrying(true);
+    const registered = await attemptBusinessRegistration(businessRegistrationBusinessId);
+    setBusinessRegistrationRetrying(false);
+    if (registered) {
+      setBusinessRegistrationIncomplete(false);
+      setBusinessRegistrationBusinessId(null);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -314,18 +357,20 @@ export default function AuthGate() {
           // already exists and works regardless — so any failure here
           // just lets onAuthStateChange render App as before, instead of
           // sending the owner to WEGN Home with nothing to show there yet.
-          try {
-            const linkResult = await linkIdentityAccount();
-            if (linkResult.ok && linkResult.wegnAccountId) {
-              const bizLinkResult = await registerBusinessWithIdentity(newBusiness.id);
-              if (bizLinkResult.ok) {
-                window.location.href = `${WEGN_HOME_URL}/login?email=${encodeURIComponent(email.trim())}`;
-                return;
-              }
-            }
-          } catch (err) {
-            console.error("[signup] identity linking failed (non-blocking):", err);
+          //
+          // Reliable Business Registration Phase 2: registerBusinessWithIdentity
+          // already retries, bounded, server-side (see its edge function).
+          // If the full chain still hasn't completed after that, surface it
+          // as a visible, retryable "Registration incomplete" state in App
+          // rather than only logging it — signup itself has still fully
+          // succeeded either way.
+          const registered = await attemptBusinessRegistration(newBusiness.id);
+          if (registered) {
+            window.location.href = `${WEGN_HOME_URL}/login?email=${encodeURIComponent(email.trim())}`;
+            return;
           }
+          setBusinessRegistrationIncomplete(true);
+          setBusinessRegistrationBusinessId(newBusiness.id);
         }
         // Falls through to here whenever WEGN Home linking didn't
         // complete — onAuthStateChange will fire and render App
@@ -627,6 +672,9 @@ export default function AuthGate() {
         activateDeviceSession={activateDeviceSession}
         enterEmployeeSession={enterEmployeeSession}
         exitEmployeeSession={exitEmployeeSession}
+        registrationIncomplete={businessRegistrationIncomplete}
+        registrationRetrying={businessRegistrationRetrying}
+        onRetryBusinessRegistration={handleRetryBusinessRegistration}
       />
     );
   }
