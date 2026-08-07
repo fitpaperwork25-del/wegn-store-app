@@ -1,3 +1,4 @@
+import { GuideIcon } from "../../components/icons";
 import type { LessonContent } from "../types";
 
 export default function OverviewSection({ overview }: { overview: LessonContent["overview"] }) {
@@ -9,6 +10,16 @@ export default function OverviewSection({ overview }: { overview: LessonContent[
       </div>
       <div className="wg-card">
         <p className="wg-card-body">{overview.summary}</p>
+        {overview.objectives.length > 0 && (
+          <ul className="wg-ob-check-list" style={{ marginTop: 14 }}>
+            {overview.objectives.map((o) => (
+              <li key={o}>
+                <GuideIcon.flag />
+                <span>{o}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <div className="wg-card" style={{ marginTop: 12 }}>
         <p className="wg-card-title" style={{ fontSize: "0.9rem" }}>Why it matters</p>

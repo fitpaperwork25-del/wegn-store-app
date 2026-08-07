@@ -34,9 +34,15 @@ interface LessonLayoutProps {
  * Walkthrough, Practice, Tips, Knowledge Check, Next Lesson.
  */
 export default function LessonLayout({ lesson, sectionLabel, onBackToSection, onGoToSection, onGoToLesson }: LessonLayoutProps) {
-  const { isLessonComplete, markLessonComplete, markLessonIncomplete, isBookmarked, toggleBookmark } = useGuideProgress();
+  const { isLessonComplete, markLessonComplete, markLessonIncomplete, isBookmarked, toggleBookmark, awardBadge } =
+    useGuideProgress();
   const complete = isLessonComplete(lesson.id);
   const bookmarked = isBookmarked(lesson.id);
+
+  const handleMarkComplete = () => {
+    markLessonComplete(lesson.id);
+    if (lesson.badgeId) awardBadge(lesson.badgeId);
+  };
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -66,7 +72,7 @@ export default function LessonLayout({ lesson, sectionLabel, onBackToSection, on
           <button
             type="button"
             className={complete ? "wg-btn wg-btn-secondary" : "wg-btn wg-btn-primary"}
-            onClick={() => (complete ? markLessonIncomplete(lesson.id) : markLessonComplete(lesson.id))}
+            onClick={() => (complete ? markLessonIncomplete(lesson.id) : handleMarkComplete())}
           >
             <GuideIcon.check />
             {complete ? "Completed" : "Mark as complete"}

@@ -34,7 +34,13 @@ export interface LessonContent {
   sectionId: string;
   title: string;
   minutes: number;
+  /** Awarded via awardBadge() when the lesson is marked complete —
+   *  see data/badges.ts. Optional so older/simpler lessons don't need
+   *  one. */
+  badgeId?: string;
   overview: {
+    /** Short "learning objectives" bullets shown above the summary. */
+    objectives: string[];
     summary: string;
     whyItMatters: string;
   };
