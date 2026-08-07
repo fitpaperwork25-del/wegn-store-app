@@ -1,4 +1,4 @@
-import { GUIDE_NAV, SAMPLE_LESSON_ID } from "../data/navigation";
+import { ALL_LESSON_STUBS, GUIDE_NAV, IMPLEMENTED_LESSON_IDS } from "../data/navigation";
 import type { GuideSectionId } from "../data/navigation";
 import { GuideIcon } from "../components/icons";
 import { useGuideProgress } from "../context/useGuideProgress";
@@ -9,10 +9,18 @@ interface HomePageProps {
 }
 
 const BROWSE_SECTIONS = GUIDE_NAV.filter((n) => n.id !== "home" && n.id !== "search" && n.id !== "learning-progress");
+const IMPLEMENTED_LESSONS = ALL_LESSON_STUBS.filter((l) => IMPLEMENTED_LESSON_IDS.has(l.id));
 
 export default function HomePage({ onGoToSection, onOpenLesson }: HomePageProps) {
-  const { percentComplete, completedCount, totalLessons, lastSectionId } = useGuideProgress();
+  const { percentComplete, completedCount, totalLessons, lastSectionId, isLessonComplete, isLessonUnlocked } =
+    useGuideProgress();
   const resumeSection = lastSectionId ? GUIDE_NAV.find((n) => n.id === lastSectionId) : null;
+
+  // The next lesson worth pointing the user at: the first implemented,
+  // unlocked lesson they haven't finished yet. Once everything built
+  // so far is done, offer to replay the first one.
+  const nextUpLesson =
+    IMPLEMENTED_LESSONS.find((l) => isLessonUnlocked(l.id) && !isLessonComplete(l.id)) ?? IMPLEMENTED_LESSONS[0];
 
   return (
     <div>
@@ -32,9 +40,11 @@ export default function HomePage({ onGoToSection, onOpenLesson }: HomePageProps)
           <div className="wg-progress-fill" style={{ width: `${percentComplete}%` }} />
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
-          <button type="button" className="wg-btn wg-btn-primary" onClick={() => onOpenLesson(SAMPLE_LESSON_ID)}>
-            Start "Ringing up your first sale"
-          </button>
+          {nextUpLesson && (
+            <button type="button" className="wg-btn wg-btn-primary" onClick={() => onOpenLesson(nextUpLesson.id)}>
+              {completedCount === 0 ? "Start" : "Continue"} "{nextUpLesson.title}"
+            </button>
+          )}
           {resumeSection && resumeSection.id !== "getting-started" && (
             <button type="button" className="wg-btn wg-btn-secondary" onClick={() => onGoToSection(resumeSection.id)}>
               Continue in {resumeSection.label}

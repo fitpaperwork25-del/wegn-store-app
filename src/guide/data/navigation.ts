@@ -1,9 +1,9 @@
 // Static navigation shape for the WEGN Store Interactive Guide.
-// Phase 1: shell only — sectionIds map to placeholder pages, except
-// "getting-started", which links to the one sample lesson built to
-// prove out the reusable LessonLayout template (see lesson/).
-// No backend, no CMS — this list is the entire source of truth for
-// now, exactly like the rest of this app's own static configuration.
+// sectionIds map to placeholder ("coming soon") pages by default;
+// lessons flip to real content by setting `implemented: true` and
+// getting a case in GuideApp's lesson router. No backend, no CMS —
+// this list is the entire source of truth for now, exactly like the
+// rest of this app's own static configuration.
 
 export type GuideSectionId =
   | "home"
@@ -24,6 +24,14 @@ export interface GuideLessonStub {
   id: string;
   title: string;
   minutes: number;
+  /** True once a real lesson page exists for this id (see GuideApp's
+   *  lesson router). Everything else renders as a labeled "coming
+   *  soon" row instead of a dead or fake link. */
+  implemented?: boolean;
+  /** If set, this lesson stays locked until the referenced lesson id
+   *  has been marked complete. Lessons with no prerequisite are
+   *  always unlocked. */
+  prerequisiteLessonId?: string;
 }
 
 export interface GuideNavItem {
@@ -44,9 +52,20 @@ export const GUIDE_NAV: GuideNavItem[] = [
     label: "Getting Started",
     icon: "flag",
     plannedLessons: [
-      { id: "sample-first-sale", title: "Ringing up your first sale", minutes: 4 },
-      { id: "gs-2", title: "Touring your dashboard", minutes: 5 },
-      { id: "gs-3", title: "Inviting your first staff member", minutes: 3 },
+      { id: "welcome-to-wegn-store", title: "Welcome to WEGN Store", minutes: 5, implemented: true },
+      {
+        id: "sample-first-sale",
+        title: "Ringing up your first sale",
+        minutes: 4,
+        implemented: true,
+        prerequisiteLessonId: "welcome-to-wegn-store",
+      },
+      {
+        id: "gs-3",
+        title: "Inviting your first staff member",
+        minutes: 3,
+        prerequisiteLessonId: "sample-first-sale",
+      },
     ],
   },
   {
@@ -133,4 +152,14 @@ export const ALL_LESSON_STUBS: Array<GuideLessonStub & { sectionId: GuideSection
     })),
   );
 
-export const SAMPLE_LESSON_ID = "sample-first-sale";
+/** Ids of every lesson that has real content behind it (see GuideApp's
+ *  lesson router). Everything else in ALL_LESSON_STUBS is a titled
+ *  stub — checking membership here is how pages decide whether a
+ *  lesson row is clickable or a "coming soon" placeholder. */
+export const IMPLEMENTED_LESSON_IDS = new Set(
+  ALL_LESSON_STUBS.filter((l) => l.implemented).map((l) => l.id),
+);
+
+/** The very first lesson in the guide — used as the default "start
+ *  learning" call to action wherever one is needed (Home page, etc). */
+export const FIRST_LESSON_ID = "welcome-to-wegn-store";

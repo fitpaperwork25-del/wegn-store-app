@@ -47,7 +47,10 @@ export const GuideIcon = {
   help: (p: IconProps) => base(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.5 2.5 0 1 1 3.7 2.2c-.9.5-1.2 1-1.2 2" /><path d="M12 17h.01" /></>, p),
   bookmark: (p: IconProps) => base(<path d="M6.5 3.5h11a1 1 0 0 1 1 1V21l-6.5-4-6.5 4V4.5a1 1 0 0 1 1-1Z" />, p),
   chevronRight: (p: IconProps) => base(<path d="m9 5 7 7-7 7" />, p),
+  chevronLeft: (p: IconProps) => base(<path d="m15 5-7 7 7 7" />, p),
   check: (p: IconProps) => base(<path d="M4 12.5 9.5 18 20 6.5" />, p),
+  grid: (p: IconProps) => base(<><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.5" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1.5" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.5" /><rect x="13" y="13" width="7.5" height="7.5" rx="1.5" /></>, p),
+  receipt: (p: IconProps) => base(<><path d="M6 3.5h12v17l-2.5-1.6-2.5 1.6-2.5-1.6L8 20.5l-2-1.3V3.5Z" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4" /></>, p),
 } as const;
 
 export type GuideIconName = keyof typeof GuideIcon;

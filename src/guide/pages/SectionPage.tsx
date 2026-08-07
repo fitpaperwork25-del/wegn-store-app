@@ -1,4 +1,4 @@
-import { GUIDE_NAV, SAMPLE_LESSON_ID } from "../data/navigation";
+import { ALL_LESSON_STUBS, GUIDE_NAV, IMPLEMENTED_LESSON_IDS } from "../data/navigation";
 import type { GuideSectionId } from "../data/navigation";
 import { GuideIcon } from "../components/icons";
 import { useGuideProgress } from "../context/useGuideProgress";
@@ -8,15 +8,18 @@ interface SectionPageProps {
   onOpenLesson: (lessonId: string) => void;
 }
 
+const LESSON_TITLE_BY_ID = new Map(ALL_LESSON_STUBS.map((l) => [l.id, l.title]));
+
 /**
  * Generic landing page for a nav section. Renders its planned-lesson
  * list (one row per lesson) if it has one, and an empty state if not.
- * Only the sample lesson is actually clickable in Phase 1 — everything
- * else is a real, labeled "coming soon" row rather than a fake link.
+ * A lesson row is one of three states: clickable (implemented +
+ * unlocked), locked (implemented but its prerequisite isn't done
+ * yet), or a plain "coming soon" label (not built yet).
  */
 export default function SectionPage({ sectionId, onOpenLesson }: SectionPageProps) {
   const item = GUIDE_NAV.find((n) => n.id === sectionId);
-  const { isLessonComplete } = useGuideProgress();
+  const { isLessonComplete, isLessonUnlocked } = useGuideProgress();
   const lessons = item?.plannedLessons ?? [];
 
   if (!item) return null;
@@ -42,19 +45,34 @@ export default function SectionPage({ sectionId, onOpenLesson }: SectionPageProp
       )}
 
       {lessons.map((lesson) => {
-        const isSample = lesson.id === SAMPLE_LESSON_ID;
+        const isReal = IMPLEMENTED_LESSON_IDS.has(lesson.id);
+        const unlocked = isLessonUnlocked(lesson.id);
+        const clickable = isReal && unlocked;
         const done = isLessonComplete(lesson.id);
+        const prereqTitle = lesson.prerequisiteLessonId ? LESSON_TITLE_BY_ID.get(lesson.prerequisiteLessonId) : undefined;
+
         const row = (
           <>
             <span className="wg-lesson-row-check" data-done={done}>
-              <GuideIcon.check />
+              {isReal && !unlocked ? <GuideIcon.bookmark /> : <GuideIcon.check />}
             </span>
-            <span className="wg-lesson-row-title">{lesson.title}</span>
+            <span className="wg-lesson-row-title">
+              {lesson.title}
+              {isReal && !unlocked && prereqTitle && (
+                <span className="wg-lesson-row-sub">Complete "{prereqTitle}" first</span>
+              )}
+            </span>
             <span className="wg-lesson-row-meta">{lesson.minutes} min</span>
-            {isSample ? <GuideIcon.chevronRight /> : <span className="wg-badge wg-badge-soon">Coming soon</span>}
+            {clickable ? (
+              <GuideIcon.chevronRight />
+            ) : isReal ? (
+              <span className="wg-badge">Locked</span>
+            ) : (
+              <span className="wg-badge wg-badge-soon">Coming soon</span>
+            )}
           </>
         );
-        return isSample ? (
+        return clickable ? (
           <button
             key={lesson.id}
             type="button"

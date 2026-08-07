@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { ALL_LESSON_STUBS, GUIDE_NAV, SAMPLE_LESSON_ID } from "../data/navigation";
+import { ALL_LESSON_STUBS, GUIDE_NAV, IMPLEMENTED_LESSON_IDS } from "../data/navigation";
 import type { GuideSectionId } from "../data/navigation";
 import { GuideIcon } from "../components/icons";
+import { useGuideProgress } from "../context/useGuideProgress";
 
 interface SearchPageProps {
   onGoToSection: (sectionId: GuideSectionId) => void;
@@ -11,6 +12,7 @@ interface SearchPageProps {
 export default function SearchPage({ onGoToSection, onOpenLesson }: SearchPageProps) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
+  const { isLessonUnlocked } = useGuideProgress();
 
   const lessons = useMemo(
     () => (q ? ALL_LESSON_STUBS.filter((l) => l.title.toLowerCase().includes(q)) : ALL_LESSON_STUBS),
@@ -61,15 +63,18 @@ export default function SearchPage({ onGoToSection, onOpenLesson }: SearchPagePr
         </div>
       )}
       {lessons.map((l) => {
-        const isSample = l.id === SAMPLE_LESSON_ID;
+        const isReal = IMPLEMENTED_LESSON_IDS.has(l.id);
+        const clickable = isReal && isLessonUnlocked(l.id);
         return (
           <div key={l.id} className="wg-lesson-row" style={{ marginBottom: 10 }}>
             <span className="wg-lesson-row-title">{l.title}</span>
             <span className="wg-lesson-row-meta">{l.sectionLabel} · {l.minutes} min</span>
-            {isSample ? (
+            {clickable ? (
               <button type="button" className="wg-btn wg-btn-secondary" onClick={() => onOpenLesson(l.id)}>
                 Open
               </button>
+            ) : isReal ? (
+              <span className="wg-badge">Locked</span>
             ) : (
               <span className="wg-badge wg-badge-soon">Coming soon</span>
             )}

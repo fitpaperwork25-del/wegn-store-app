@@ -18,6 +18,7 @@ const STORAGE_KEY = "wegn-store-guide:v1";
 interface StoredState {
   completedLessonIds: string[];
   bookmarkedLessonIds: string[];
+  earnedBadgeIds: string[];
   lastSectionId: GuideSectionId | null;
   theme: "light" | "dark";
 }
@@ -25,9 +26,16 @@ interface StoredState {
 const DEFAULT_STATE: StoredState = {
   completedLessonIds: [],
   bookmarkedLessonIds: [],
+  earnedBadgeIds: [],
   lastSectionId: null,
   theme: "light",
 };
+
+// lessonId -> prerequisiteLessonId, built once from the static nav
+// data rather than per-render.
+const PREREQUISITE_BY_LESSON = new Map(
+  ALL_LESSON_STUBS.filter((l) => l.prerequisiteLessonId).map((l) => [l.id, l.prerequisiteLessonId as string]),
+);
 
 function loadState(): StoredState {
   if (typeof window === "undefined") return DEFAULT_STATE;
@@ -101,6 +109,12 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     setState((prev) => (prev.lastSectionId === id ? prev : { ...prev, lastSectionId: id }));
   }, []);
 
+  const earnedBadgeIds = useMemo(() => new Set(state.earnedBadgeIds), [state.earnedBadgeIds]);
+
+  const awardBadge = useCallback((badgeId: string) => {
+    setState((prev) => (prev.earnedBadgeIds.includes(badgeId) ? prev : { ...prev, earnedBadgeIds: [...prev.earnedBadgeIds, badgeId] }));
+  }, []);
+
   const totalLessons = ALL_LESSON_STUBS.length;
   const completedCount = completedLessonIds.size;
   const percentComplete = totalLessons === 0 ? 0 : Math.round((completedCount / totalLessons) * 100);
@@ -112,9 +126,16 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     isLessonComplete: (id) => completedLessonIds.has(id),
     markLessonComplete,
     markLessonIncomplete,
+    isLessonUnlocked: (id) => {
+      const prereq = PREREQUISITE_BY_LESSON.get(id);
+      return !prereq || completedLessonIds.has(prereq);
+    },
     bookmarkedLessonIds,
     isBookmarked: (id) => bookmarkedLessonIds.has(id),
     toggleBookmark,
+    earnedBadgeIds,
+    hasBadge: (id) => earnedBadgeIds.has(id),
+    awardBadge,
     lastSectionId: state.lastSectionId,
     setLastSectionId,
     totalLessons,

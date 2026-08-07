@@ -8,13 +8,14 @@ import HomePage from "./pages/HomePage";
 import SearchPage from "./pages/SearchPage";
 import SectionPage from "./pages/SectionPage";
 import SampleLessonPage from "./pages/SampleLessonPage";
+import WelcomeLessonPage from "./pages/WelcomeLessonPage";
 import LearningProgressPage from "./pages/LearningProgressPage";
-import { SAMPLE_LESSON_ID } from "./data/navigation";
+import { IMPLEMENTED_LESSON_IDS } from "./data/navigation";
 import type { GuideSectionId } from "./data/navigation";
 
 function GuideRoutes() {
   const [route, navigate] = useHashRoute();
-  const { setLastSectionId } = useGuideProgress();
+  const { setLastSectionId, isLessonUnlocked } = useGuideProgress();
 
   const goToSection = (sectionId: GuideSectionId) => {
     setLastSectionId(sectionId);
@@ -27,18 +28,30 @@ function GuideRoutes() {
   let page: ReactNode;
 
   if (route.lessonId) {
-    // Phase 1 has exactly one real lesson. Any other lesson id (all
-    // still stubs) falls back to its section page rather than 404ing.
-    page =
-      route.lessonId === SAMPLE_LESSON_ID ? (
+    const lessonId = route.lessonId;
+    const isReal = IMPLEMENTED_LESSON_IDS.has(lessonId);
+    const isUnlocked = isLessonUnlocked(lessonId);
+
+    // A stub id, or a real lesson the user hasn't unlocked yet, both
+    // fall back to the section page instead of 404ing or letting
+    // someone skip ahead via a direct link.
+    if (!isReal || !isUnlocked) {
+      page = <SectionPage sectionId={route.sectionId} onOpenLesson={openLesson} />;
+    } else if (lessonId === "welcome-to-wegn-store") {
+      page = (
+        <WelcomeLessonPage onBackToSection={() => goToSection("getting-started")} onGoToLesson={goToLesson} />
+      );
+    } else if (lessonId === "sample-first-sale") {
+      page = (
         <SampleLessonPage
           onBackToSection={() => goToSection("getting-started")}
           onGoToSection={goToSection}
           onGoToLesson={goToLesson}
         />
-      ) : (
-        <SectionPage sectionId={route.sectionId} onOpenLesson={openLesson} />
       );
+    } else {
+      page = <SectionPage sectionId={route.sectionId} onOpenLesson={openLesson} />;
+    }
   } else {
     switch (route.sectionId) {
       case "home":

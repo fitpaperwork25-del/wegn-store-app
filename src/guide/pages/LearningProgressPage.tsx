@@ -1,5 +1,6 @@
-import { ALL_LESSON_STUBS, GUIDE_NAV, SAMPLE_LESSON_ID } from "../data/navigation";
+import { ALL_LESSON_STUBS, GUIDE_NAV, IMPLEMENTED_LESSON_IDS } from "../data/navigation";
 import type { GuideSectionId } from "../data/navigation";
+import { GUIDE_BADGES } from "../data/badges";
 import { GuideIcon } from "../components/icons";
 import { useGuideProgress } from "../context/useGuideProgress";
 
@@ -9,7 +10,8 @@ interface LearningProgressPageProps {
 }
 
 export default function LearningProgressPage({ onOpenLesson, onGoToSection }: LearningProgressPageProps) {
-  const { percentComplete, completedCount, totalLessons, completedLessonIds, bookmarkedLessonIds } = useGuideProgress();
+  const { percentComplete, completedCount, totalLessons, completedLessonIds, bookmarkedLessonIds, isLessonUnlocked, hasBadge } =
+    useGuideProgress();
 
   const bookmarked = ALL_LESSON_STUBS.filter((l) => bookmarkedLessonIds.has(l.id));
   const sectionsWithLessons = GUIDE_NAV.filter((s) => (s.plannedLessons?.length ?? 0) > 0);
@@ -32,7 +34,21 @@ export default function LearningProgressPage({ onOpenLesson, onGoToSection }: Le
         </div>
       </div>
 
-      <p className="wg-card-title" style={{ fontSize: "0.95rem", marginBottom: 10 }}>By section</p>
+      <p className="wg-card-title" style={{ fontSize: "0.95rem", marginBottom: 10 }}>Badges earned</p>
+      <div className="wg-ob-badge-shelf">
+        {GUIDE_BADGES.map((badge) => {
+          const earned = hasBadge(badge.id);
+          const BadgeIcon = GuideIcon[badge.icon];
+          return (
+            <div className="wg-ob-badge-shelf-item" data-earned={earned} key={badge.id} title={badge.description}>
+              <BadgeIcon />
+              <span>{badge.name}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="wg-card-title" style={{ fontSize: "0.95rem", margin: "24px 0 10px" }}>By section</p>
       {sectionsWithLessons.map((s) => {
         const total = s.plannedLessons?.length ?? 0;
         const done = s.plannedLessons?.filter((l) => completedLessonIds.has(l.id)).length ?? 0;
@@ -61,19 +77,22 @@ export default function LearningProgressPage({ onOpenLesson, onGoToSection }: Le
           <p className="wg-card-body">Bookmark a lesson to find it here later.</p>
         </div>
       ) : (
-        bookmarked.map((l) => (
-          <div key={l.id} className="wg-lesson-row" style={{ marginBottom: 10 }}>
-            <span className="wg-lesson-row-title">{l.title}</span>
-            <span className="wg-lesson-row-meta">{l.sectionLabel}</span>
-            {l.id === SAMPLE_LESSON_ID ? (
-              <button type="button" className="wg-btn wg-btn-secondary" onClick={() => onOpenLesson(l.id)}>
-                Open
-              </button>
-            ) : (
-              <span className="wg-badge wg-badge-soon">Coming soon</span>
-            )}
-          </div>
-        ))
+        bookmarked.map((l) => {
+          const clickable = IMPLEMENTED_LESSON_IDS.has(l.id) && isLessonUnlocked(l.id);
+          return (
+            <div key={l.id} className="wg-lesson-row" style={{ marginBottom: 10 }}>
+              <span className="wg-lesson-row-title">{l.title}</span>
+              <span className="wg-lesson-row-meta">{l.sectionLabel}</span>
+              {clickable ? (
+                <button type="button" className="wg-btn wg-btn-secondary" onClick={() => onOpenLesson(l.id)}>
+                  Open
+                </button>
+              ) : (
+                <span className="wg-badge wg-badge-soon">Coming soon</span>
+              )}
+            </div>
+          );
+        })
       )}
     </div>
   );

@@ -916,11 +916,473 @@
 .wg-breadcrumb button:hover { color: var(--g-green-dark); }
 .wegn-guide[data-guide-theme="dark"] .wg-breadcrumb button:hover { color: var(--g-green-bright); }
 
+/* ── Onboarding lesson template (screen-by-screen) ──────────
+   Used by lesson/onboarding/* — one focused screen per step
+   instead of LessonLayout's long scroll. ─────────────────── */
+
+@keyframes wg-ob-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes wg-ob-pop-in {
+  0% { opacity: 0; transform: scale(0.6); }
+  70% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.wg-ob-screen {
+  animation: wg-ob-fade-in 0.28s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wg-ob-screen, .wg-ob-badge-medal { animation: none; }
+}
+
+.wg-ob-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 6px;
+  margin-bottom: 18px;
+}
+
+.wg-ob-header .wg-eyebrow { margin-bottom: 6px; }
+
+/* Step progress indicator */
+
+.wg-ob-progress {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 28px;
+}
+
+.wg-ob-progress-segment {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.wg-ob-progress-dot {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--g-line);
+}
+
+.wg-ob-progress-segment[data-state="active"] .wg-ob-progress-dot {
+  background: var(--g-green);
+}
+
+.wg-ob-progress-segment[data-state="done"] .wg-ob-progress-dot {
+  background: var(--g-green-dark);
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ob-progress-segment[data-state="done"] .wg-ob-progress-dot {
+  background: var(--g-green-bright);
+}
+
+.wg-ob-progress-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--g-muted-2);
+  letter-spacing: 0.02em;
+  display: none;
+}
+
+.wg-ob-progress-segment[data-state="active"] .wg-ob-progress-label {
+  color: var(--g-green-dark);
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ob-progress-segment[data-state="active"] .wg-ob-progress-label {
+  color: var(--g-green-bright);
+}
+
+@media (min-width: 640px) {
+  .wg-ob-progress-label { display: block; }
+}
+
+/* Welcome */
+
+.wg-ob-hero-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: linear-gradient(150deg, var(--g-green-bright), var(--g-green));
+  color: var(--g-green-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
+}
+
+.wg-ob-hero-mark svg { width: 26px; height: 26px; }
+
+.wg-ob-intro {
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: var(--g-ink);
+  max-width: 560px;
+  margin: 0 auto 24px;
+  text-align: center;
+}
+
+.wg-ob-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.wg-ob-check-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.wg-ob-check-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.87rem;
+  color: var(--g-muted);
+}
+
+.wg-ob-check-list svg {
+  flex-shrink: 0;
+  color: var(--g-green-dark);
+  margin-top: 1px;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ob-check-list svg { color: var(--g-green-bright); }
+
+/* Platform tour grid */
+
+.wg-ob-tour-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.wg-ob-tour-card {
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius);
+  background: var(--g-surface);
+  padding: 16px 14px;
+}
+
+.wg-ob-tour-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--g-surface-raised);
+  color: var(--g-green-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ob-tour-card-icon { color: var(--g-green-bright); }
+
+.wg-ob-tour-card-label {
+  font-weight: 800;
+  font-size: 0.88rem;
+  margin: 0 0 4px;
+}
+
+.wg-ob-tour-card-desc {
+  font-size: 0.78rem;
+  color: var(--g-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* Interactive walkthrough + Quick challenge shared layout */
+
+.wg-ob-walkthrough {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.wg-ob-mock-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface);
+  padding: 10px;
+}
+
+.wg-ob-mock-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--g-radius-sm);
+  padding: 9px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--g-muted);
+  text-align: left;
+}
+
+.wg-ob-mock-nav-item svg { flex-shrink: 0; }
+
+.wg-ob-mock-nav-item:hover {
+  background: var(--g-surface-raised);
+  color: var(--g-ink);
+}
+
+.wg-ob-mock-nav-item[data-active="true"] {
+  background: var(--g-green-dark);
+  border-color: var(--g-green-dark);
+  color: #f4fbef;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-green) 30%, transparent);
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ob-mock-nav-item[data-active="true"] {
+  background: var(--g-green);
+  border-color: var(--g-green);
+  color: #08260d;
+}
+
+.wg-ob-mock-nav-done {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--g-green);
+  color: #08260d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wg-ob-mock-nav-done svg { width: 12px; height: 12px; }
+
+.wg-ob-tooltip-card {
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface-raised);
+  padding: 22px;
+  animation: wg-ob-fade-in 0.2s ease both;
+}
+
+.wg-ob-tooltip-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--g-surface);
+  border: 1px solid var(--g-line);
+  color: var(--g-green-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ob-tooltip-icon { color: var(--g-green-bright); }
+
+.wg-ob-tooltip-label {
+  font-weight: 800;
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+
+.wg-ob-tooltip-desc {
+  color: var(--g-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0 0 18px;
+}
+
+.wg-ob-tooltip-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wg-ob-tooltip-count {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--g-muted-2);
+}
+
+/* Quick challenge checklist */
+
+.wg-ob-challenge-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.wg-ob-challenge-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.87rem;
+  font-weight: 600;
+  color: var(--g-muted);
+}
+
+.wg-ob-challenge-list li[data-done="true"] {
+  color: var(--g-ink);
+}
+
+.wg-ob-challenge-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--g-line);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wg-ob-challenge-check svg { width: 13px; height: 13px; }
+
+.wg-ob-challenge-list li[data-done="true"] .wg-ob-challenge-check {
+  background: var(--g-green);
+  border-color: var(--g-green);
+  color: #08260d;
+}
+
+/* Bottom step navigation */
+
+.wg-ob-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--g-line);
+}
+
+/* Completion */
+
+.wg-ob-completion {
+  text-align: center;
+  padding-top: 8px;
+}
+
+.wg-ob-completion-title {
+  font-size: 1.7rem;
+  font-weight: 800;
+  margin: 0 0 10px;
+}
+
+.wg-ob-badge-award {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface-raised);
+  padding: 28px 24px;
+  margin: 24px auto;
+  max-width: 320px;
+}
+
+.wg-ob-badge-medal {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(150deg, var(--g-green-bright), var(--g-green));
+  color: var(--g-green-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--g-green) 18%, transparent);
+  margin-bottom: 14px;
+  animation: wg-ob-pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.wg-ob-badge-medal svg { width: 32px; height: 32px; }
+
+.wg-ob-badge-name {
+  font-weight: 800;
+  font-size: 1.02rem;
+  margin: 0 0 4px;
+}
+
+.wg-ob-badge-desc {
+  color: var(--g-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0;
+  text-align: center;
+}
+
+.wg-ob-completion-cta {
+  margin: 0 auto;
+}
+
+/* Badge shelf (Learning Progress page) */
+
+.wg-ob-badge-shelf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.wg-ob-badge-shelf-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--g-line);
+  border-radius: 999px;
+  padding: 8px 14px 8px 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--g-muted-2);
+  background: var(--g-surface);
+  opacity: 0.55;
+}
+
+.wg-ob-badge-shelf-item[data-earned="true"] {
+  color: var(--g-green-dark);
+  border-color: color-mix(in srgb, var(--g-green) 40%, var(--g-line));
+  background: color-mix(in srgb, var(--g-green) 8%, var(--g-surface));
+  opacity: 1;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ob-badge-shelf-item[data-earned="true"] { color: var(--g-green-bright); }
+
+/* Locked-lesson row subtext (SectionPage) */
+
+.wg-lesson-row-sub {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--g-muted-2);
+  margin-top: 2px;
+}
+
 /* ── Responsive ──────────────────────────────────────────── */
 
 @media (max-width: 900px) {
   .wg-tip-grid { grid-template-columns: 1fr; }
   .wg-content { padding: 24px 20px 72px; }
+  .wg-ob-tour-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 780px) {
@@ -956,10 +1418,20 @@
 
   .wg-ai-fab { right: 18px; bottom: 18px; }
   .wg-ai-panel { right: 18px; bottom: 84px; }
+
+  .wg-ob-two-col { grid-template-columns: 1fr; }
+  .wg-ob-walkthrough { grid-template-columns: 1fr; }
+  .wg-ob-mock-nav { flex-direction: row; overflow-x: auto; }
+  .wg-ob-mock-nav-item { flex-shrink: 0; }
+  .wg-ob-mock-nav-item span { white-space: nowrap; }
 }
 
 @media (max-width: 520px) {
   .wg-page-title { font-size: 1.5rem; }
   .wg-card { padding: 18px; }
+  .wg-ob-tour-grid { grid-template-columns: 1fr; }
+  .wg-ob-header { flex-direction: column; }
+  .wg-ob-nav { flex-direction: column-reverse; align-items: stretch; }
+  .wg-ob-nav .wg-btn { width: 100%; }
   .wg-next-lesson { flex-direction: column; align-items: flex-start; }
 }

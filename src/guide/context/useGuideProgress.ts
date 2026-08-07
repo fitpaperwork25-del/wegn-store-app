@@ -14,9 +14,17 @@ export interface GuideProgressValue {
   isLessonComplete: (lessonId: string) => boolean;
   markLessonComplete: (lessonId: string) => void;
   markLessonIncomplete: (lessonId: string) => void;
+  /** A lesson with no prerequisite is always unlocked; one with a
+   *  prerequisiteLessonId (see data/navigation.ts) unlocks once that
+   *  lesson has been completed. Purely derived from completedLessonIds
+   *  — nothing extra to persist. */
+  isLessonUnlocked: (lessonId: string) => boolean;
   bookmarkedLessonIds: Set<string>;
   isBookmarked: (lessonId: string) => boolean;
   toggleBookmark: (lessonId: string) => void;
+  earnedBadgeIds: Set<string>;
+  hasBadge: (badgeId: string) => boolean;
+  awardBadge: (badgeId: string) => void;
   lastSectionId: GuideSectionId | null;
   setLastSectionId: (id: GuideSectionId) => void;
   totalLessons: number;
