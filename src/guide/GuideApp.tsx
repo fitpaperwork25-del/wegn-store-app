@@ -9,8 +9,10 @@ import SearchPage from "./pages/SearchPage";
 import SectionPage from "./pages/SectionPage";
 import SampleLessonPage from "./pages/SampleLessonPage";
 import WelcomeLessonPage from "./pages/WelcomeLessonPage";
+import PosLessonPage from "./pages/PosLessonPage";
 import LearningProgressPage from "./pages/LearningProgressPage";
 import { IMPLEMENTED_LESSON_IDS } from "./data/navigation";
+import { POS_LESSONS } from "./data/posLessons";
 import type { GuideSectionId } from "./data/navigation";
 
 function GuideRoutes() {
@@ -44,6 +46,15 @@ function GuideRoutes() {
     } else if (lessonId === "sample-first-sale") {
       page = (
         <SampleLessonPage
+          onBackToSection={() => goToSection("getting-started")}
+          onGoToSection={goToSection}
+          onGoToLesson={goToLesson}
+        />
+      );
+    } else if (lessonId in POS_LESSONS) {
+      page = (
+        <PosLessonPage
+          lessonId={lessonId}
           onBackToSection={() => goToSection("getting-started")}
           onGoToSection={goToSection}
           onGoToLesson={goToLesson}
