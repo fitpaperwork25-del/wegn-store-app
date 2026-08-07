@@ -1,0 +1,965 @@
+/* ============================================================
+   WEGN Store Interactive Guide — design system
+   Scoped entirely under .wegn-guide so nothing here can leak
+   into (or be affected by) the existing POS app's own styles.
+   Phase 1: shell + reusable components only, no lesson content.
+   ============================================================ */
+
+.wegn-guide {
+  --g-ink: #0d140e;
+  --g-muted: #667067;
+  --g-muted-2: #8a938a;
+  --g-green: #6bc72c;
+  --g-green-bright: #8ee23a;
+  --g-green-dark: #133b19;
+  --g-line: #dfe7dc;
+  --g-surface: #ffffff;
+  --g-surface-raised: #f7faf6;
+  --g-bg: #fbfcfa;
+  --g-shadow: 0 12px 32px rgba(17, 55, 20, 0.08);
+  --g-shadow-lg: 0 24px 56px rgba(17, 55, 20, 0.14);
+  --g-radius-sm: 8px;
+  --g-radius: 14px;
+  --g-radius-lg: 20px;
+  --g-sidebar-w: 264px;
+  --g-topbar-h: 64px;
+  --g-danger: #c14343;
+  --g-warning: #a9740b;
+
+  color-scheme: light;
+  background: var(--g-bg);
+  color: var(--g-ink);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* The host app's #root sets text-align: center; reset it here so
+     nothing in the guide inherits that instead of its own styles. */
+  text-align: left;
+}
+
+.wegn-guide[data-guide-theme="dark"] {
+  color-scheme: dark;
+  --g-ink: #eef4ec;
+  --g-muted: #a7b5a4;
+  --g-muted-2: #7c887a;
+  --g-green: #7ed23a;
+  --g-green-bright: #a3ea5c;
+  --g-green-dark: #bdf29a;
+  --g-line: #253226;
+  --g-surface: #141c15;
+  --g-surface-raised: #182018;
+  --g-bg: #0d120d;
+  --g-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --g-shadow-lg: 0 24px 56px rgba(0, 0, 0, 0.55);
+  --g-danger: #e08080;
+  --g-warning: #e0b855;
+}
+
+.wegn-guide * { box-sizing: border-box; }
+
+/* The host app's index.css sets its own h1/h2 color, weight, and font
+   directly on the tag (not a class), which otherwise beats anything
+   the guide inherits from .wegn-guide. Reset heading tags used inside
+   the guide back to "inherit" so its own title classes are the only
+   thing deciding how they look. */
+.wegn-guide :where(h1, h2, h3) {
+  color: inherit;
+  font-weight: inherit;
+  font-family: inherit;
+  margin: 0;
+}
+
+.wegn-guide a { color: inherit; text-decoration: none; }
+
+.wegn-guide button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.wegn-guide :focus-visible {
+  outline: 2px solid var(--g-green);
+  outline-offset: 2px;
+}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+
+.wg-topbar {
+  height: var(--g-topbar-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  background: var(--g-surface);
+  border-bottom: 1px solid var(--g-line);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.wg-topbar-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--g-radius-sm);
+  border: 1px solid var(--g-line);
+  background: transparent;
+  color: var(--g-ink);
+}
+
+.wg-topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.wg-topbar-brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(150deg, var(--g-green-bright), var(--g-green));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--g-green-dark);
+  font-weight: 900;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.wg-topbar-brand small {
+  display: block;
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--g-muted);
+}
+
+.wg-search {
+  flex: 1;
+  max-width: 460px;
+  position: relative;
+}
+
+.wg-search input {
+  width: 100%;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--g-line);
+  background: var(--g-surface-raised);
+  color: var(--g-ink);
+  padding: 0 14px 0 38px;
+  font-size: 0.88rem;
+  font-family: inherit;
+}
+
+.wg-search input::placeholder { color: var(--g-muted-2); }
+
+.wg-search-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--g-muted-2);
+  pointer-events: none;
+}
+
+.wg-search-kbd {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--g-muted-2);
+  border: 1px solid var(--g-line);
+  border-radius: 5px;
+  padding: 1px 6px;
+  background: var(--g-surface);
+  pointer-events: none;
+}
+
+.wg-search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--g-surface);
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius);
+  box-shadow: var(--g-shadow-lg);
+  padding: 6px;
+  max-height: 340px;
+  overflow-y: auto;
+  z-index: 40;
+}
+
+.wg-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: var(--g-radius-sm);
+}
+
+.wg-search-result:hover,
+.wg-search-result:focus-visible {
+  background: var(--g-surface-raised);
+}
+
+.wg-search-result-title { font-size: 0.86rem; font-weight: 700; }
+.wg-search-result-section { font-size: 0.74rem; color: var(--g-muted); }
+
+.wg-search-empty {
+  padding: 14px 12px;
+  font-size: 0.84rem;
+  color: var(--g-muted);
+  text-align: center;
+}
+
+.wg-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.wg-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--g-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--g-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.wg-icon-btn:hover {
+  background: var(--g-surface-raised);
+  color: var(--g-ink);
+  border-color: var(--g-line);
+}
+
+.wg-icon-btn[aria-pressed="true"] {
+  background: var(--g-surface-raised);
+  color: var(--g-green-dark);
+  border-color: var(--g-line);
+}
+
+/* ── Body: sidebar + content ───────────────────────────────── */
+
+.wg-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.wg-sidebar {
+  width: var(--g-sidebar-w);
+  flex-shrink: 0;
+  background: var(--g-surface);
+  border-right: 1px solid var(--g-line);
+  padding: 18px 12px 18px;
+  overflow-y: auto;
+}
+
+.wg-nav-group {
+  margin-bottom: 18px;
+}
+
+.wg-nav-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--g-muted-2);
+  padding: 0 12px;
+  margin-bottom: 8px;
+}
+
+.wg-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--g-radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--g-ink);
+  font-size: 0.87rem;
+  font-weight: 600;
+  text-align: left;
+  margin-bottom: 2px;
+}
+
+.wg-nav-item svg { flex-shrink: 0; color: var(--g-muted); }
+
+.wg-nav-item:hover {
+  background: var(--g-surface-raised);
+}
+
+.wg-nav-item[aria-current="page"] {
+  background: var(--g-green-dark);
+  color: #f4fbef;
+}
+
+.wg-nav-item[aria-current="page"] svg { color: #cdeeb0; }
+
+.wg-nav-item-progress {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--g-muted-2);
+}
+
+.wg-nav-item[aria-current="page"] .wg-nav-item-progress { color: #cdeeb0; }
+
+.wg-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 32px 40px 80px;
+}
+
+.wg-content-inner {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* ── Page header ─────────────────────────────────────────── */
+
+.wg-eyebrow {
+  color: var(--g-green-dark);
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-eyebrow { color: var(--g-green-bright); }
+
+.wg-page-title {
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+
+.wg-page-subtitle {
+  color: var(--g-muted);
+  font-size: 1rem;
+  line-height: 1.55;
+  max-width: 620px;
+  margin: 0 0 28px;
+}
+
+/* ── Cards ───────────────────────────────────────────────── */
+
+.wg-card {
+  background: var(--g-surface);
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  padding: 24px;
+}
+
+.wg-card + .wg-card { margin-top: 16px; }
+
+.wg-card-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+
+.wg-card-body {
+  color: var(--g-muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+
+.wg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  border: 1px solid transparent;
+}
+
+.wg-btn-primary {
+  background: var(--g-green-dark);
+  color: #f4fbef;
+}
+
+.wg-btn-primary:hover { background: #0d2b12; }
+.wegn-guide[data-guide-theme="dark"] .wg-btn-primary { background: var(--g-green); color: #08260d; }
+.wegn-guide[data-guide-theme="dark"] .wg-btn-primary:hover { background: var(--g-green-bright); }
+
+.wg-btn-secondary {
+  background: transparent;
+  border-color: var(--g-line);
+  color: var(--g-ink);
+}
+
+.wg-btn-secondary:hover { background: var(--g-surface-raised); }
+
+.wg-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Lesson list / coming soon ───────────────────────────── */
+
+.wg-lesson-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius);
+  background: var(--g-surface);
+}
+
+.wg-lesson-row + .wg-lesson-row { margin-top: 10px; }
+
+.wg-lesson-row-check {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--g-line);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+}
+
+.wg-lesson-row-check[data-done="true"] {
+  background: var(--g-green);
+  border-color: var(--g-green);
+  color: #08260d;
+}
+
+.wg-lesson-row-title { font-weight: 700; font-size: 0.92rem; flex: 1; }
+.wg-lesson-row-meta { font-size: 0.76rem; color: var(--g-muted); }
+
+.wg-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--g-surface-raised);
+  color: var(--g-muted);
+  border: 1px solid var(--g-line);
+}
+
+.wg-badge-soon {
+  color: var(--g-warning);
+}
+
+/* ── Progress bar ────────────────────────────────────────── */
+
+.wg-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--g-line);
+  overflow: hidden;
+}
+
+.wg-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--g-green), var(--g-green-bright));
+  transition: width 0.3s ease;
+}
+
+.wg-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--g-muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+/* ── Lesson template (6 sections) ───────────────────────── */
+
+.wg-lesson-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.wg-lesson-nav-item {
+  border: 1px solid var(--g-line);
+  background: var(--g-surface);
+  color: var(--g-muted);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.wg-lesson-nav-item[aria-current="step"] {
+  background: var(--g-green-dark);
+  border-color: var(--g-green-dark);
+  color: #f4fbef;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-lesson-nav-item[aria-current="step"] {
+  background: var(--g-green);
+  color: #08260d;
+}
+
+.wg-lesson-section {
+  scroll-margin-top: 90px;
+  margin-bottom: 36px;
+}
+
+.wg-lesson-section-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.wg-lesson-section-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--g-surface-raised);
+  border: 1px solid var(--g-line);
+  color: var(--g-green-dark);
+  font-weight: 800;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-lesson-section-num { color: var(--g-green-bright); }
+
+.wg-lesson-section-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+/* Interactive Walkthrough: mock screen + callouts */
+
+.wg-walkthrough-frame {
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface-raised);
+  padding: 22px;
+  position: relative;
+}
+
+.wg-walkthrough-screen {
+  border: 1px dashed color-mix(in srgb, var(--g-green) 55%, var(--g-line));
+  border-radius: var(--g-radius);
+  background: var(--g-surface);
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--g-muted-2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 20px;
+}
+
+.wg-callout-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.wg-callout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 0.87rem;
+}
+
+.wg-callout-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--g-green);
+  color: #08260d;
+  font-weight: 800;
+  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.wg-callout-text strong { display: block; margin-bottom: 2px; }
+.wg-callout-text span { color: var(--g-muted); }
+
+/* Practice sandbox */
+
+.wg-sandbox {
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  padding: 26px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--g-surface-raised),
+    var(--g-surface-raised) 10px,
+    var(--g-surface) 10px,
+    var(--g-surface) 20px
+  );
+  text-align: center;
+}
+
+.wg-sandbox-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--g-surface);
+  border: 1px solid var(--g-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+  color: var(--g-green-dark);
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-sandbox-icon { color: var(--g-green-bright); }
+
+/* Tips */
+
+.wg-tip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.wg-tip-card {
+  border-radius: var(--g-radius);
+  padding: 16px 18px;
+  border: 1px solid var(--g-line);
+}
+
+.wg-tip-card-good {
+  background: color-mix(in srgb, var(--g-green) 8%, var(--g-surface));
+  border-color: color-mix(in srgb, var(--g-green) 30%, var(--g-line));
+}
+
+.wg-tip-card-warn {
+  background: color-mix(in srgb, var(--g-warning) 10%, var(--g-surface));
+  border-color: color-mix(in srgb, var(--g-warning) 35%, var(--g-line));
+}
+
+.wg-tip-card-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.wg-tip-card-good .wg-tip-card-label { color: var(--g-green-dark); }
+.wegn-guide[data-guide-theme="dark"] .wg-tip-card-good .wg-tip-card-label { color: var(--g-green-bright); }
+.wg-tip-card-warn .wg-tip-card-label { color: var(--g-warning); }
+
+.wg-tip-card ul { margin: 0; padding-left: 18px; font-size: 0.86rem; line-height: 1.6; color: var(--g-ink); }
+
+/* Knowledge check */
+
+.wg-quiz-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 16px;
+  border-radius: var(--g-radius);
+  border: 1px solid var(--g-line);
+  background: var(--g-surface);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--g-ink);
+}
+
+.wg-quiz-option + .wg-quiz-option { margin-top: 8px; }
+
+.wg-quiz-option:hover { border-color: var(--g-green); }
+
+.wg-quiz-option[data-state="correct"] {
+  border-color: var(--g-green);
+  background: color-mix(in srgb, var(--g-green) 12%, var(--g-surface));
+}
+
+.wg-quiz-option[data-state="incorrect"] {
+  border-color: var(--g-danger);
+  background: color-mix(in srgb, var(--g-danger) 10%, var(--g-surface));
+}
+
+.wg-quiz-feedback {
+  margin-top: 14px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.wg-quiz-feedback[data-state="correct"] { color: var(--g-green-dark); }
+.wegn-guide[data-guide-theme="dark"] .wg-quiz-feedback[data-state="correct"] { color: var(--g-green-bright); }
+.wg-quiz-feedback[data-state="incorrect"] { color: var(--g-danger); }
+
+/* Next lesson */
+
+.wg-next-lesson {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-radius: var(--g-radius-lg);
+  background: var(--g-green-dark);
+  color: #f4fbef;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-next-lesson { background: var(--g-surface-raised); border: 1px solid var(--g-line); color: var(--g-ink); }
+
+.wg-next-lesson-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  margin-bottom: 3px;
+}
+
+.wg-next-lesson-title { font-weight: 800; font-size: 1.02rem; }
+
+/* ── Empty / coming-soon state ───────────────────────────── */
+
+.wg-empty {
+  border: 1px dashed var(--g-line);
+  border-radius: var(--g-radius-lg);
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--g-muted);
+}
+
+.wg-empty-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--g-surface-raised);
+  border: 1px solid var(--g-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  color: var(--g-green-dark);
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-empty-icon { color: var(--g-green-bright); }
+
+/* ── Keyboard shortcuts modal / dialogs ──────────────────── */
+
+.wg-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 20, 12, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.wg-modal {
+  background: var(--g-surface);
+  border-radius: var(--g-radius-lg);
+  border: 1px solid var(--g-line);
+  box-shadow: var(--g-shadow-lg);
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+}
+
+.wg-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.wg-modal-title { font-size: 1.05rem; font-weight: 800; margin: 0; }
+
+.wg-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--g-line);
+  font-size: 0.87rem;
+}
+
+.wg-shortcut-row:last-child { border-bottom: none; }
+
+.wg-kbd {
+  font-size: 0.72rem;
+  font-weight: 800;
+  border: 1px solid var(--g-line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--g-surface-raised);
+}
+
+/* ── AI assistant placeholder ────────────────────────────── */
+
+.wg-ai-fab {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--g-green-dark);
+  color: #f4fbef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--g-shadow-lg);
+  border: none;
+  z-index: 50;
+}
+
+.wegn-guide[data-guide-theme="dark"] .wg-ai-fab { background: var(--g-green); color: #08260d; }
+
+.wg-ai-panel {
+  position: fixed;
+  right: 28px;
+  bottom: 94px;
+  width: 320px;
+  max-width: calc(100vw - 40px);
+  background: var(--g-surface);
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  box-shadow: var(--g-shadow-lg);
+  padding: 20px;
+  z-index: 50;
+}
+
+.wg-ai-panel-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wg-ai-panel-body {
+  color: var(--g-muted);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ── Breadcrumb ──────────────────────────────────────────── */
+
+.wg-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--g-muted);
+  margin-bottom: 18px;
+}
+
+.wg-breadcrumb button {
+  background: none;
+  border: none;
+  color: var(--g-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0;
+}
+
+.wg-breadcrumb button:hover { color: var(--g-green-dark); }
+.wegn-guide[data-guide-theme="dark"] .wg-breadcrumb button:hover { color: var(--g-green-bright); }
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .wg-tip-grid { grid-template-columns: 1fr; }
+  .wg-content { padding: 24px 20px 72px; }
+}
+
+@media (max-width: 780px) {
+  .wg-topbar-menu-btn { display: flex; }
+
+  .wg-topbar-brand small { display: none; }
+
+  .wg-sidebar {
+    position: fixed;
+    top: var(--g-topbar-h);
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    box-shadow: var(--g-shadow-lg);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .wg-sidebar[data-open="true"] {
+    transform: translateX(0);
+  }
+
+  .wg-sidebar-backdrop {
+    position: fixed;
+    inset: var(--g-topbar-h) 0 0 0;
+    background: rgba(10, 20, 12, 0.35);
+    z-index: 55;
+  }
+
+  .wg-search { max-width: none; }
+
+  .wg-search-kbd { display: none; }
+
+  .wg-ai-fab { right: 18px; bottom: 18px; }
+  .wg-ai-panel { right: 18px; bottom: 84px; }
+}
+
+@media (max-width: 520px) {
+  .wg-page-title { font-size: 1.5rem; }
+  .wg-card { padding: 18px; }
+  .wg-next-lesson { flex-direction: column; align-items: flex-start; }
+}
