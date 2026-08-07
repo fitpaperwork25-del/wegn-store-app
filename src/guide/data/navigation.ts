@@ -51,20 +51,86 @@ export const GUIDE_NAV: GuideNavItem[] = [
     id: "getting-started",
     label: "Getting Started",
     icon: "flag",
+    // The WEGN Store Academy: a single continuous curriculum. Each
+    // lesson unlocks the next automatically via prerequisiteLessonId
+    // once marked complete — see GuideProgressContext.isLessonUnlocked.
     plannedLessons: [
       { id: "welcome-to-wegn-store", title: "Welcome to WEGN Store", minutes: 5, implemented: true },
+      {
+        id: "opening-cash-drawer",
+        title: "Opening the Cash Drawer",
+        minutes: 3,
+        implemented: true,
+        prerequisiteLessonId: "welcome-to-wegn-store",
+      },
       {
         id: "sample-first-sale",
         title: "Ringing up your first sale",
         minutes: 4,
         implemented: true,
-        prerequisiteLessonId: "welcome-to-wegn-store",
+        prerequisiteLessonId: "opening-cash-drawer",
+      },
+      {
+        id: "barcode-scanning",
+        title: "Barcode Scanning",
+        minutes: 3,
+        implemented: true,
+        prerequisiteLessonId: "sample-first-sale",
+      },
+      {
+        id: "product-search",
+        title: "Product Search",
+        minutes: 3,
+        implemented: true,
+        prerequisiteLessonId: "barcode-scanning",
+      },
+      {
+        id: "applying-discounts",
+        title: "Applying Discounts",
+        minutes: 4,
+        implemented: true,
+        prerequisiteLessonId: "product-search",
+      },
+      {
+        id: "payment-methods",
+        title: "Accepting Different Payment Methods",
+        minutes: 4,
+        implemented: true,
+        prerequisiteLessonId: "applying-discounts",
+      },
+      {
+        id: "printing-receipt",
+        title: "Printing a Receipt",
+        minutes: 3,
+        implemented: true,
+        prerequisiteLessonId: "payment-methods",
+      },
+      {
+        id: "suspend-resume-sale",
+        title: "Suspending and Resuming a Sale",
+        minutes: 4,
+        implemented: true,
+        prerequisiteLessonId: "printing-receipt",
+      },
+      {
+        id: "processing-return",
+        title: "Processing a Return",
+        minutes: 5,
+        implemented: true,
+        prerequisiteLessonId: "suspend-resume-sale",
+      },
+      {
+        id: "closing-cash-drawer",
+        title: "Closing the Cash Drawer",
+        minutes: 3,
+        implemented: true,
+        prerequisiteLessonId: "processing-return",
       },
       {
         id: "gs-3",
         title: "Inviting your first staff member",
         minutes: 3,
-        prerequisiteLessonId: "sample-first-sale",
+        prerequisiteLessonId: "closing-cash-drawer",
       },
     ],
   },
@@ -72,11 +138,9 @@ export const GUIDE_NAV: GuideNavItem[] = [
     id: "daily-operations",
     label: "Daily Operations",
     icon: "sun",
-    plannedLessons: [
-      { id: "do-1", title: "Opening and closing a shift", minutes: 5 },
-      { id: "do-2", title: "Handling returns and refunds", minutes: 6 },
-      { id: "do-3", title: "Cash drawer reconciliation", minutes: 7 },
-    ],
+    // Opening/closing the drawer and processing returns are now
+    // taught in the Getting Started Academy sequence above — no
+    // separate stubs duplicating that ground here.
   },
   {
     id: "inventory",

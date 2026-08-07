@@ -92,8 +92,8 @@ const WELCOME_LESSON: OnboardingLessonContent = {
   ],
   completion: {
     badgeId: "first-steps",
-    message: "You know your way around WEGN Store. Next, let's ring up an actual sale.",
-    nextLesson: { sectionId: "getting-started", lessonId: "sample-first-sale", title: "Ringing up your first sale" },
+    message: "You know your way around WEGN Store. Next, let's open the cash drawer and start a shift.",
+    nextLesson: { sectionId: "getting-started", lessonId: "opening-cash-drawer", title: "Opening the Cash Drawer" },
   },
 };
 

@@ -10,7 +10,13 @@ const SAMPLE_LESSON: LessonContent = {
   sectionId: "getting-started",
   title: "Ringing up your first sale",
   minutes: 4,
+  badgeId: "first-sale",
   overview: {
+    objectives: [
+      "Add an item to the cart",
+      "Apply a discount and take payment",
+      "Complete and hand off the receipt",
+    ],
     summary:
       "This lesson walks through completing a single sale from start to finish: adding an item, taking payment, and printing or emailing the receipt.",
     whyItMatters:
@@ -54,9 +60,9 @@ const SAMPLE_LESSON: LessonContent = {
     },
   ],
   nextLesson: {
-    lessonId: null,
+    lessonId: "barcode-scanning",
     sectionId: "getting-started",
-    title: "Touring your dashboard",
+    title: "Barcode Scanning",
   },
 };
 
