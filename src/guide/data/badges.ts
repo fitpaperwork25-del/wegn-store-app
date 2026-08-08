@@ -79,6 +79,96 @@ export const GUIDE_BADGES: GuideBadge[] = [
     description: "Closed out the cash drawer at the end of a shift.",
     icon: "box",
   },
+  {
+    id: "sale-detective",
+    name: "Sale Detective",
+    description: "Found any past sale fast using search and filters.",
+    icon: "search",
+  },
+  {
+    id: "void-master",
+    name: "Void Master",
+    description: "Knows when — and how — to void a sale correctly.",
+    icon: "close",
+  },
+  {
+    id: "catalog-builder",
+    name: "Catalog Builder",
+    description: "Added a product with accurate pricing and stock.",
+    icon: "box",
+  },
+  {
+    id: "stock-watcher",
+    name: "Stock Watcher",
+    description: "Set reorder levels so low stock never sneaks up.",
+    icon: "grid",
+  },
+  {
+    id: "count-champion",
+    name: "Count Champion",
+    description: "Ran a full stock count from start to confirm.",
+    icon: "check",
+  },
+  {
+    id: "po-creator",
+    name: "PO Creator",
+    description: "Built a purchase order from scratch.",
+    icon: "receipt",
+  },
+  {
+    id: "receiving-pro",
+    name: "Receiving Pro",
+    description: "Received a supplier shipment accurately.",
+    icon: "cart",
+  },
+  {
+    id: "customer-builder",
+    name: "Customer Builder",
+    description: "Added a customer and found them again at checkout.",
+    icon: "users",
+  },
+  {
+    id: "loyalty-pro",
+    name: "Loyalty Pro",
+    description: "Knows exactly how points are earned and redeemed.",
+    icon: "spark",
+  },
+  {
+    id: "report-reader",
+    name: "Report Reader",
+    description: "Reads Sales Analytics like a second language.",
+    icon: "chart",
+  },
+  {
+    id: "inventory-analyst",
+    name: "Inventory Analyst",
+    description: "Reviewed inventory valuation and stock reports.",
+    icon: "grid",
+  },
+  {
+    id: "staff-builder",
+    name: "Staff Builder",
+    description: "Added a staff member with the right role.",
+    icon: "badge",
+  },
+  {
+    id: "role-expert",
+    name: "Role Expert",
+    description: "Knows exactly what each staff role can access.",
+    icon: "gear",
+  },
+  {
+    id: "printer-fixer",
+    name: "Printer Fixer",
+    description: "Recovered a receipt when the printer wouldn't cooperate.",
+    icon: "life-ring",
+  },
+  {
+    id: "scan-troubleshooter",
+    name: "Scan Troubleshooter",
+    description: "Resolved an unmatched barcode without missing a beat.",
+    icon: "search",
+  },
 ];
 
 export function getBadge(badgeId: string): GuideBadge | undefined {

@@ -142,18 +142,22 @@ export const GUIDE_NAV: GuideNavItem[] = [
     id: "daily-operations",
     label: "Daily Operations",
     icon: "sun",
-    // Opening/closing the drawer and processing returns are now
-    // taught in the Getting Started Academy sequence above — no
-    // separate stubs duplicating that ground here.
+    // Opening/closing the drawer and processing returns are taught in
+    // the Getting Started Academy sequence; these two cover the rest
+    // of what Sales History is for day to day.
+    plannedLessons: [
+      { id: "do-1", title: "Looking Up a Past Sale", minutes: 3, implemented: true },
+      { id: "do-2", title: "Voiding a Sale", minutes: 3, implemented: true, prerequisiteLessonId: "do-1" },
+    ],
   },
   {
     id: "inventory",
     label: "Inventory",
     icon: "box",
     plannedLessons: [
-      { id: "inv-1", title: "Adding your first product", minutes: 4 },
-      { id: "inv-2", title: "Setting low-stock alerts", minutes: 3 },
-      { id: "inv-3", title: "Running a stock count", minutes: 8 },
+      { id: "inv-1", title: "Adding your first product", minutes: 4, implemented: true },
+      { id: "inv-2", title: "Setting low-stock alerts", minutes: 3, implemented: true, prerequisiteLessonId: "inv-1" },
+      { id: "inv-3", title: "Running a stock count", minutes: 8, implemented: true, prerequisiteLessonId: "inv-2" },
     ],
   },
   {
@@ -161,8 +165,8 @@ export const GUIDE_NAV: GuideNavItem[] = [
     label: "Purchasing",
     icon: "cart",
     plannedLessons: [
-      { id: "pur-1", title: "Creating a purchase order", minutes: 5 },
-      { id: "pur-2", title: "Receiving a supplier shipment", minutes: 6 },
+      { id: "pur-1", title: "Creating a purchase order", minutes: 5, implemented: true },
+      { id: "pur-2", title: "Receiving a supplier shipment", minutes: 6, implemented: true, prerequisiteLessonId: "pur-1" },
     ],
   },
   {
@@ -170,8 +174,11 @@ export const GUIDE_NAV: GuideNavItem[] = [
     label: "Customers",
     icon: "users",
     plannedLessons: [
-      { id: "cust-1", title: "Building your customer list", minutes: 4 },
-      { id: "cust-2", title: "Setting up loyalty rewards", minutes: 6 },
+      { id: "cust-1", title: "Building your customer list", minutes: 4, implemented: true },
+      // Retitled from "Setting up loyalty rewards" — there's no setup
+      // screen in WEGN Store, loyalty is automatic; the accurate title
+      // teaches what actually exists (see sectionLessons.ts).
+      { id: "cust-2", title: "Loyalty Points at Checkout", minutes: 5, implemented: true, prerequisiteLessonId: "cust-1" },
     ],
   },
   {
@@ -179,8 +186,12 @@ export const GUIDE_NAV: GuideNavItem[] = [
     label: "Reports",
     icon: "chart",
     plannedLessons: [
-      { id: "rep-1", title: "Reading your daily summary", minutes: 5 },
-      { id: "rep-2", title: "Exporting reports for your accountant", minutes: 4 },
+      { id: "rep-1", title: "Reading your daily summary", minutes: 5, implemented: true },
+      // Retitled from "Exporting reports for your accountant" — no
+      // export/download exists for sales reports; Inventory Reports
+      // (valuation, low stock, PO, returns) is the real second half
+      // of the Reports tab.
+      { id: "rep-2", title: "Reviewing Inventory Reports", minutes: 4, implemented: true, prerequisiteLessonId: "rep-1" },
     ],
   },
   {
@@ -188,8 +199,11 @@ export const GUIDE_NAV: GuideNavItem[] = [
     label: "Employees",
     icon: "badge",
     plannedLessons: [
-      { id: "emp-1", title: "Adding staff and setting roles", minutes: 5 },
-      { id: "emp-2", title: "Tracking hours and shifts", minutes: 6 },
+      { id: "emp-1", title: "Adding staff and setting roles", minutes: 5, implemented: true },
+      // Retitled from "Tracking hours and shifts" — no timesheet
+      // feature exists; role-based tab access is the real, valuable
+      // second employee topic.
+      { id: "emp-2", title: "Understanding Staff Roles & Permissions", minutes: 4, implemented: true, prerequisiteLessonId: "emp-1" },
     ],
   },
   { id: "settings", label: "Settings", icon: "gear" },
@@ -199,8 +213,8 @@ export const GUIDE_NAV: GuideNavItem[] = [
     label: "Troubleshooting",
     icon: "life-ring",
     plannedLessons: [
-      { id: "ts-1", title: "Fixing a stuck receipt printer", minutes: 3 },
-      { id: "ts-2", title: "What to do when the register won't scan", minutes: 3 },
+      { id: "ts-1", title: "Fixing a stuck receipt printer", minutes: 3, implemented: true },
+      { id: "ts-2", title: "What to do when the register won't scan", minutes: 3, implemented: true, prerequisiteLessonId: "ts-1" },
     ],
   },
   { id: "learning-progress", label: "Learning Progress", icon: "trophy" },
