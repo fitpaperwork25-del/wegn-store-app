@@ -95,6 +95,7 @@ function GuideRoutes() {
         page = (
           <LearningPathsPage
             onViewCertificate={(pathId) => navigate({ sectionId: "learning-paths", lessonId: null, certificatePathId: pathId })}
+            onOpenLesson={openLesson}
           />
         );
         break;
