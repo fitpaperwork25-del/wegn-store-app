@@ -753,7 +753,7 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       objectives: [
         "Receive a shipment against an ordered PO",
         "Record damaged, expired, or rejected units separately",
-        "Know when a PO is fully vs. partially received",
+        "Know what damaged/expired/rejected quantities actually do — and don't do — to the PO",
       ],
       summary: "When a shipment arrives, receiving it against the PO updates your stock and closes the loop with your supplier.",
       whyItMatters: "Receiving accurately is what keeps your stock counts and your supplier's invoice both honest.",
@@ -761,27 +761,28 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
     walkthrough: {
       screenLabel: "Receive Shipment screen",
       callouts: [
-        { label: "1", title: "Received Qty per line", description: "Enter what actually arrived for each item — it may not match what was ordered." },
-        { label: "2", title: "Damaged / Expired / Rejected", description: "Separate fields so bad units don't silently become sellable stock." },
-        { label: "3", title: "Confirm Receive", description: "Saves the receipt and updates stock; the PO becomes partially received or received." },
+        { label: "1", title: "Received Qty per line", description: "Enter what actually arrived for each item — it may not match what was ordered. This is the only number that adds to inventory." },
+        { label: "2", title: "Damaged / Expired / Rejected", description: "Separate fields so you can log bad units — but these quantities are recorded as notes only. They don't reduce inventory, don't get their own transaction, and don't count toward \"remaining.\"" },
+        { label: "3", title: "\"Remaining\" stays open", description: "A line with 2 damaged units out of 10 ordered still shows 8 remaining until you type a further Receive Qty for those units — there's no separate close-out or write-off step for them here." },
+        { label: "4", title: "Confirm Receive", description: "Saves the receipt and updates stock; the PO becomes partially received or received based on Received Qty totals only." },
       ],
     },
     practice: {
-      intro: "Receive a shipment against an ordered PO.",
+      intro: "Receive a shipment with a damaged unit and see what happens to \"remaining.\"",
       steps: [
         { title: "Open an ordered PO", description: "Start the receiving flow." },
-        { title: "Enter received quantity", description: "For each line item." },
-        { title: "Confirm the receipt", description: "Updates stock and PO status." },
+        { title: "Enter a received quantity below the ordered amount, and log the shortfall as Damaged", description: "For one line item." },
+        { title: "Confirm the receipt, then check \"remaining\"", description: "Notice it still shows the damaged units as outstanding." },
       ],
     },
     tips: {
       good: [
         { text: "Count the physical shipment before typing anything — don't just copy the ordered quantity." },
-        { text: "Log damaged or expired units separately instead of quietly leaving them out." },
+        { text: "Log damaged or expired units in their fields anyway — it's the only record of what happened, even though it's notes-only." },
       ],
       watchOutFor: [
         { text: "Receiving the full ordered quantity when less actually arrived." },
-        { text: "Forgetting a PO stays \"partially received\" until every line is fully accounted for." },
+        { text: "Assuming a logged \"damaged\" quantity resolves that line — it stays in \"remaining\" until you act on it again; there's no automatic write-off." },
       ],
     },
     quiz: [
@@ -795,22 +796,22 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Always count first — the received quantity should reflect reality, not the order.",
       },
       {
-        question: "Where do damaged units go on a receipt?",
+        question: "Do damaged/expired/rejected quantities reduce a line's \"remaining\" count?",
         options: [
-          { text: "A separate Damaged field, not the regular received quantity", correct: true },
-          { text: "They're just not counted at all", correct: false },
-          { text: "Into the regular received quantity", correct: false },
+          { text: "No — only Received Qty affects remaining; damaged/expired/rejected are notes only", correct: true },
+          { text: "Yes, they're automatically subtracted from remaining", correct: false },
+          { text: "They cancel that line item entirely", correct: false },
         ],
-        explanation: "Damaged units are tracked separately so they don't become sellable stock by mistake.",
+        explanation: "There's no dedicated write-off step — damaged/expired/rejected units are logged as notes, but the line stays \"remaining\" until Received Qty accounts for them.",
       },
       {
         question: "When does a PO status become \"received\" rather than \"partially received\"?",
         options: [
-          { text: "Once every line is fully accounted for", correct: true },
+          { text: "Once Received Qty across all lines reaches the ordered total", correct: true },
           { text: "As soon as you open the receiving screen", correct: false },
           { text: "After 30 days automatically", correct: false },
         ],
-        explanation: "Partial receiving stays open until every line item is fully resolved.",
+        explanation: "Status is driven entirely by Received Qty totals — damaged/expired/rejected notes don't factor in.",
       },
     ],
     nextLesson: { lessonId: "pur-3", sectionId: "purchasing", title: "Managing Suppliers" },
@@ -908,21 +909,22 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       screenLabel: "PO detail — more actions",
       callouts: [
         { label: "1", title: "Cancel vs. Delete", description: "Cancel works on draft or ordered POs only — once anything has been received, it can't be cancelled. Delete is a hard remove, draft-only." },
-        { label: "2", title: "Email PO", description: "Downloads a PDF and opens a pre-filled email — it does not actually attach or send the file for you; you attach the just-downloaded PDF yourself." },
-        { label: "3", title: "Supplier Statement", description: "Shows Total Invoiced, Total Paid, and Outstanding per supplier, with a Record Payment form for PO-linked invoices." },
+        { label: "2", title: "Print & Email PO", description: "Print opens a formatted PDF-style view. Email downloads that same PDF and opens a pre-filled email — it does not attach or send the file for you; you attach the just-downloaded PDF yourself." },
+        { label: "3", title: "Sign PO", description: "Opens a signature pad with Manager and Supplier tabs — draw a signature and Save, or Clear to remove it. Signed POs show the signature and timestamp when printed." },
+        { label: "4", title: "Supplier Statement", description: "Shows Total Invoiced, Total Paid, and Outstanding per supplier, with a Record Payment form for PO-linked invoices." },
       ],
     },
     practice: {
-      intro: "Try cancelling a draft PO, then open a supplier's statement.",
+      intro: "Cancel a draft PO, sign one, then open a supplier's statement.",
       steps: [
         { title: "Cancel a draft PO", description: "Confirm the status changes to Cancelled." },
-        { title: "Open a supplier's Statement", description: "Check Total Invoiced vs. Outstanding." },
-        { title: "Record a payment", description: "Apply it against an invoice and watch Outstanding drop." },
+        { title: "Sign a PO", description: "Draw and save a signature, then clear it." },
+        { title: "Record a payment on a Supplier Statement", description: "Apply it against an invoice and watch Outstanding drop." },
       ],
     },
     tips: {
       good: [
-        { text: "Print or sign a PO before sending it to a supplier who expects a paper trail." },
+        { text: "Sign a PO before printing it for a supplier who expects a paper trail." },
         { text: "Check the Statement's Outstanding total before assuming a supplier invoice is fully paid." },
       ],
       watchOutFor: [
@@ -950,6 +952,15 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "It's a shortcut to drafting the email, not a full send-with-attachment.",
       },
       {
+        question: "What does Sign PO capture?",
+        options: [
+          { text: "A drawn signature (Manager or Supplier tab), shown with a timestamp when printed", correct: true },
+          { text: "A typed legal name only", correct: false },
+          { text: "Nothing — it's a placeholder with no real function", correct: false },
+        ],
+        explanation: "It's a real canvas signature pad, saved per PO and rendered on the printed copy.",
+      },
+      {
         question: "What does a Supplier Statement's Outstanding figure show?",
         options: [
           { text: "What's still owed to that supplier across their invoices", correct: true },
@@ -957,6 +968,79 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
           { text: "The number of open POs", correct: false },
         ],
         explanation: "Outstanding is Total Invoiced minus Total Paid.",
+      },
+    ],
+    nextLesson: { lessonId: "pur-5", sectionId: "purchasing", title: "Bulk Reordering with Smart Purchase Planning" },
+  },
+
+  "pur-5": {
+    id: "pur-5",
+    sectionId: "purchasing",
+    title: "Bulk Reordering with Smart Purchase Planning",
+    minutes: 5,
+    badgeId: "reorder-strategist",
+    overview: {
+      objectives: [
+        "Use the Smart Purchase Planning grid to reorder many products at once",
+        "Assign suppliers in bulk and apply AI-recommended quantities",
+        "Create a draft PO straight from a supplier's product catalog",
+      ],
+      summary: "Beyond creating one PO by hand, Purchasing has a bulk reorder grid built specifically for restocking every low-stock product at once.",
+      whyItMatters: "Manually creating a separate PO for every low-stock item doesn't scale — this grid is how a real restock day actually works.",
+    },
+    walkthrough: {
+      screenLabel: "Smart Purchase Planning (Purchasing tab)",
+      callouts: [
+        { label: "1", title: "Filter chips", description: "All / Missing Supplier / Ready to Reorder — narrow the grid to what needs attention first." },
+        { label: "2", title: "AI Rec. + bulk supplier assignment", description: "Each row can show an AI-suggested reorder quantity you can apply with one click; select multiple rows to assign a supplier to all of them at once." },
+        { label: "3", title: "Create Draft PO (N) / Create PO From Catalog", description: "Groups your selection by supplier into draft POs in one action — or, from a supplier's own detail drawer, build a draft PO from everything they're assigned to supply." },
+      ],
+    },
+    practice: {
+      intro: "Filter to Ready to Reorder, bulk-assign a supplier, then create draft POs.",
+      steps: [
+        { title: "Filter to \"Missing Supplier\"", description: "See which low-stock products have no supplier assigned yet." },
+        { title: "Bulk-assign a supplier to several rows", description: "Select them and apply a supplier at once." },
+        { title: "Create Draft PO (N)", description: "Let it group your selection by supplier automatically." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Check \"Missing Supplier\" first — a product with no supplier gets silently skipped when you create draft POs from the grid." },
+        { text: "Use Create PO From Catalog from a supplier's own detail view when you want everything that supplier stocks, not just today's low-stock list." },
+      ],
+      watchOutFor: [
+        { text: "Assuming every selected product ends up on a PO — items with no assigned supplier are skipped, and you only find out from the after-the-fact summary." },
+        { text: "Applying an AI-recommended quantity without a quick sanity check — it's a suggestion based on recent sales velocity, not a guarantee." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What happens to a selected product with no assigned supplier when you click Create Draft PO?",
+        options: [
+          { text: "It's silently skipped, and the skipped count is reported afterward", correct: true },
+          { text: "It blocks the whole action until you fix it", correct: false },
+          { text: "It's added to a PO with no supplier", correct: false },
+        ],
+        explanation: "Products without a supplier can't go on any PO — the grid skips them and tells you how many were skipped.",
+      },
+      {
+        question: "What does Create PO From Catalog do?",
+        options: [
+          { text: "Builds a draft PO from everything a specific supplier is assigned to supply", correct: true },
+          { text: "Creates a PO for only today's low-stock items", correct: false },
+          { text: "Emails the supplier a product list", correct: false },
+        ],
+        explanation: "It's launched from a supplier's own detail drawer and covers their full assigned catalog, not just what's currently low.",
+      },
+      {
+        question: "What is the AI Rec. quantity based on?",
+        options: [
+          { text: "Recent sales velocity — a suggestion, not a guarantee", correct: true },
+          { text: "The supplier's minimum order size", correct: false },
+          { text: "A fixed formula that never changes", correct: false },
+        ],
+        explanation: "It's a data-informed suggestion you can apply or override, not an automatic decision.",
       },
     ],
     nextLesson: null,
@@ -1179,6 +1263,79 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Deactivating clears them from any sale currently being rung up.",
       },
     ],
+    nextLesson: { lessonId: "cust-4", sectionId: "customers", title: "Customer Insights & Purchase History" },
+  },
+
+  "cust-4": {
+    id: "cust-4",
+    sectionId: "customers",
+    title: "Customer Insights & Purchase History",
+    minutes: 4,
+    badgeId: "insights-reader",
+    overview: {
+      objectives: [
+        "Read the Customer Insights summary cards",
+        "Use the Top 5 Customers by Spend table",
+        "Open a customer's Purchase History and reprint a past receipt from it",
+      ],
+      summary: "Above the customer list, a set of insight cards and a Top 5 table summarize your customer base at a glance — and every customer's expanded profile holds their full purchase history.",
+      whyItMatters: "This is where you'd actually spot your best customers and answer \"what did they buy last time\" without digging through Sales History.",
+    },
+    walkthrough: {
+      screenLabel: "Customers tab — Insights",
+      callouts: [
+        { label: "1", title: "Customer Insights cards", description: "Total Customers, Store Avg Spend/Visit, Repeat Customers (2+ reportable sales), and Total Points Outstanding." },
+        { label: "2", title: "Top 5 Customers by Spend", description: "Ranks by total spend, showing Visits, Avg/Visit, and each customer's Favorite Product." },
+        { label: "3", title: "Purchase History (expand a row)", description: "Every past sale for that customer, with status, payment method, discount, points earned/redeemed, and a Receipt button to reprint it on the spot." },
+      ],
+    },
+    practice: {
+      intro: "Check the Insights cards, then open a customer's Purchase History.",
+      steps: [
+        { title: "Read the Insights cards", description: "Note Total Customers and Repeat Customers." },
+        { title: "Open Top 5 Customers by Spend", description: "Find a customer's Favorite Product." },
+        { title: "Expand a customer row", description: "Reprint a receipt from their Purchase History." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Use Favorite Product on the Top 5 table to spot an easy upsell or restock priority for your best customers." },
+        { text: "Reprint straight from a customer's Purchase History instead of hunting for the sale in Sales History." },
+      ],
+      watchOutFor: [
+        { text: "Treating a fully refunded sale as \"no visit\" — it still counts as a visit even though it nets to $0." },
+        { text: "Assuming Repeat Customers counts unique buyers overall rather than customers with 2+ reportable sales specifically." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What does the Top 5 Customers by Spend table rank by?",
+        options: [
+          { text: "Total spend", correct: true },
+          { text: "Number of loyalty points", correct: false },
+          { text: "Most recent visit", correct: false },
+        ],
+        explanation: "It's a spend ranking, with visits, average, and favorite product shown alongside.",
+      },
+      {
+        question: "Where can you reprint a receipt for one of a customer's past purchases?",
+        options: [
+          { text: "From their expanded Purchase History, via the Receipt button", correct: true },
+          { text: "Only from Sales History", correct: false },
+          { text: "It can't be reprinted from the Customers tab", correct: false },
+        ],
+        explanation: "Each purchase-history entry has its own Receipt button.",
+      },
+      {
+        question: "Does a fully refunded sale still count as a \"visit\" in these insights?",
+        options: [
+          { text: "Yes — it nets to $0 but still counts as a visit", correct: true },
+          { text: "No, refunded sales are excluded entirely", correct: false },
+          { text: "It counts as two visits", correct: false },
+        ],
+        explanation: "Visit counting and revenue netting are separate calculations.",
+      },
+    ],
     nextLesson: null,
   },
 
@@ -1193,10 +1350,10 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       objectives: [
         "Read the Sales Analytics KPI cards",
         "Compare payment method totals",
-        "Switch between Today, 7-day, 30-day, and all-time views",
+        "Use the Daily Revenue and Best-Selling Products tables",
       ],
-      summary: "Sales Analytics on the Reports tab is your at-a-glance view of how the business is doing over any time period.",
-      whyItMatters: "Knowing where to look for revenue, transaction count, and payment mix turns raw sales data into a daily habit.",
+      summary: "Sales Analytics on the Reports tab is your at-a-glance view of how the business is doing over any time period — KPI cards up top, day-by-day and product-level detail below.",
+      whyItMatters: "Knowing where to look for revenue, transaction count, payment mix, and which products are actually driving sales turns raw data into a daily habit.",
     },
     walkthrough: {
       screenLabel: "Sales Analytics (Reports tab)",
@@ -1204,35 +1361,36 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         { label: "1", title: "Period selector", description: "Switch between Today, Last 7 Days, Last 30 Days, and All Time." },
         { label: "2", title: "KPI cards", description: "Revenue, Transactions, Avg Transaction, Items Sold, Discounts Given, Tax Collected." },
         { label: "3", title: "Payment split", description: "Cash and Card always show, in dollars and as a percentage of revenue; Other only appears once there's an Other-tender sale to report." },
+        { label: "4", title: "Daily Revenue & Best-Selling Products", description: "Below the KPI cards: a day-by-day revenue/transactions table with a total row, and a ranked Best-Selling Products table (units sold and revenue) — both scoped to the same period selector." },
       ],
     },
     practice: {
-      intro: "Switch time ranges and read the KPI cards.",
+      intro: "Switch time ranges, read the KPI cards, then check the two tables below.",
       steps: [
         { title: "View Today's KPI cards", description: "See the current day's numbers." },
-        { title: "Switch to Last 7 Days", description: "Compare revenue over the wider range." },
-        { title: "Check the payment split", description: "Cash vs. card breakdown." },
+        { title: "Switch to Last 7 Days", description: "Compare revenue over the wider range, and watch Daily Revenue add rows." },
+        { title: "Open Best-Selling Products", description: "Find your #1 product by units sold." },
       ],
     },
     tips: {
       good: [
         { text: "Check Discounts Given regularly — a rising number is worth understanding why." },
-        { text: "Compare Avg Transaction over time, not just total revenue, to spot trends." },
+        { text: "Use Best-Selling Products, not gut feel, to decide what to feature or restock first." },
       ],
       watchOutFor: [
         { text: "Reading Today's numbers mid-shift and assuming the day is already final." },
-        { text: "Ignoring Tax Collected, which you'll need at filing time." },
+        { text: "Forgetting Daily Revenue and Best-Selling Products change scope along with the same period selector as the KPI cards above them." },
       ],
     },
     quiz: [
       {
         question: "What does the period selector control?",
         options: [
-          { text: "The time range of every KPI card on the screen", correct: true },
+          { text: "The time range of every KPI card and table on the screen", correct: true },
           { text: "Only the payment split", correct: false },
           { text: "Nothing — it's just a label", correct: false },
         ],
-        explanation: "Changing the period recalculates every card on the page.",
+        explanation: "Changing the period recalculates every card and table on the page, including Daily Revenue and Best-Selling Products.",
       },
       {
         question: "Which of these is one of the KPI cards?",
@@ -1244,13 +1402,13 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Avg Transaction is one of the six KPI cards shown.",
       },
       {
-        question: "When does the payment split show an \"Other\" row?",
+        question: "What does the Best-Selling Products table rank by?",
         options: [
-          { text: "Only once there's an Other-tender sale in the period", correct: true },
-          { text: "Always, even at $0", correct: false },
-          { text: "Never — only cash and card exist", correct: false },
+          { text: "Units sold and revenue, for the selected period", correct: true },
+          { text: "Alphabetical product name", correct: false },
+          { text: "Profit margin", correct: false },
         ],
-        explanation: "Cash and Card always show; Other is conditional on having actual Other-tender revenue.",
+        explanation: "It's a sales-volume/revenue ranking — margin analysis lives in the separate Profit Report.",
       },
     ],
     nextLesson: { lessonId: "rep-2", sectionId: "reports", title: "Reviewing Inventory Reports" },
@@ -1413,17 +1571,18 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       objectives: [
         "Add a new employee with a PIN",
         "Choose the right role for the job",
-        "Reset an employee's PIN",
+        "Know what to do if PIN setup fails partway through",
       ],
       summary: "Every staff member gets a name, an Employee ID, a PIN, and a role — that combination is how they sign in and what they can access.",
-      whyItMatters: "The role you pick controls exactly what that person can see and do in WEGN Store.",
+      whyItMatters: "The role you pick controls exactly what that person can see and do in WEGN Store, and knowing the ID/PIN rules avoids a rejected form at the worst time.",
     },
     walkthrough: {
       screenLabel: "Staff tab",
       callouts: [
-        { label: "1", title: "Employee name & ID", description: "The Employee ID is used alongside the PIN to sign in." },
-        { label: "2", title: "PIN (4–6 digits)", description: "Set at creation; can be reset later if forgotten." },
+        { label: "1", title: "Employee name & ID", description: "The Employee ID is used alongside the PIN to sign in — 2 to 20 letters/numbers, automatically uppercased, and it must be unique across your staff." },
+        { label: "2", title: "PIN (4–6 digits)", description: "Set at creation; can be reset later if forgotten. There's no duplicate-PIN check — different employees can technically share a PIN, so don't rely on uniqueness as your security." },
         { label: "3", title: "Role select", description: "Cashier, Manager, or Inventory Clerk — each sees a different set of tabs." },
+        { label: "4", title: "If PIN setup fails", description: "If the employee record saves but the PIN step fails, they're created with no PIN set — use the row's \"Set PIN\" button to finish the job, it isn't stuck." },
       ],
     },
     practice: {
@@ -1441,7 +1600,7 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       ],
       watchOutFor: [
         { text: "Giving everyone Manager access by default." },
-        { text: "Reusing the same PIN across multiple employees." },
+        { text: "Assuming a duplicate PIN is blocked — it isn't; treat each employee's PIN as confidential regardless." },
       ],
     },
     quiz: [
@@ -1464,13 +1623,13 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Role, not tenure or PIN, controls tab access.",
       },
       {
-        question: "Can an employee's PIN be changed later?",
+        question: "What happens if the employee record is created but the PIN step fails?",
         options: [
-          { text: "Yes, it can be reset", correct: true },
-          { text: "No, it's permanent", correct: false },
-          { text: "Only by the employee themselves", correct: false },
+          { text: "The employee exists with no PIN set — use \"Set PIN\" on their row to finish", correct: true },
+          { text: "The whole employee record is automatically deleted", correct: false },
+          { text: "It's unrecoverable — you must contact support", correct: false },
         ],
-        explanation: "PINs can be reset any time from the Staff tab.",
+        explanation: "It's a real partial-failure path with a built-in recovery step, not a dead end.",
       },
     ],
     nextLesson: { lessonId: "emp-2", sectionId: "employees", title: "Understanding Staff Roles & Permissions" },
@@ -1766,7 +1925,80 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Linking avoids creating a duplicate when the product is already there.",
       },
     ],
-    nextLesson: { lessonId: "settings-1", sectionId: "settings", title: "Configuring Your Business Profile" },
+    nextLesson: { lessonId: "ts-3", sectionId: "troubleshooting", title: "Resolving an Unmatched Product While Receiving" },
+  },
+
+  "ts-3": {
+    id: "ts-3",
+    sectionId: "troubleshooting",
+    title: "Resolving an Unmatched Product While Receiving",
+    minutes: 3,
+    badgeId: "receiving-troubleshooter",
+    overview: {
+      objectives: [
+        "Recognize the unmatched-product resolution dialog during receiving",
+        "Choose between linking, creating, or skipping an item",
+        "Know this is a different dialog from the POS unmatched-barcode banner",
+      ],
+      summary: "During invoice-based receiving, a line WEGN Store can't match to a catalog product opens its own resolution dialog — a different screen from the POS scan banner, with its own three options.",
+      whyItMatters: "Picking the wrong option here can create a duplicate product or silently drop a line from a shipment.",
+    },
+    walkthrough: {
+      screenLabel: "Product Resolution dialog (receiving)",
+      callouts: [
+        { label: "1", title: "🔗 Link to Existing Product", description: "Attach this invoice line to a product that's already in your catalog under a different name or code." },
+        { label: "2", title: "➕ Create New Product", description: "Add it as a brand-new catalog product, pre-filled from the invoice line's description, cost, and quantity." },
+        { label: "3", title: "✕ Skip — do not add this item", description: "Leaves the line out of this receiving entirely — use it when a line shouldn't become inventory at all." },
+      ],
+    },
+    practice: {
+      intro: "Trigger the dialog during a receiving session and try each option.",
+      steps: [
+        { title: "Find an unmatched invoice line during receiving", description: "See the resolution dialog open." },
+        { title: "Try Link to Existing Product", description: "Attach it to a known product." },
+        { title: "Try Skip on a different line", description: "Confirm it's left out of the receipt." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Check for an existing product first — Link avoids creating a near-duplicate under a slightly different name." },
+        { text: "Use Skip deliberately, not as a default — a skipped line never becomes inventory or cost history." },
+      ],
+      watchOutFor: [
+        { text: "Confusing this with the POS \"Scanner worked, barcode not found\" banner — they're different dialogs for different moments (receiving vs. checkout)." },
+        { text: "Defaulting to Create New Product out of habit when the item is already in your catalog under another name." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What are the three options in the receiving resolution dialog?",
+        options: [
+          { text: "Link to Existing Product, Create New Product, and Skip", correct: true },
+          { text: "Add New Product and Link to Existing Product only", correct: false },
+          { text: "Approve and Reject", correct: false },
+        ],
+        explanation: "Receiving's resolution dialog has three options, including an explicit Skip — different from the two-option POS barcode banner.",
+      },
+      {
+        question: "Is this the same dialog as the POS unmatched-barcode banner?",
+        options: [
+          { text: "No — it's a separate dialog for receiving/invoice matching", correct: true },
+          { text: "Yes, they're identical", correct: false },
+          { text: "It only appears if you're also at POS", correct: false },
+        ],
+        explanation: "Different moments in the workflow (receiving vs. checkout) use different resolution UIs.",
+      },
+      {
+        question: "What happens to a line you choose to Skip?",
+        options: [
+          { text: "It's left out of the receiving entirely — no product, no inventory change", correct: true },
+          { text: "It's automatically added as a new product anyway", correct: false },
+          { text: "It blocks the rest of the receiving session", correct: false },
+        ],
+        explanation: "Skip is a deliberate \"don't add this\" — the rest of the session isn't affected.",
+      },
+    ],
+    nextLesson: null,
   },
 
   // ── Settings ──────────────────────────────────────────────────
@@ -2008,7 +2240,7 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
     walkthrough: {
       screenLabel: "Ask Wegn AI — chat",
       callouts: [
-        { label: "1", title: "Ask a question", description: "e.g. \"What are my top sellers this week?\" or \"Which products are low on stock?\" — answered from real data, never guessed." },
+        { label: "1", title: "What you can really ask", description: "Sales summaries, low-stock and dormant/fast-selling products, supplier balances and payment history, purchase order status, product cost/margin detail, returns and refunds, and the current cash drawer session — all real, data-backed lookups." },
         { label: "2", title: "Read-only, always", description: "Every tool behind Wegn AI only looks up data — it cannot create a PO, adjust inventory, apply a discount, or process a return." },
         { label: "3", title: "No memory across reloads", description: "Refreshing the page starts a brand-new conversation — nothing from before is remembered." },
       ],
@@ -2017,8 +2249,8 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       intro: "Ask Wegn AI a real question, then note what it can't do.",
       steps: [
         { title: "Ask about today's sales", description: "See it answer from real data." },
+        { title: "Ask about a supplier balance or a product's margin", description: "Confirm it pulls the real figure, not an estimate." },
         { title: "Ask it to do something write-based", description: "e.g. \"create a purchase order for me\" — see it explain it can't." },
-        { title: "Reload the page", description: "Confirm the conversation starts fresh." },
       ],
     },
     tips: {
@@ -2042,13 +2274,13 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Every tool available to Wegn AI is read-only — nothing it does changes your data.",
       },
       {
-        question: "What happens to your conversation if you reload the page?",
+        question: "Which of these can Wegn AI actually answer from real data?",
         options: [
-          { text: "It starts a brand-new conversation — nothing is remembered", correct: true },
-          { text: "It picks up exactly where you left off", correct: false },
-          { text: "It's saved permanently to your profile", correct: false },
+          { text: "A supplier's outstanding balance", correct: true },
+          { text: "What time an employee's shift ends", correct: false },
+          { text: "A customer's home address", correct: false },
         ],
-        explanation: "Chat history is session-only and doesn't persist across reloads.",
+        explanation: "Supplier balances are one of its real tools; there's no shift-scheduling or customer-address data anywhere in WEGN Store for it to look up.",
       },
       {
         question: "What should you do if Wegn AI says it can't find or report a number?",

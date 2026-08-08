@@ -241,6 +241,24 @@ export const GUIDE_BADGES: GuideBadge[] = [
     description: "Knows exactly what Wegn AI can — and can't — do.",
     icon: "spark",
   },
+  {
+    id: "reorder-strategist",
+    name: "Reorder Strategist",
+    description: "Uses Smart Purchase Planning to bulk-reorder and bulk-assign suppliers.",
+    icon: "cart",
+  },
+  {
+    id: "insights-reader",
+    name: "Insights Reader",
+    description: "Reads Customer Insights and pulls up purchase history with confidence.",
+    icon: "users",
+  },
+  {
+    id: "receiving-troubleshooter",
+    name: "Receiving Troubleshooter",
+    description: "Resolves an unmatched product during receiving without missing a beat.",
+    icon: "life-ring",
+  },
 ];
 
 export function getBadge(badgeId: string): GuideBadge | undefined {

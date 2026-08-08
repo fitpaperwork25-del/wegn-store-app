@@ -166,6 +166,7 @@ export const GUIDE_NAV: GuideNavItem[] = [
       { id: "pur-2", title: "Receiving a supplier shipment", minutes: 6, implemented: true, prerequisiteLessonId: "pur-1" },
       { id: "pur-3", title: "Managing Suppliers", minutes: 5, implemented: true, prerequisiteLessonId: "pur-2" },
       { id: "pur-4", title: "Canceling, Printing, and Signing POs; Supplier Statements", minutes: 6, implemented: true, prerequisiteLessonId: "pur-3" },
+      { id: "pur-5", title: "Bulk Reordering with Smart Purchase Planning", minutes: 5, implemented: true, prerequisiteLessonId: "pur-4" },
     ],
   },
   {
@@ -179,6 +180,7 @@ export const GUIDE_NAV: GuideNavItem[] = [
       // teaches what actually exists (see sectionLessons.ts).
       { id: "cust-2", title: "Loyalty Points at Checkout", minutes: 5, implemented: true, prerequisiteLessonId: "cust-1" },
       { id: "cust-3", title: "Editing and Deactivating Customers", minutes: 4, implemented: true, prerequisiteLessonId: "cust-2" },
+      { id: "cust-4", title: "Customer Insights & Purchase History", minutes: 4, implemented: true, prerequisiteLessonId: "cust-3" },
     ],
   },
   {
@@ -233,6 +235,7 @@ export const GUIDE_NAV: GuideNavItem[] = [
     plannedLessons: [
       { id: "ts-1", title: "Fixing a stuck receipt printer", minutes: 3, implemented: true },
       { id: "ts-2", title: "What to do when the register won't scan", minutes: 3, implemented: true, prerequisiteLessonId: "ts-1" },
+      { id: "ts-3", title: "Resolving an Unmatched Product While Receiving", minutes: 3, implemented: true, prerequisiteLessonId: "ts-2" },
     ],
   },
   { id: "learning-progress", label: "Learning Progress", icon: "trophy" },
