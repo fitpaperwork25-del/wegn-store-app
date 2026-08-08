@@ -28,7 +28,7 @@ export default function SectionPage({ sectionId, onOpenLesson }: SectionPageProp
 
   return (
     <div>
-      <span className="wg-eyebrow">Guide section</span>
+      <span className="wg-eyebrow">Academy section</span>
       <h1 className="wg-page-title">{item.label}</h1>
       <p className="wg-page-subtitle">
         {lessons.length > 0

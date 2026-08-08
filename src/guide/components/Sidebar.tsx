@@ -16,7 +16,7 @@ export default function Sidebar({ activeSection, onNavigate, open, onClose }: Si
   return (
     <>
       {open && <div className="wg-sidebar-backdrop" onClick={onClose} aria-hidden="true" />}
-      <nav className="wg-sidebar" data-open={open} aria-label="Guide sections">
+      <nav className="wg-sidebar" data-open={open} aria-label="Academy sections">
         <div className="wg-nav-group">
           {GUIDE_NAV.map((item) => {
             const Icon = GuideIcon[item.icon as keyof typeof GuideIcon];

@@ -41,11 +41,11 @@ const SearchBox = forwardRef<HTMLInputElement, SearchBoxProps>(function SearchBo
         ref={ref}
         type="text"
         value={query}
-        placeholder="Search the guide…"
+        placeholder="Search the academy…"
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => window.setTimeout(() => setFocused(false), 120)}
-        aria-label="Search the guide"
+        aria-label="Search the academy"
       />
       {!focused && <span className="wg-search-kbd">/</span>}
       {showResults && (

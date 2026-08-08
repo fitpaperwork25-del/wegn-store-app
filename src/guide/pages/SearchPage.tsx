@@ -34,9 +34,9 @@ export default function SearchPage({ onGoToSection, onOpenLesson }: SearchPagePr
         <input
           type="text"
           value={query}
-          placeholder="Search the guide…"
+          placeholder="Search the academy…"
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search the guide"
+          aria-label="Search the academy"
         />
       </div>
 

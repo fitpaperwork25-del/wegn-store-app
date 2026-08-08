@@ -16,7 +16,7 @@ export const GUIDE_BADGES: GuideBadge[] = [
   {
     id: "first-steps",
     name: "First Steps",
-    description: "Completed your first lesson in the WEGN Store Guide.",
+    description: "Completed your first lesson in WEGN Store Academy.",
     icon: "flag",
   },
   {
