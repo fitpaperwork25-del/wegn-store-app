@@ -27,9 +27,7 @@ export default function RoleSelector({ onDone }: RoleSelectorProps) {
   return (
     <div className="wg-role-select">
       <div className="wg-role-select-inner">
-        <div className="wg-ob-hero-mark" style={{ margin: "0 auto 18px" }}>
-          <GuideIcon.trophy />
-        </div>
+        <img src="/logo.png" alt="WEGN Store" className="wg-ob-hero-mark" />
         <span className="wg-eyebrow" style={{ textAlign: "center", display: "block" }}>Welcome to</span>
         <h1 className="wg-page-title" style={{ textAlign: "center" }}>WEGN Store Academy</h1>
         <p className="wg-ob-intro">What's your role? We'll recommend the right learning path to start with.</p>

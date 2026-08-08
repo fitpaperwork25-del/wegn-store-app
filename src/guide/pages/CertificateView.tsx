@@ -9,11 +9,11 @@ interface CertificateViewProps {
 }
 
 export default function CertificateView({ pathId, onBack }: CertificateViewProps) {
-  const { certificates, learnerName, setLearnerName } = useGuideProgress();
+  const { certificates, learnerName, setLearnerName, businessName } = useGuideProgress();
   const path = getLearningPath(pathId);
-  const certifiedAt = certificates[pathId];
+  const certificate = certificates[pathId];
 
-  if (!path || !certifiedAt) {
+  if (!path || !certificate) {
     return (
       <div>
         <div className="wg-breadcrumb">
@@ -48,28 +48,42 @@ export default function CertificateView({ pathId, onBack }: CertificateViewProps
           placeholder="Type your name"
           onChange={(e) => setLearnerName(e.target.value)}
         />
+        <p className="wg-card-body" style={{ marginTop: 6, fontSize: "0.78rem" }}>
+          Filled in automatically from your account where available — edit if it needs a correction.
+        </p>
       </div>
 
       <div className="wg-certificate">
-        <div className="wg-certificate-seal">
-          <GuideIcon.trophy />
-        </div>
+        <img src="/logo.png" alt="WEGN Store" className="wg-certificate-seal" />
         <p className="wg-certificate-kicker">Certificate of Completion</p>
         <h1 className="wg-certificate-title">WEGN Store Academy</h1>
         <p className="wg-certificate-presented">This certifies that</p>
         <p className="wg-certificate-name">{learnerName.trim() || "___________________"}</p>
         <p className="wg-certificate-path">has successfully completed the</p>
         <p className="wg-certificate-path" style={{ color: "var(--g-green-dark)" }}>{path.name} path</p>
-        <p className="wg-certificate-date">Awarded {formatDate(certifiedAt)}</p>
+        {businessName && <p className="wg-certificate-business">{businessName}</p>}
+        <p className="wg-certificate-date">Awarded {formatDate(certificate.awardedAt)}</p>
+
+        <div className="wg-certificate-signature-row">
+          <div className="wg-certificate-signature">
+            <span className="wg-certificate-signature-line">WEGN Store Academy</span>
+            <span className="wg-certificate-signature-label">Authorized Signature</span>
+          </div>
+          <div className="wg-certificate-signature">
+            <span className="wg-certificate-signature-line">{formatDate(certificate.awardedAt)}</span>
+            <span className="wg-certificate-signature-label">Date</span>
+          </div>
+        </div>
+
         <div className="wg-certificate-footer">
-          <span>WEGN Store Academy</span>
           <span>{path.lessonIds.length} lessons completed</span>
+          <span className="wg-certificate-id">Certificate ID: {certificate.certificateId}</span>
         </div>
       </div>
 
       <div className="wg-certificate-actions">
         <button type="button" className="wg-btn wg-btn-primary" onClick={() => window.print()}>
-          <GuideIcon.check /> Print certificate
+          <GuideIcon.check /> Print or save as PDF
         </button>
       </div>
     </div>

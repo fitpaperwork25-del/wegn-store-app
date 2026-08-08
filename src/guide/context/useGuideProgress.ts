@@ -16,6 +16,14 @@ export interface PathProgress {
   isUnlocked: boolean;
   isCertified: boolean;
   certifiedAt: string | null;
+  certificateId: string | null;
+}
+
+/** One awarded certificate: when, and its stable, unique id (see
+ *  GuideProgressContext's generateCertificateId). */
+export interface CertificateRecord {
+  awardedAt: string;
+  certificateId: string;
 }
 
 export interface GuideProgressValue {
@@ -61,14 +69,19 @@ export interface GuideProgressValue {
   learnerName: string;
   setLearnerName: (name: string) => void;
 
+  /** The signed-in account's real business name, resolved once from
+   *  Supabase (see lib/identity.ts) — null if unresolved/unavailable.
+   *  Read-only: there's nothing to "correct" here the way a name can be. */
+  businessName: string | null;
+
   currentPathId: string | null;
   setCurrentPathId: (pathId: string | null) => void;
   getPathProgress: (pathId: string) => PathProgress;
 
-  /** pathId -> ISO date the certificate was earned. Awarded
-   *  automatically the moment every lesson in a path is complete —
-   *  see GuideProgressContext's completion effect. */
-  certificates: Record<string, string>;
+  /** pathId -> when and under what id the certificate was earned.
+   *  Awarded automatically the moment every lesson in a path is
+   *  complete — see GuideProgressContext's completion effect. */
+  certificates: Record<string, CertificateRecord>;
   isPathCertified: (pathId: string) => boolean;
 }
 

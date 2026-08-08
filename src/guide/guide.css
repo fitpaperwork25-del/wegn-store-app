@@ -121,16 +121,9 @@
 }
 
 .wg-topbar-brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: linear-gradient(150deg, var(--g-green-bright), var(--g-green));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--g-green-dark);
-  font-weight: 900;
-  font-size: 0.85rem;
+  height: 28px;
+  width: auto;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
@@ -1052,18 +1045,13 @@
 /* Welcome */
 
 .wg-ob-hero-mark {
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
-  background: linear-gradient(150deg, var(--g-green-bright), var(--g-green));
-  color: var(--g-green-dark);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  height: 52px;
+  width: auto;
+  max-width: 80%;
+  object-fit: contain;
   margin: 0 auto 18px;
+  display: block;
 }
-
-.wg-ob-hero-mark svg { width: 26px; height: 26px; }
 
 .wg-ob-intro {
   font-size: 1.05rem;
@@ -1632,18 +1620,13 @@
 }
 
 .wg-certificate-seal {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: linear-gradient(150deg, var(--g-green-bright), var(--g-green));
-  color: var(--g-green-dark);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  height: 72px;
+  width: auto;
+  max-width: 90%;
+  object-fit: contain;
   margin: 0 auto 18px;
+  display: block;
 }
-
-.wg-certificate-seal svg { width: 30px; height: 30px; }
 
 .wg-certificate-kicker {
   font-size: 0.75rem;
@@ -1684,10 +1667,51 @@
   margin-bottom: 6px;
 }
 
+.wg-certificate-business {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--g-muted);
+  margin: 0 0 14px;
+}
+
 .wg-certificate-date {
   font-size: 0.82rem;
   color: var(--g-muted);
   margin-bottom: 28px;
+}
+
+.wg-certificate-signature-row {
+  display: flex;
+  justify-content: center;
+  gap: 56px;
+  margin: 0 0 24px;
+  flex-wrap: wrap;
+}
+
+.wg-certificate-signature {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 160px;
+}
+
+.wg-certificate-signature-line {
+  font-family: "Brush Script MT", cursive;
+  font-size: 1.1rem;
+  color: var(--g-ink);
+  border-bottom: 1px solid var(--g-line);
+  padding: 0 12px 6px;
+  min-width: 160px;
+  text-align: center;
+}
+
+.wg-certificate-signature-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--g-muted-2);
+  margin-top: 6px;
 }
 
 .wg-certificate-footer {
@@ -1699,6 +1723,13 @@
   border-top: 1px solid var(--g-line);
   padding-top: 14px;
   margin-top: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wg-certificate-id {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 .wg-certificate-actions {
@@ -1723,12 +1754,25 @@
 }
 
 @media print {
+  /* A certificate reads better landscape on paper than the portrait
+     card layout used on screen — print-only, doesn't touch the live
+     page's own layout. */
+  @page {
+    size: landscape;
+    margin: 0.5in;
+  }
+
   .wg-topbar, .wg-sidebar, .wg-sidebar-backdrop, .wg-ai-fab, .wg-ai-panel,
   .wg-breadcrumb, .wg-certificate-actions, .wg-certificate-name-input-row {
     display: none !important;
   }
   .wg-content { padding: 0 !important; }
-  .wg-certificate { border-width: 2px; }
+  .wg-certificate-page { max-width: none; }
+  .wg-certificate {
+    border-width: 2px;
+    padding: 40px 64px;
+  }
+  .wg-certificate::before { inset: 14px; }
 }
 
 /* ── Achievement Center ──────────────────────────────────────── */

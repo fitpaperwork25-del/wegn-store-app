@@ -4,9 +4,7 @@ import type { OnboardingLessonContent } from "./types";
 export default function WelcomeSection({ welcome }: { welcome: OnboardingLessonContent["welcome"] }) {
   return (
     <div className="wg-ob-screen">
-      <div className="wg-ob-hero-mark">
-        <GuideIcon.spark />
-      </div>
+      <img src="/logo.png" alt="WEGN Store" className="wg-ob-hero-mark" />
       <p className="wg-ob-intro">{welcome.intro}</p>
 
       <div className="wg-ob-two-col">

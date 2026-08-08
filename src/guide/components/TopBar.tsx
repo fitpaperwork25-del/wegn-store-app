@@ -30,7 +30,7 @@ export default function TopBar({ activeSection, onSelectLesson, onSelectSection,
       </button>
 
       <div className="wg-topbar-brand">
-        <span className="wg-topbar-brand-mark" aria-hidden="true">W</span>
+        <img src="/logo.png" alt="WEGN Store" className="wg-topbar-brand-mark" />
         <span>
           WEGN Store Academy
           <small>Interactive Learning & Certification</small>

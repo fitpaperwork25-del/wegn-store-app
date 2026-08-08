@@ -70,7 +70,7 @@ export default function LearningProgressPage({ onOpenLesson, onGoToSection, onVi
           <p className="wg-card-body">Complete every lesson in a Learning Path to earn its certificate.</p>
         </div>
       ) : (
-        certificateEntries.map(([pathId, certifiedAt]) => {
+        certificateEntries.map(([pathId, certificate]) => {
           const path = getLearningPath(pathId);
           if (!path) return null;
           return (
@@ -78,7 +78,7 @@ export default function LearningProgressPage({ onOpenLesson, onGoToSection, onVi
               <span className="wg-lesson-row-title">
                 {path.name}
                 <span className="wg-lesson-row-sub">
-                  {learnerName.trim() ? `${learnerName} · ` : ""}Awarded {formatDate(certifiedAt)}
+                  {learnerName.trim() ? `${learnerName} · ` : ""}Awarded {formatDate(certificate.awardedAt)}
                 </span>
               </span>
               <button type="button" className="wg-btn wg-btn-secondary" onClick={() => onViewCertificate(pathId)}>

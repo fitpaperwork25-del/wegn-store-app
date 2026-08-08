@@ -13,7 +13,8 @@ import type { GuideSectionId } from "../data/navigation";
 import { ALL_LESSON_STUBS } from "../data/navigation";
 import { LEARNING_PATHS } from "../data/learningPaths";
 import { getLevelForCompletedCount } from "../data/levels";
-import { GuideProgressContext, type GuideProgressValue, type PathProgress } from "./useGuideProgress";
+import { resolveLearnerIdentity } from "../lib/identity";
+import { GuideProgressContext, type CertificateRecord, type GuideProgressValue, type PathProgress } from "./useGuideProgress";
 
 const STORAGE_KEY = "wegn-store-guide:v1";
 
@@ -25,8 +26,12 @@ interface StoredState {
   theme: "light" | "dark";
   userRole: string | null;
   learnerName: string;
+  /** Auto-resolved once from the signed-in account (see lib/identity.ts).
+   *  Kept separate from learnerName so a manual correction never gets
+   *  silently overwritten by a later resolution. */
+  businessName: string | null;
   currentPathId: string | null;
-  certificates: Record<string, string>;
+  certificates: Record<string, CertificateRecord>;
   lastActiveDate: string | null;
   currentStreak: number;
   longestStreak: number;
@@ -40,12 +45,46 @@ const DEFAULT_STATE: StoredState = {
   theme: "light",
   userRole: null,
   learnerName: "",
+  businessName: null,
   currentPathId: null,
   certificates: {},
   lastActiveDate: null,
   currentStreak: 0,
   longestStreak: 0,
 };
+
+/** Stable, human-readable, and unique enough for a client-only academy
+ *  with no backend of its own: readable prefix + path + award date for
+ *  at-a-glance identification, plus a random suffix so two businesses
+ *  certifying the same path on the same date never collide. Generated
+ *  once, at the moment a certificate is first awarded (or migrated —
+ *  see loadState), and never regenerated after that. */
+function generateCertificateId(pathId: string, dateKey: string): string {
+  const datePart = dateKey.replace(/-/g, "");
+  const randomPart =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `WSA-${pathId.toUpperCase()}-${datePart}-${randomPart.toUpperCase()}`;
+}
+
+/** Certificates were originally stored as a bare `pathId -> dateString`
+ *  map. Anyone who already earned one under that shape gets migrated
+ *  in place to a real CertificateRecord (with a certificate id
+ *  generated once, right here, so it's stable from this point on)
+ *  instead of losing their certificate or getting a blank id. */
+function migrateCertificates(raw: unknown): Record<string, CertificateRecord> {
+  if (!raw || typeof raw !== "object") return {};
+  const next: Record<string, CertificateRecord> = {};
+  for (const [pathId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string") {
+      next[pathId] = { awardedAt: value, certificateId: generateCertificateId(pathId, value) };
+    } else if (value && typeof value === "object" && "awardedAt" in value && "certificateId" in value) {
+      next[pathId] = value as CertificateRecord;
+    }
+  }
+  return next;
+}
 
 // lessonId -> prerequisiteLessonId, and lessonId -> minutes, both
 // built once from the static nav data rather than per-render.
@@ -64,15 +103,22 @@ function daysBetween(a: string, b: string): number {
 }
 
 /** Any path whose every lesson is now in completedLessonIds, and that
- *  isn't already certified, gets stamped with today's date. Pure — the
- *  caller folds the result into the same state update that completed
- *  the lesson, rather than reacting to the change in a separate effect. */
-function withNewCertificates(completedLessonIds: string[], certificates: Record<string, string>): Record<string, string> {
+ *  isn't already certified, gets stamped with today's date and a fresh
+ *  certificate id. Pure — the caller folds the result into the same
+ *  state update that completed the lesson, rather than reacting to the
+ *  change in a separate effect. */
+function withNewCertificates(
+  completedLessonIds: string[],
+  certificates: Record<string, CertificateRecord>,
+): Record<string, CertificateRecord> {
   let next = certificates;
   for (const path of LEARNING_PATHS) {
     if (next[path.id]) continue;
     const allDone = path.lessonIds.every((id) => completedLessonIds.includes(id));
-    if (allDone) next = { ...next, [path.id]: todayKey() };
+    if (allDone) {
+      const awardedAt = todayKey();
+      next = { ...next, [path.id]: { awardedAt, certificateId: generateCertificateId(path.id, awardedAt) } };
+    }
   }
   return next;
 }
@@ -83,7 +129,7 @@ function loadState(): StoredState {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_STATE, ...parsed };
+    return { ...DEFAULT_STATE, ...parsed, certificates: migrateCertificates(parsed.certificates) };
   } catch {
     // Corrupt or inaccessible storage (private browsing, quota, etc.)
     // degrades to defaults rather than throwing - this is convenience
@@ -116,6 +162,32 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     const root = document.getElementById("wegn-guide-root");
     root?.setAttribute("data-guide-theme", state.theme);
   }, [state.theme]);
+
+  // Auto-fill the certificate recipient's real name/business, once,
+  // from whatever Supabase session is already live (see lib/identity.ts)
+  // — never overwriting a name the learner already typed themselves.
+  // A resolution failure (signed out, offline, RLS) just leaves the
+  // field exactly as it was: empty and editable, same as before this
+  // existed.
+  useEffect(() => {
+    let cancelled = false;
+    if (state.learnerName.trim() && state.businessName) return;
+    resolveLearnerIdentity().then(({ name, businessName }) => {
+      if (cancelled) return;
+      setState((prev) => ({
+        ...prev,
+        learnerName: prev.learnerName.trim() ? prev.learnerName : (name ?? prev.learnerName),
+        businessName: prev.businessName ?? businessName,
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally runs once per mount: identity doesn't change during
+    // a session, and re-running on every learnerName edit would fight
+    // the user's own typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const completedLessonIds = useMemo(() => new Set(state.completedLessonIds), [state.completedLessonIds]);
   const bookmarkedLessonIds = useMemo(() => new Set(state.bookmarkedLessonIds), [state.bookmarkedLessonIds]);
@@ -204,11 +276,12 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     (pathId: string): PathProgress => {
       const path = LEARNING_PATHS.find((p) => p.id === pathId);
       if (!path) {
-        return { pathId, completedCount: 0, totalCount: 0, percentComplete: 0, isUnlocked: true, isCertified: false, certifiedAt: null };
+        return { pathId, completedCount: 0, totalCount: 0, percentComplete: 0, isUnlocked: true, isCertified: false, certifiedAt: null, certificateId: null };
       }
       const done = path.lessonIds.filter((id) => completedLessonIds.has(id)).length;
       const total = path.lessonIds.length;
       const unlocked = !path.prerequisitePathId || isPathCertified(path.prerequisitePathId);
+      const certificate = state.certificates[pathId];
       return {
         pathId,
         completedCount: done,
@@ -216,7 +289,8 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
         percentComplete: total === 0 ? 0 : Math.round((done / total) * 100),
         isUnlocked: unlocked,
         isCertified: isPathCertified(pathId),
-        certifiedAt: state.certificates[pathId] ?? null,
+        certifiedAt: certificate?.awardedAt ?? null,
+        certificateId: certificate?.certificateId ?? null,
       };
     },
     [completedLessonIds, isPathCertified, state.certificates],
@@ -250,6 +324,7 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     lastActiveDate: state.lastActiveDate,
     currentStreak: state.currentStreak,
     longestStreak: state.longestStreak,
+    businessName: state.businessName,
     userRole: state.userRole,
     setUserRole,
     learnerName: state.learnerName,
