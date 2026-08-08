@@ -62,6 +62,8 @@ export default function CertificateView({ pathId, onBack }: CertificateViewProps
             <span>Full name</span>
             <input
               type="text"
+              name="wg-academy-profile-full-name"
+              autoComplete="off"
               className="wg-certificate-name-input"
               value={profile.fullName}
               placeholder="Full name"
@@ -72,6 +74,8 @@ export default function CertificateView({ pathId, onBack }: CertificateViewProps
             <span>Email</span>
             <input
               type="email"
+              name="wg-academy-profile-email"
+              autoComplete="off"
               className="wg-certificate-name-input"
               value={profile.email}
               placeholder="you@example.com"
@@ -82,6 +86,8 @@ export default function CertificateView({ pathId, onBack }: CertificateViewProps
             <span>Organization / Business (optional)</span>
             <input
               type="text"
+              name="wg-academy-profile-organization"
+              autoComplete="off"
               className="wg-certificate-name-input"
               value={profile.organization}
               placeholder="Organization"
@@ -91,6 +97,8 @@ export default function CertificateView({ pathId, onBack }: CertificateViewProps
           <label className="wg-field">
             <span>Role</span>
             <select
+              name="wg-academy-profile-role"
+              autoComplete="off"
               className="wg-certificate-name-input"
               value={profile.role}
               onChange={(e) => setProfile({ role: e.target.value as AcademyProfileRole })}
