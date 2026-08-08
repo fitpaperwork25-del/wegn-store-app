@@ -1217,7 +1217,7 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
     tips: {
       good: [
         { text: "Check Discounts Given regularly — a rising number is worth understanding why." },
-        { text: "Compare Average Transaction over time, not just total revenue, to spot trends." },
+        { text: "Compare Avg Transaction over time, not just total revenue, to spot trends." },
       ],
       watchOutFor: [
         { text: "Reading Today's numbers mid-shift and assuming the day is already final." },
@@ -1633,35 +1633,35 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       objectives: [
         "Know what's app-side vs. hardware when a receipt won't print",
         "Reprint a receipt after a printer issue",
-        "Use email as a fallback",
+        "Know that email isn't a fallback option — it doesn't exist yet",
       ],
-      summary: "Printing in WEGN Store sends the receipt to your browser's print dialog — a stuck printer is a hardware problem, but recovering the receipt is always possible from the app.",
-      whyItMatters: "A jammed or offline printer shouldn't mean a lost receipt or a stuck checkout.",
+      summary: "Printing in WEGN Store sends the receipt to your browser's print dialog — a stuck printer is a hardware problem, but the sale record and reprint are always safe in the app.",
+      whyItMatters: "A jammed or offline printer shouldn't mean a lost receipt or a stuck checkout — but also shouldn't lead to promising a customer an email that can't be sent.",
     },
     walkthrough: {
       screenLabel: "Sales History — reprint",
       callouts: [
         { label: "1", title: "Physical printer issue", description: "Paper jams, empty paper, and offline printers are fixed at the printer itself, not in the app." },
         { label: "2", title: "Reprint from Sales History", description: "Once the printer's working again, find the sale and print it — nothing was lost." },
-        { label: "3", title: "Email as a fallback", description: "Send the receipt by email instead, right now, no printer required." },
+        { label: "3", title: "No email fallback", description: "There's no email-receipt option anywhere in WEGN Store — printing (now or later) is the only way to give a customer a copy." },
       ],
     },
     practice: {
-      intro: "Find a completed sale and try both recovery options.",
+      intro: "Find a completed sale and reprint it.",
       steps: [
         { title: "Find a completed sale", description: "Locate it in Sales History." },
         { title: "Reprint its receipt", description: "Send it to the printer again." },
-        { title: "Email the receipt instead", description: "Use the fallback option." },
+        { title: "Explain there's no email option", description: "Practice what you'd tell a customer instead." },
       ],
     },
     tips: {
       good: [
         { text: "Keep a habit of checking paper level at the start of a shift, before the line forms." },
-        { text: "Offer to email the receipt immediately rather than making a customer wait on a printer fix." },
+        { text: "Tell the customer the sale went through and offer to reprint once the printer's fixed — don't promise an email." },
       ],
       watchOutFor: [
         { text: "Re-ringing the sale because the receipt didn't print — the sale already went through." },
-        { text: "Forgetting a receipt can be reprinted any time later from Sales History." },
+        { text: "Promising to email a receipt as a workaround — that feature doesn't exist." },
       ],
     },
     quiz: [
@@ -1675,18 +1675,18 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "The app can't reach into physical hardware — jams are fixed at the printer.",
       },
       {
-        question: "If the printer is down, what can you do instead?",
+        question: "If the printer is down, what's the real recovery option?",
         options: [
-          { text: "Email the receipt", correct: true },
-          { text: "Cancel the sale", correct: false },
-          { text: "Nothing until it's fixed", correct: false },
+          { text: "Reprint the receipt once the printer works again", correct: true },
+          { text: "Email the receipt instead", correct: false },
+          { text: "Nothing — the sale is lost", correct: false },
         ],
-        explanation: "Email is a real, immediate fallback that doesn't depend on the printer.",
+        explanation: "There's no email option in WEGN Store — reprinting later is the only recovery path, and the sale itself was never at risk.",
       },
       {
         question: "Do you need to re-ring a sale if the receipt didn't print?",
         options: [
-          { text: "No — reprint it once the printer works, or email it", correct: true },
+          { text: "No — reprint it once the printer works", correct: true },
           { text: "Yes, always start over", correct: false },
           { text: "Only if the customer complains", correct: false },
         ],
