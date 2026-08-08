@@ -9,7 +9,7 @@ import SearchPage from "./pages/SearchPage";
 import SectionPage from "./pages/SectionPage";
 import SampleLessonPage from "./pages/SampleLessonPage";
 import WelcomeLessonPage from "./pages/WelcomeLessonPage";
-import PosLessonPage from "./pages/PosLessonPage";
+import TaskLessonPage from "./pages/TaskLessonPage";
 import LearningProgressPage from "./pages/LearningProgressPage";
 import LearningPathsPage from "./pages/LearningPathsPage";
 import AchievementsPage from "./pages/AchievementsPage";
@@ -17,6 +17,7 @@ import CertificateView from "./pages/CertificateView";
 import RoleSelector from "./components/RoleSelector";
 import { IMPLEMENTED_LESSON_IDS } from "./data/navigation";
 import { POS_LESSONS } from "./data/posLessons";
+import { SECTION_LESSONS } from "./data/sectionLessons";
 import type { GuideSectionId } from "./data/navigation";
 
 function GuideRoutes() {
@@ -68,15 +69,8 @@ function GuideRoutes() {
           onGoToLesson={goToLesson}
         />
       );
-    } else if (lessonId in POS_LESSONS) {
-      page = (
-        <PosLessonPage
-          lessonId={lessonId}
-          onBackToSection={() => goToSection("getting-started")}
-          onGoToSection={goToSection}
-          onGoToLesson={goToLesson}
-        />
-      );
+    } else if (lessonId in POS_LESSONS || lessonId in SECTION_LESSONS) {
+      page = <TaskLessonPage lessonId={lessonId} onGoToSection={goToSection} onGoToLesson={goToLesson} />;
     } else {
       page = <SectionPage sectionId={route.sectionId} onOpenLesson={openLesson} />;
     }

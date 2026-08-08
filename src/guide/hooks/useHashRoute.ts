@@ -6,6 +6,7 @@
 // #certificate/cashier-certification) without any new infrastructure.
 
 import { useCallback, useEffect, useState } from "react";
+import { ALL_LESSON_STUBS } from "../data/navigation";
 import type { GuideSectionId } from "../data/navigation";
 
 export interface GuideRoute {
@@ -18,12 +19,17 @@ export interface GuideRoute {
 
 const DEFAULT_ROUTE: GuideRoute = { sectionId: "home", lessonId: null };
 
+// lessonId -> the section it actually lives under, so #lesson/<id>
+// resolves to the right sidebar highlight / "coming soon" fallback
+// even now that lessons live in sections other than Getting Started.
+const SECTION_BY_LESSON = new Map(ALL_LESSON_STUBS.map((l) => [l.id, l.sectionId]));
+
 function parseHash(hash: string): GuideRoute {
   const clean = hash.replace(/^#\/?/, "");
   if (!clean) return DEFAULT_ROUTE;
   const [first, second] = clean.split("/");
   if (first === "lesson" && second) {
-    return { sectionId: "getting-started", lessonId: second };
+    return { sectionId: SECTION_BY_LESSON.get(second) ?? "getting-started", lessonId: second };
   }
   if (first === "certificate" && second) {
     return { sectionId: "learning-paths", lessonId: null, certificatePathId: second };
