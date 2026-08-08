@@ -154,6 +154,152 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "A voided sale stays visible in history, just marked Voided.",
       },
     ],
+    nextLesson: { lessonId: "do-3", sectionId: "daily-operations", title: "Understanding Your Dashboard" },
+  },
+
+  "do-3": {
+    id: "do-3",
+    sectionId: "daily-operations",
+    title: "Understanding Your Dashboard",
+    minutes: 4,
+    badgeId: "dashboard-reader",
+    overview: {
+      objectives: [
+        "Know what a Cashier's Dashboard shows vs. an Owner/Manager's",
+        "Use the four Today's Priorities action cards",
+        "Tell Dashboard's live snapshot apart from Reports' historical detail",
+      ],
+      summary: "The Dashboard is the tab everyone lands on — but a Cashier and an Owner/Manager see genuinely different screens built for their job.",
+      whyItMatters: "Dashboard is a navigation hub, not just a KPI display — knowing its shortcuts saves a trip through the full menu.",
+    },
+    walkthrough: {
+      screenLabel: "Dashboard tab",
+      callouts: [
+        { label: "1", title: "Cashier view", description: "Quick Actions to POS and Customers, a My Drawer status card, and a My Recent Sales table — scoped to that cashier only." },
+        { label: "2", title: "Owner/Manager: Today's Priorities", description: "Four action cards — Buy Today, Receive Today, Inventory Alerts, Yesterday's Summary — each with a button straight into Reorder Center, Purchasing, Inventory, or the EOD Report." },
+        { label: "3", title: "Live snapshot, not history", description: "Revenue Today and Cash Drawer status are today-only, lighter-weight numbers — Reports and the Cash Drawer tab hold the full historical and reconciliation detail." },
+      ],
+    },
+    practice: {
+      intro: "Find each of the four priority cards and know where its button goes.",
+      steps: [
+        { title: "Find the Buy Today card", description: "Note its button goes to the Reorder Center." },
+        { title: "Find the Yesterday's Summary card", description: "See it's a separate figure from today's revenue." },
+        { title: "Compare to Reports", description: "Notice Dashboard is a snapshot; Reports is the historical drill-down." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Use the priority-card buttons as shortcuts instead of navigating the full menu each time." },
+        { text: "Check Yesterday's Summary first thing — it's a distinct figure from Revenue Today." },
+      ],
+      watchOutFor: [
+        { text: "Expecting a Cashier's Dashboard to show revenue or profit — it's scoped to their own sales and shift only." },
+        { text: "Treating Dashboard's live numbers as the final historical record — Reports and Cash Drawer hold the full detail." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What does a Cashier's Dashboard show that an Owner's doesn't include?",
+        options: [
+          { text: "Nothing extra — it's a reduced view with no revenue/EOD figures at all", correct: true },
+          { text: "The full Profit Report", correct: false },
+          { text: "Every employee's sales", correct: false },
+        ],
+        explanation: "Cashier Dashboard is scoped to their own shift — Quick Actions and My Recent Sales, no financial KPIs.",
+      },
+      {
+        question: "Where does the \"Buy Today\" card's button take you?",
+        options: [
+          { text: "The Reorder Center", correct: true },
+          { text: "The Employees tab", correct: false },
+          { text: "Settings", correct: false },
+        ],
+        explanation: "Buy Today is a low-stock shortcut straight into reordering.",
+      },
+      {
+        question: "Is Dashboard's \"Revenue Today\" the same detail level as Reports?",
+        options: [
+          { text: "No — Dashboard is a lighter live snapshot; Reports has the full historical breakdown", correct: true },
+          { text: "Yes, they're identical", correct: false },
+          { text: "Dashboard has more detail than Reports", correct: false },
+        ],
+        explanation: "Dashboard is built for a glance and quick action, not deep analysis.",
+      },
+    ],
+    nextLesson: { lessonId: "do-4", sectionId: "daily-operations", title: "Cash Drawer Reports & Paid Outs" },
+  },
+
+  "do-4": {
+    id: "do-4",
+    sectionId: "daily-operations",
+    title: "Cash Drawer Reports & Paid Outs",
+    minutes: 4,
+    badgeId: "drawer-reporter",
+    overview: {
+      objectives: [
+        "Record a paid out during an open drawer session",
+        "Read the End-of-Day Summary",
+        "Tell a session's live reconciliation apart from the calendar-day EOD figures",
+      ],
+      summary: "Beyond opening and closing, the Cash Drawer tab tracks paid outs during a shift and gives a full End-of-Day Summary independent of whether the drawer is still open.",
+      whyItMatters: "A shift that spans midnight, or a safe drop mid-shift, needs a place to record it — this is that place.",
+    },
+    walkthrough: {
+      screenLabel: "Cash Drawer tab",
+      callouts: [
+        { label: "1", title: "Record Paid Out", description: "Log an amount and a reason (e.g. a safe drop) against the open session — it reduces Expected Cash immediately." },
+        { label: "2", title: "End-of-Day Summary toggle", description: "Shows Sales, Payment & Loyalty, and Drawer Reconciliation cards for the day — available whether or not a drawer is currently open." },
+        { label: "3", title: "Session vs. calendar day", description: "Drawer Reconciliation figures are labeled Open or Closed and may differ from the live cards above if the current session started on a different calendar day." },
+      ],
+    },
+    practice: {
+      intro: "Record a paid out, then open the End-of-Day Summary.",
+      steps: [
+        { title: "Record a paid out", description: "Enter an amount and a reason." },
+        { title: "Check Expected Cash updated", description: "Confirm it reflects the paid out." },
+        { title: "Open End-of-Day Summary", description: "Review the Sales, Payment, and Reconciliation cards." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Always enter a real reason for a paid out — 'safe drop' or the actual purpose, not a placeholder." },
+        { text: "Check the End-of-Day Summary even on a day the drawer never closed — it's available independently." },
+      ],
+      watchOutFor: [
+        { text: "Confusing the live Drawer Reconciliation figures with the calendar-day EOD figures when a shift spans midnight." },
+        { text: "Forgetting a paid out reduces Expected Cash — an unrecorded one will show up as a mystery variance later." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What does recording a paid out do?",
+        options: [
+          { text: "Reduces Expected Cash for the session immediately", correct: true },
+          { text: "Nothing until the drawer closes", correct: false },
+          { text: "Voids the day's sales", correct: false },
+        ],
+        explanation: "A paid out is reflected in Expected Cash right away, not just at close-out.",
+      },
+      {
+        question: "Can you view the End-of-Day Summary if the drawer is currently closed?",
+        options: [
+          { text: "Yes — it's independent of whether a session is open", correct: true },
+          { text: "No, only while a drawer session is open", correct: false },
+          { text: "Only a manager can ever view it", correct: false },
+        ],
+        explanation: "The EOD Summary toggle works regardless of drawer-session state.",
+      },
+      {
+        question: "Why might live Drawer Reconciliation differ from the calendar-day EOD figures?",
+        options: [
+          { text: "Because the current session may have started on a different day than \"today\"", correct: true },
+          { text: "They never differ", correct: false },
+          { text: "Because Reconciliation only counts card sales", correct: false },
+        ],
+        explanation: "A session-scoped figure and a calendar-day figure can diverge when a shift spans midnight.",
+      },
+    ],
     nextLesson: null,
   },
 
@@ -374,6 +520,152 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Every confirmed count is saved to a reviewable history.",
       },
     ],
+    nextLesson: { lessonId: "inv-4", sectionId: "inventory", title: "Editing, Deactivating, and Organizing Products" },
+  },
+
+  "inv-4": {
+    id: "inv-4",
+    sectionId: "inventory",
+    title: "Editing, Deactivating, and Organizing Products",
+    minutes: 5,
+    badgeId: "catalog-curator",
+    overview: {
+      objectives: [
+        "Edit an existing product's price, reorder level, and category",
+        "Deactivate a product so it stops appearing at checkout",
+        "Manage categories, including why some can't be deleted",
+      ],
+      summary: "Once a product exists, the Catalog table is where you fix its details, retire it, and keep categories organized.",
+      whyItMatters: "A wrong price or a product that should no longer sell needs a real fix, not a workaround — and categories have rules that block mistakes before they happen.",
+    },
+    walkthrough: {
+      screenLabel: "Products & Stock table (Inventory tab)",
+      callouts: [
+        { label: "1", title: "Edit (··· menu)", description: "Change name, price, reorder level, category, or margin settings. Cost price and initial stock aren't editable here — only at creation or via receiving." },
+        { label: "2", title: "Deactivate", description: "Removes the product from POS entirely — asks for confirmation first. There's no hard delete for products." },
+        { label: "3", title: "Categories", description: "Add, edit, or deactivate a category — but you can't delete or deactivate one that still has products assigned to it." },
+      ],
+    },
+    practice: {
+      intro: "Edit a product, then try to deactivate a category that's still in use.",
+      steps: [
+        { title: "Edit a product's price", description: "Open Edit and change the selling price." },
+        { title: "Deactivate a product", description: "Confirm it disappears from POS." },
+        { title: "Try deactivating a category with products in it", description: "See it get blocked." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Deactivate instead of trying to delete a discontinued product — there's no delete option by design." },
+        { text: "Reassign products to a different category before trying to retire the old one." },
+      ],
+      watchOutFor: [
+        { text: "Expecting to edit cost price or initial stock from the Edit form — those aren't editable there." },
+        { text: "Assuming a category can be deleted while products still reference it." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What happens when you deactivate a product?",
+        options: [
+          { text: "It stops appearing in POS", correct: true },
+          { text: "It's permanently deleted", correct: false },
+          { text: "Its stock is reset to zero", correct: false },
+        ],
+        explanation: "Deactivation is a status flag, not a delete — the product record stays intact.",
+      },
+      {
+        question: "Can you edit a product's cost price from the Edit Product form?",
+        options: [
+          { text: "No — cost is set at creation or updated via receiving", correct: true },
+          { text: "Yes, freely", correct: false },
+          { text: "Only the Owner can", correct: false },
+        ],
+        explanation: "The Edit form covers price, reorder level, and category — not cost price or initial stock.",
+      },
+      {
+        question: "Why might deactivating a category be blocked?",
+        options: [
+          { text: "Because products are still assigned to it", correct: true },
+          { text: "Categories can never be deactivated", correct: false },
+          { text: "Only the category name can change", correct: false },
+        ],
+        explanation: "A category with assigned products can't be deactivated or deleted until they're reassigned.",
+      },
+    ],
+    nextLesson: { lessonId: "inv-5", sectionId: "inventory", title: "Printing Barcode Labels" },
+  },
+
+  "inv-5": {
+    id: "inv-5",
+    sectionId: "inventory",
+    title: "Printing Barcode Labels",
+    minutes: 3,
+    badgeId: "label-printer",
+    overview: {
+      objectives: [
+        "Print a barcode label for a product",
+        "Know what's on the label",
+        "Understand that barcode lookup only checks your own catalog",
+      ],
+      summary: "Any product with a barcode can get a printed label — straight from the browser's print dialog, one at a time.",
+      whyItMatters: "A mislabeled shelf or a missing barcode label slows down every future scan of that product.",
+    },
+    walkthrough: {
+      screenLabel: "Products & Stock table — Print Barcode",
+      callouts: [
+        { label: "1", title: "Print Barcode (··· menu)", description: "Disabled if the product has no barcode. Opens a preview with the barcode, product name, price, and SKU." },
+        { label: "2", title: "One label at a time", description: "This prints a single product's label per run — there's no bulk/batch label printing." },
+        { label: "3", title: "Not an external lookup", description: "Scanning or typing a barcode on Add Product only checks your own catalog for a match — it doesn't pull data from a manufacturer database." },
+      ],
+    },
+    practice: {
+      intro: "Print a label for a product that has a barcode.",
+      steps: [
+        { title: "Open the ··· menu on a product with a barcode", description: "Find Print Barcode." },
+        { title: "Preview the label", description: "Check the name, price, and SKU shown." },
+        { title: "Print it", description: "Send it to the browser's print dialog." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "If a product has no barcode yet, WEGN Store will auto-generate an internal one when you leave the barcode field blank at creation." },
+        { text: "Reprint a label any time the price changes — the old sticker will show the wrong price." },
+      ],
+      watchOutFor: [
+        { text: "Expecting to print labels for multiple products in one run — it's one at a time." },
+        { text: "Assuming a scanned barcode will auto-fill details from an outside product database — it only matches products already in your catalog." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What's on a printed barcode label?",
+        options: [
+          { text: "Product name, barcode, price, and SKU", correct: true },
+          { text: "Just the barcode", correct: false },
+          { text: "Supplier name and cost", correct: false },
+        ],
+        explanation: "The label includes enough to identify and price the product at a glance.",
+      },
+      {
+        question: "Can you print labels for several products in one batch?",
+        options: [
+          { text: "No — it's one product's label per print run", correct: true },
+          { text: "Yes, select as many as you want", correct: false },
+          { text: "Only for products in the same category", correct: false },
+        ],
+        explanation: "Barcode label printing is a single-product action from the row menu.",
+      },
+      {
+        question: "Does scanning a barcode on Add Product pull data from an external database?",
+        options: [
+          { text: "No — it only checks whether that barcode already exists in your own catalog", correct: true },
+          { text: "Yes, it looks up a national product database", correct: false },
+          { text: "It always creates a brand-new product automatically", correct: false },
+        ],
+        explanation: "Auto-fill only works for barcodes your business has already used — there's no external lookup.",
+      },
+    ],
     nextLesson: null,
   },
 
@@ -521,6 +813,152 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Partial receiving stays open until every line item is fully resolved.",
       },
     ],
+    nextLesson: { lessonId: "pur-3", sectionId: "purchasing", title: "Managing Suppliers" },
+  },
+
+  "pur-3": {
+    id: "pur-3",
+    sectionId: "purchasing",
+    title: "Managing Suppliers",
+    minutes: 5,
+    badgeId: "supplier-manager",
+    overview: {
+      objectives: [
+        "Add, edit, and deactivate a supplier",
+        "Know when a supplier can and can't be deleted",
+        "Read a supplier's Performance metrics",
+      ],
+      summary: "Every PO belongs to a supplier record — this lesson covers keeping that list accurate, not just creating POs against it.",
+      whyItMatters: "A supplier you can't delete, or one deactivated by mistake, both have real consequences for ordering.",
+    },
+    walkthrough: {
+      screenLabel: "Suppliers panel",
+      callouts: [
+        { label: "1", title: "Add / Edit Supplier", description: "Name is required; contact person, phone, email, and notes are optional." },
+        { label: "2", title: "Deactivate vs. Delete", description: "Deactivating hides a supplier from PO creation. Delete is hard and permanent — but blocked entirely if the supplier has any PO on record, even a cancelled one." },
+        { label: "3", title: "Performance badge", description: "Good / Attention / No Activity, based on the share of that supplier's POs that were actually received." },
+      ],
+    },
+    practice: {
+      intro: "Add a supplier, then check why an active supplier can't be deleted.",
+      steps: [
+        { title: "Add a supplier", description: "Enter a name and contact info." },
+        { title: "Try to delete a supplier with existing POs", description: "See it get blocked." },
+        { title: "Deactivate the supplier instead", description: "Confirm it drops out of the PO creation list." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Deactivate a supplier you've stopped using instead of trying to delete it — deletion is blocked once any PO exists." },
+        { text: "Check the Performance badge before assigning a low-stock item to a supplier with a history of not delivering." },
+      ],
+      watchOutFor: [
+        { text: "Trying to delete a supplier that has any PO on record, even a cancelled one — it will be blocked." },
+        { text: "Deactivating a supplier that's still assigned to open purchase orders." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What's required to add a supplier?",
+        options: [
+          { text: "Just a name", correct: true },
+          { text: "Name, phone, and email all required", correct: false },
+          { text: "A signed contract on file", correct: false },
+        ],
+        explanation: "Only the name field is required — contact details and notes are optional.",
+      },
+      {
+        question: "When is deleting a supplier blocked?",
+        options: [
+          { text: "If the supplier has any purchase order on record, even a cancelled one", correct: true },
+          { text: "It's never blocked", correct: false },
+          { text: "Only if they have an open PO right now", correct: false },
+        ],
+        explanation: "Any PO history at all — including cancelled POs — blocks a hard delete.",
+      },
+      {
+        question: "What does a supplier's Performance badge reflect?",
+        options: [
+          { text: "The share of their POs that were actually received", correct: true },
+          { text: "How long they've been a supplier", correct: false },
+          { text: "Their outstanding invoice balance", correct: false },
+        ],
+        explanation: "Performance is calculated from received-vs-total PO history.",
+      },
+    ],
+    nextLesson: { lessonId: "pur-4", sectionId: "purchasing", title: "Canceling, Printing, and Signing POs; Supplier Statements" },
+  },
+
+  "pur-4": {
+    id: "pur-4",
+    sectionId: "purchasing",
+    title: "Canceling, Printing, and Signing POs; Supplier Statements",
+    minutes: 6,
+    badgeId: "po-lifecycle-pro",
+    overview: {
+      objectives: [
+        "Cancel or delete a PO, and know when each is allowed",
+        "Print, email, and sign a purchase order",
+        "Record a supplier payment from a Supplier Statement",
+      ],
+      summary: "Beyond create-and-receive, a PO can be cancelled, deleted, printed, emailed, and signed — and every supplier has a running statement of what they're owed.",
+      whyItMatters: "Knowing exactly what Cancel, Delete, and Email PO actually do (and don't do) prevents a surprise later.",
+    },
+    walkthrough: {
+      screenLabel: "PO detail — more actions",
+      callouts: [
+        { label: "1", title: "Cancel vs. Delete", description: "Cancel works on draft or ordered POs only — once anything has been received, it can't be cancelled. Delete is a hard remove, draft-only." },
+        { label: "2", title: "Email PO", description: "Downloads a PDF and opens a pre-filled email — it does not actually attach or send the file for you; you attach the just-downloaded PDF yourself." },
+        { label: "3", title: "Supplier Statement", description: "Shows Total Invoiced, Total Paid, and Outstanding per supplier, with a Record Payment form for PO-linked invoices." },
+      ],
+    },
+    practice: {
+      intro: "Try cancelling a draft PO, then open a supplier's statement.",
+      steps: [
+        { title: "Cancel a draft PO", description: "Confirm the status changes to Cancelled." },
+        { title: "Open a supplier's Statement", description: "Check Total Invoiced vs. Outstanding." },
+        { title: "Record a payment", description: "Apply it against an invoice and watch Outstanding drop." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Print or sign a PO before sending it to a supplier who expects a paper trail." },
+        { text: "Check the Statement's Outstanding total before assuming a supplier invoice is fully paid." },
+      ],
+      watchOutFor: [
+        { text: "Assuming Email PO actually sends the file — you still have to attach the downloaded PDF yourself." },
+        { text: "Trying to cancel a PO that's already partially received — it's blocked once inventory has moved." },
+      ],
+    },
+    quiz: [
+      {
+        question: "Can you cancel a partially received PO?",
+        options: [
+          { text: "No — cancellation only works on draft or ordered POs", correct: true },
+          { text: "Yes, any time", correct: false },
+          { text: "Only the Owner can", correct: false },
+        ],
+        explanation: "Once inventory has moved from a receive, the PO can no longer be cancelled.",
+      },
+      {
+        question: "What does \"Email PO\" actually do?",
+        options: [
+          { text: "Downloads a PDF and opens a pre-filled email — you attach the file yourself", correct: true },
+          { text: "Sends the PO automatically with the PDF attached", correct: false },
+          { text: "Faxes the supplier directly", correct: false },
+        ],
+        explanation: "It's a shortcut to drafting the email, not a full send-with-attachment.",
+      },
+      {
+        question: "What does a Supplier Statement's Outstanding figure show?",
+        options: [
+          { text: "What's still owed to that supplier across their invoices", correct: true },
+          { text: "The supplier's total lifetime revenue with you", correct: false },
+          { text: "The number of open POs", correct: false },
+        ],
+        explanation: "Outstanding is Total Invoiced minus Total Paid.",
+      },
+    ],
     nextLesson: null,
   },
 
@@ -606,27 +1044,27 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
     badgeId: "loyalty-pro",
     overview: {
       objectives: [
-        "Understand how customers earn points automatically",
+        "Understand how customers earn points automatically — and when they don't",
         "Redeem points at checkout",
         "Read a customer's points history",
       ],
-      summary: "Loyalty points aren't something you configure — every sale attached to a customer earns points automatically, and points redeem for a discount at checkout.",
-      whyItMatters: "Knowing the real conversion rate means you can explain it to a customer with confidence instead of guessing.",
+      summary: "Loyalty points aren't something you configure — a sale attached to a customer earns points automatically, at about 1 point per $1 of the discounted, pre-tax subtotal. Points redeem for a discount at checkout at a fixed rate.",
+      whyItMatters: "Knowing the real conversion rate — and the one big exception — means you can explain it to a customer with confidence instead of guessing.",
     },
     walkthrough: {
       screenLabel: "Checkout — loyalty section",
       callouts: [
-        { label: "1", title: "Automatic earning", description: "Attaching a customer to a sale earns them points automatically — about 1 point per $1 spent." },
-        { label: "2", title: "Redeem Points field", description: "At checkout, enter how many points to redeem — 100 points = $1.00 off." },
-        { label: "3", title: "Points History", description: "Every customer's profile shows a full earn/redeem history, tied to specific sales." },
+        { label: "1", title: "Automatic earning", description: "Attaching a customer to a sale earns them points automatically — about 1 point per $1 of the discounted, pre-tax subtotal." },
+        { label: "2", title: "Earn OR redeem, not both", description: "If any points are redeemed on a sale, that same sale earns zero points — earning and redeeming don't stack on one transaction." },
+        { label: "3", title: "Redeem Points field", description: "At checkout, enter how many points to redeem — 100 points = $1.00 off, capped at the customer's balance." },
       ],
     },
     practice: {
-      intro: "Attach a customer to a sale and redeem some of their points.",
+      intro: "Attach a customer to a sale, then see earning and redemption in action.",
       steps: [
         { title: "Attach a customer to a sale", description: "Look them up at checkout." },
-        { title: "Enter a points amount to redeem", description: "Watch the discount calculate." },
-        { title: "Confirm the conversion", description: "100 points = $1.00 off." },
+        { title: "Complete a sale with no points redeemed", description: "Confirm points were earned on it." },
+        { title: "Redeem points on a different sale", description: "Confirm that sale earns zero new points." },
       ],
     },
     tips: {
@@ -635,19 +1073,28 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         { text: "Check Points History if a customer questions their balance." },
       ],
       watchOutFor: [
-        { text: "Trying to redeem more points than the customer has available." },
-        { text: "Assuming points need to be manually awarded — they're automatic on every sale." },
+        { text: "Trying to redeem more points than the customer has available — checkout blocks it." },
+        { text: "Assuming a sale earns points even when the customer redeemed points on it — it doesn't; earning and redeeming are mutually exclusive per sale." },
       ],
     },
     quiz: [
       {
         question: "How are loyalty points normally earned?",
         options: [
-          { text: "Automatically, about 1 point per $1 spent", correct: true },
+          { text: "Automatically, about 1 point per $1 of the discounted, pre-tax subtotal", correct: true },
           { text: "A manager must award them manually", correct: false },
           { text: "Only on the customer's birthday", correct: false },
         ],
-        explanation: "Points accrue automatically whenever a customer is attached to a sale.",
+        explanation: "Points accrue automatically whenever a customer is attached to a sale — as long as the sale doesn't also redeem points.",
+      },
+      {
+        question: "What happens to points earned on a sale where the customer also redeems points?",
+        options: [
+          { text: "That sale earns zero new points", correct: true },
+          { text: "It earns points as normal, on top of the redemption", correct: false },
+          { text: "The redemption is cancelled instead", correct: false },
+        ],
+        explanation: "Earning and redeeming are mutually exclusive on a single sale — redeeming any points means that sale earns none.",
       },
       {
         question: "What's the redemption rate?",
@@ -658,14 +1105,78 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         ],
         explanation: "100 points redeem for exactly one dollar off.",
       },
+    ],
+    nextLesson: { lessonId: "cust-3", sectionId: "customers", title: "Editing and Deactivating Customers" },
+  },
+
+  "cust-3": {
+    id: "cust-3",
+    sectionId: "customers",
+    title: "Editing and Deactivating Customers",
+    minutes: 4,
+    badgeId: "customer-caretaker",
+    overview: {
+      objectives: [
+        "Edit a customer's name, phone, or email",
+        "Deactivate a customer and know what that does at POS",
+        "Know what happens to points when a sale is voided or returned",
+      ],
+      summary: "Beyond adding a customer, Owners and Managers can edit their details or deactivate them — and loyalty points have real, sometimes permanent, consequences on void and return.",
+      whyItMatters: "A deactivated customer disappears from checkout lookup entirely, and redeemed points are never restored on a return — both are easy to get wrong once.",
+    },
+    walkthrough: {
+      screenLabel: "Customers tab — row actions",
+      callouts: [
+        { label: "1", title: "Edit (Owner/Manager only)", description: "Update name, phone, or email — Cashiers can add a customer but can't edit one." },
+        { label: "2", title: "Deactivate", description: "Removes the customer from POS lookup and, if they're attached to the sale in progress, removes them from it too. There's no delete — only deactivate/reactivate." },
+        { label: "3", title: "Points on void/return", description: "Voiding a sale reverses 100% of points it earned. A return reverses points proportionally to what was returned. Redeemed points are never restored either way." },
+      ],
+    },
+    practice: {
+      intro: "Edit a customer, then deactivate one and check POS lookup.",
+      steps: [
+        { title: "Edit a customer's phone number", description: "Save the change." },
+        { title: "Deactivate a customer", description: "Confirm the prompt." },
+        { title: "Search for them at POS", description: "Confirm they no longer appear in lookup." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Double-check a phone number edit — it's the main way customers get looked up." },
+        { text: "Explain to a customer that redeemed points aren't refunded if they later return that purchase." },
+      ],
+      watchOutFor: [
+        { text: "Assuming a Cashier can edit or deactivate a customer — that's Owner/Manager only." },
+        { text: "Assuming a return restores redeemed points — it doesn't; only earned points ever reverse." },
+      ],
+    },
+    quiz: [
       {
-        question: "Where can you see a customer's points history?",
+        question: "Who can edit or deactivate a customer record?",
         options: [
-          { text: "Their customer profile", correct: true },
-          { text: "The receipt printer", correct: false },
-          { text: "Employee settings", correct: false },
+          { text: "Owner or Manager only", correct: true },
+          { text: "Any Cashier", correct: false },
+          { text: "Only the customer themselves", correct: false },
         ],
-        explanation: "Every earn and redeem transaction is logged on the customer's profile.",
+        explanation: "Adding a customer is open to Cashiers too, but editing and deactivating are Owner/Manager-only.",
+      },
+      {
+        question: "What happens if a sale that redeemed points is later returned?",
+        options: [
+          { text: "The redeemed points are not restored to the customer", correct: true },
+          { text: "The points are automatically credited back", correct: false },
+          { text: "The customer's whole balance is reset", correct: false },
+        ],
+        explanation: "Only earned points ever reverse on a return — redeemed points are gone regardless.",
+      },
+      {
+        question: "What happens if you deactivate a customer who's attached to the sale currently in progress?",
+        options: [
+          { text: "They're removed from that in-progress sale", correct: true },
+          { text: "The sale is automatically voided", correct: false },
+          { text: "Nothing changes on that sale", correct: false },
+        ],
+        explanation: "Deactivating clears them from any sale currently being rung up.",
       },
     ],
     nextLesson: null,
@@ -691,8 +1202,8 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       screenLabel: "Sales Analytics (Reports tab)",
       callouts: [
         { label: "1", title: "Period selector", description: "Switch between Today, Last 7 Days, Last 30 Days, and All Time." },
-        { label: "2", title: "KPI cards", description: "Revenue, Transactions, Average Transaction, Items Sold, Discounts Given, Tax Collected." },
-        { label: "3", title: "Payment split", description: "Cash vs. card vs. other, both in dollars and as a percentage of revenue." },
+        { label: "2", title: "KPI cards", description: "Revenue, Transactions, Avg Transaction, Items Sold, Discounts Given, Tax Collected." },
+        { label: "3", title: "Payment split", description: "Cash and Card always show, in dollars and as a percentage of revenue; Other only appears once there's an Other-tender sale to report." },
       ],
     },
     practice: {
@@ -726,20 +1237,20 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       {
         question: "Which of these is one of the KPI cards?",
         options: [
-          { text: "Average Transaction", correct: true },
+          { text: "Avg Transaction", correct: true },
           { text: "Employee schedule", correct: false },
           { text: "Reorder level", correct: false },
         ],
-        explanation: "Average Transaction is one of the six KPI cards shown.",
+        explanation: "Avg Transaction is one of the six KPI cards shown.",
       },
       {
-        question: "What does the payment split show?",
+        question: "When does the payment split show an \"Other\" row?",
         options: [
-          { text: "Cash vs. card vs. other, in dollars and percentage", correct: true },
-          { text: "Only cash transactions", correct: false },
-          { text: "Only card transactions", correct: false },
+          { text: "Only once there's an Other-tender sale in the period", correct: true },
+          { text: "Always, even at $0", correct: false },
+          { text: "Never — only cash and card exist", correct: false },
         ],
-        explanation: "The payment split covers every tender type side by side.",
+        explanation: "Cash and Card always show; Other is conditional on having actual Other-tender revenue.",
       },
     ],
     nextLesson: { lessonId: "rep-2", sectionId: "reports", title: "Reviewing Inventory Reports" },
@@ -813,6 +1324,79 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
           { text: "Employee settings", correct: false },
         ],
         explanation: "Return History under Inventory Reports covers past returns.",
+      },
+    ],
+    nextLesson: { lessonId: "rep-3", sectionId: "reports", title: "Understanding the Profit Report" },
+  },
+
+  "rep-3": {
+    id: "rep-3",
+    sectionId: "reports",
+    title: "Understanding the Profit Report",
+    minutes: 5,
+    badgeId: "profit-reader",
+    overview: {
+      objectives: [
+        "Read the Profit Report's KPI cards",
+        "Understand Gross Margin vs. Gross Profit",
+        "Use Top Profit Products and Lowest Margin Products",
+      ],
+      summary: "Below the other Inventory Reports, the Profit Report breaks revenue down all the way to margin — its own period selector, separate from Sales Analytics.",
+      whyItMatters: "Revenue tells you what came in; the Profit Report tells you what you actually kept after cost of goods.",
+    },
+    walkthrough: {
+      screenLabel: "Profit Report (Reports tab)",
+      callouts: [
+        { label: "1", title: "Its own period selector", description: "Today / Last 7 Days / Last 30 Days / All Time — independent of where you left Sales Analytics." },
+        { label: "2", title: "KPI cards", description: "Gross Sales, Discounts, Returns, Net Sales (Pre-Tax), COGS, Gross Profit, Gross Margin, Tax Collected, Total Collected (Including Tax)." },
+        { label: "3", title: "Top Profit / Lowest Margin Products", description: "Two tables ranking products by actual profit contribution and by margin — not just by units sold." },
+      ],
+    },
+    practice: {
+      intro: "Read the KPI cards, then check the Lowest Margin Products table.",
+      steps: [
+        { title: "Find Gross Profit and Gross Margin", description: "Note the difference — one's a dollar amount, one's a percentage." },
+        { title: "Switch the period", description: "See the cards recalculate independently of Sales Analytics." },
+        { title: "Open Lowest Margin Products", description: "Spot a product that sells well but earns little." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Check Lowest Margin Products periodically — a bestseller can still be a weak earner." },
+        { text: "Remember COGS relies on average cost, so keep receiving costs accurate to keep this report trustworthy." },
+      ],
+      watchOutFor: [
+        { text: "Confusing Gross Profit (a dollar figure) with Gross Margin (a percentage)." },
+        { text: "Assuming the Profit Report's period matches whatever you last set on Sales Analytics — it's independent." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What's the difference between Gross Profit and Gross Margin?",
+        options: [
+          { text: "Gross Profit is a dollar amount; Gross Margin is a percentage", correct: true },
+          { text: "They're the same thing", correct: false },
+          { text: "Gross Margin includes tax, Gross Profit doesn't", correct: false },
+        ],
+        explanation: "Profit is the dollar figure kept after COGS; Margin expresses that as a percentage of sales.",
+      },
+      {
+        question: "Does the Profit Report share its period selector with Sales Analytics?",
+        options: [
+          { text: "No — it has its own, independent period selector", correct: true },
+          { text: "Yes, they're always synced", correct: false },
+          { text: "There's no period selector on the Profit Report", correct: false },
+        ],
+        explanation: "The Profit Report's period selector is separate from Sales Analytics' own.",
+      },
+      {
+        question: "What does Lowest Margin Products help you spot?",
+        options: [
+          { text: "A product that sells well but earns little profit per sale", correct: true },
+          { text: "Products that are out of stock", correct: false },
+          { text: "The most expensive products in the catalog", correct: false },
+        ],
+        explanation: "It ranks by margin, not by units sold, surfacing weak earners even if they're popular.",
       },
     ],
     nextLesson: null,
@@ -910,9 +1494,9 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
     walkthrough: {
       screenLabel: "Role access comparison",
       callouts: [
-        { label: "1", title: "Cashier", description: "Dashboard, POS, and Customers — everything needed to run the register." },
-        { label: "2", title: "Manager", description: "Everything a Cashier has, plus Inventory, Purchasing, Cash Drawer, and Reports." },
-        { label: "3", title: "Inventory Clerk", description: "Inventory and Purchasing only — no register, no customer data." },
+        { label: "1", title: "Cashier", description: "Dashboard, POS, and Customers — everything needed to run the register. No Wegn AI." },
+        { label: "2", title: "Manager", description: "Everything a Cashier has, plus Inventory, Purchasing, Cash Drawer, Reports, and Wegn AI." },
+        { label: "3", title: "Inventory Clerk", description: "Inventory and Purchasing only — no register, no customer data, no Wegn AI." },
       ],
     },
     practice: {
@@ -930,7 +1514,7 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       ],
       watchOutFor: [
         { text: "Assuming Manager includes Employees or Settings access — it doesn't." },
-        { text: "Giving an Inventory Clerk POS access they don't have a role for." },
+        { text: "Assuming Cashier or Inventory Clerk can use Wegn AI — only Owner and Manager can." },
       ],
     },
     quiz: [
@@ -960,6 +1544,79 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
           { text: "Only the Dashboard", correct: false },
         ],
         explanation: "Inventory Clerk is scoped tightly to stock and purchasing.",
+      },
+    ],
+    nextLesson: { lessonId: "emp-3", sectionId: "employees", title: "Editing and Deactivating Staff" },
+  },
+
+  "emp-3": {
+    id: "emp-3",
+    sectionId: "employees",
+    title: "Editing and Deactivating Staff",
+    minutes: 4,
+    badgeId: "staff-caretaker",
+    overview: {
+      objectives: [
+        "Edit an employee's ID or role",
+        "Deactivate and reactivate an employee",
+        "Know there's no way to delete an employee outright",
+      ],
+      summary: "Staff records change over time — a role gets promoted, an Employee ID needs correcting, or someone leaves. Every one of those is Owner-only.",
+      whyItMatters: "Editing an Employee ID changes their login credential — worth knowing before you do it while they're mid-shift.",
+    },
+    walkthrough: {
+      screenLabel: "Staff tab — row actions",
+      callouts: [
+        { label: "1", title: "Edit", description: "Changes Employee ID and Role together in one action. Name and PIN are not editable here." },
+        { label: "2", title: "Deactivate / Activate", description: "A single toggle button; deactivating asks for confirmation and, if that employee is the active cashier at POS, clears them from it automatically." },
+        { label: "3", title: "No delete", description: "There is no \"remove employee\" feature — only deactivate, which keeps their history intact." },
+      ],
+    },
+    practice: {
+      intro: "Edit an employee's role, then deactivate and reactivate them.",
+      steps: [
+        { title: "Edit an employee's role", description: "Change it and save." },
+        { title: "Deactivate the employee", description: "Confirm the prompt." },
+        { title: "Reactivate them", description: "Toggle it back — no confirmation needed this time." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Warn an employee before changing their Employee ID — it's also their login credential." },
+        { text: "Deactivate instead of trying to find a delete option — there isn't one, by design, to keep history intact." },
+      ],
+      watchOutFor: [
+        { text: "Deactivating the employee who's currently the active cashier at POS without expecting them to be cleared from it." },
+        { text: "Forgetting that editing Employee ID changes what that person types in to sign in next shift." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What can be changed in the Edit flow for an employee?",
+        options: [
+          { text: "Employee ID and Role", correct: true },
+          { text: "Name and PIN", correct: false },
+          { text: "Everything, including PIN", correct: false },
+        ],
+        explanation: "Name and PIN have their own separate flows (PIN reset); Edit covers ID and Role.",
+      },
+      {
+        question: "Is there a way to delete an employee record?",
+        options: [
+          { text: "No — only deactivate, which preserves their history", correct: true },
+          { text: "Yes, a hard delete option exists", correct: false },
+          { text: "Only the employee can delete themselves", correct: false },
+        ],
+        explanation: "WEGN Store has no employee-deletion feature — deactivation is the only removal path.",
+      },
+      {
+        question: "What happens if you deactivate the employee currently active as cashier at POS?",
+        options: [
+          { text: "They're automatically cleared as the active cashier", correct: true },
+          { text: "The current sale is voided", correct: false },
+          { text: "Nothing — they stay active until logout", correct: false },
+        ],
+        explanation: "Deactivation immediately clears them from the active-cashier slot.",
       },
     ],
     nextLesson: null,
@@ -1107,6 +1764,300 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
           { text: "Never — it's only for new items", correct: false },
         ],
         explanation: "Linking avoids creating a duplicate when the product is already there.",
+      },
+    ],
+    nextLesson: { lessonId: "settings-1", sectionId: "settings", title: "Configuring Your Business Profile" },
+  },
+
+  // ── Settings ──────────────────────────────────────────────────
+  "settings-1": {
+    id: "settings-1",
+    sectionId: "settings",
+    title: "Configuring Your Business Profile",
+    minutes: 5,
+    badgeId: "profile-configurator",
+    overview: {
+      objectives: [
+        "Edit your Business Profile and Selling Policy",
+        "Set your region, currency, timezone, and date format in Business Configuration",
+        "Know that only the Owner can change any of this",
+      ],
+      summary: "Settings is where your store's identity and rules live — name, contact info, tax rate, selling policy, and regional formatting. It's all Owner-only.",
+      whyItMatters: "Business Configuration feeds POS, Dashboard, Reports, Inventory, Purchasing, Customers, Cash Drawer, receipts, and Wegn AI — getting it right once avoids wrong numbers everywhere else.",
+    },
+    walkthrough: {
+      screenLabel: "Settings tab — Business Profile",
+      callouts: [
+        { label: "1", title: "Business Profile", description: "Name (required), phone, email, address, and tax rate — edit and save as a group." },
+        { label: "2", title: "Selling Policy", description: "Fixed Prices, Negotiated Prices, or Negotiated with Approval — the last one's approval workflow is explicitly labeled \"coming soon,\" not a working feature yet." },
+        { label: "3", title: "Business Configuration", description: "Country/region, currency code and symbol, timezone, date format, and default tax rate — auto-filled by country but always editable." },
+      ],
+    },
+    practice: {
+      intro: "Edit your Business Profile, then check the Selling Policy options.",
+      steps: [
+        { title: "Edit the Business Profile", description: "Update the tax rate and save." },
+        { title: "Review the three Selling Policy options", description: "Note which one is marked coming soon." },
+        { title: "Open Business Configuration", description: "Check the currency and timezone fields." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Set your real tax rate here once — it feeds every sale, report, and receipt from then on." },
+        { text: "Don't promise a customer an approval workflow on negotiated pricing — that part isn't built yet." },
+      ],
+      watchOutFor: [
+        { text: "Expecting a Manager to be able to change any of this — Settings is Owner-only, full stop." },
+        { text: "Assuming Negotiated with Approval already has a working approval step — the UI says \"coming soon.\"" },
+      ],
+    },
+    quiz: [
+      {
+        question: "Who can edit Business Profile or Business Configuration?",
+        options: [
+          { text: "Only the Owner", correct: true },
+          { text: "Owner or Manager", correct: false },
+          { text: "Any role with Settings access", correct: false },
+        ],
+        explanation: "Settings is excluded from every assignable role — only Owner has it.",
+      },
+      {
+        question: "What does the Selling Policy \"Negotiated with Approval\" option actually do today?",
+        options: [
+          { text: "Nothing yet — its approval workflow is labeled \"coming soon\"", correct: true },
+          { text: "Routes every negotiated price to a manager for approval", correct: false },
+          { text: "Blocks all negotiated pricing", correct: false },
+        ],
+        explanation: "It's a real option in the UI, but the approval logic behind it isn't built yet.",
+      },
+      {
+        question: "What does Business Configuration feed, according to the app itself?",
+        options: [
+          { text: "POS, Dashboard, Reports, Inventory, Purchasing, Customers, Cash Drawer, receipts, and Wegn AI", correct: true },
+          { text: "Only the receipt printer", correct: false },
+          { text: "Nothing else in the app", correct: false },
+        ],
+        explanation: "Currency, timezone, and tax settings here are used almost everywhere in the app.",
+      },
+    ],
+    nextLesson: { lessonId: "settings-2", sectionId: "settings", title: "Registering Devices & Receipt Settings" },
+  },
+
+  "settings-2": {
+    id: "settings-2",
+    sectionId: "settings",
+    title: "Registering Devices & Receipt Settings",
+    minutes: 4,
+    badgeId: "device-registrar",
+    overview: {
+      objectives: [
+        "Register a shared device for Staff Mode",
+        "Revoke a device that shouldn't have access anymore",
+        "Know what Receipt Settings does and doesn't do today",
+      ],
+      summary: "Device Management turns a shared physical device into a Staff Mode terminal — sign in with an Employee ID and PIN, no owner login needed. Receipt Settings is a preview only.",
+      whyItMatters: "Registering a device from the wrong browser hands that browser over to Staff Mode — this is meant to be done on the physical device itself.",
+    },
+    walkthrough: {
+      screenLabel: "Settings tab — Registered Devices",
+      callouts: [
+        { label: "1", title: "Register This Device", description: "Label it (e.g. \"Front Register\") and register — this switches the CURRENT browser's session into Staff Mode, so do this from the physical device, not your own." },
+        { label: "2", title: "Revoke", description: "Removes a device's access; unlike registering, revoking doesn't affect your own current session." },
+        { label: "3", title: "Receipt Settings", description: "A read-only preview of what prints on a receipt — logo upload and printer setup are explicitly labeled \"coming in v2,\" not available yet." },
+      ],
+    },
+    practice: {
+      intro: "Review the device list and the Receipt Settings preview.",
+      steps: [
+        { title: "Open Registered Devices", description: "Review the label/status/date columns." },
+        { title: "Find the Revoke button", description: "Note it only shows for active devices." },
+        { title: "Open Receipt Settings", description: "Confirm it's a preview with no edit controls." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Register a shared till or tablet from that device itself, not from your own laptop." },
+        { text: "Revoke a device immediately if it's lost or a device is retired." },
+      ],
+      watchOutFor: [
+        { text: "Registering a device from your own owner browser by mistake — it will switch your session to Staff Mode." },
+        { text: "Looking for a logo upload or printer setup in Receipt Settings — neither exists yet." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What happens to your current browser session when you register a device?",
+        options: [
+          { text: "It switches to Staff Mode for that new device", correct: true },
+          { text: "Nothing changes", correct: false },
+          { text: "It logs you out entirely", correct: false },
+        ],
+        explanation: "Registering is meant to be done on the physical shared device — it hands that session to Staff Mode.",
+      },
+      {
+        question: "Does revoking a device affect your own current session?",
+        options: [
+          { text: "No — revoke only targets the device being revoked", correct: true },
+          { text: "Yes, it logs you out too", correct: false },
+          { text: "It switches your session to Staff Mode", correct: false },
+        ],
+        explanation: "Revoke and register behave differently — only register touches the current browser's session.",
+      },
+      {
+        question: "What can you do in Receipt Settings today?",
+        options: [
+          { text: "View a read-only preview — logo/printer setup is \"coming in v2\"", correct: true },
+          { text: "Upload a custom logo", correct: false },
+          { text: "Configure a receipt printer driver", correct: false },
+        ],
+        explanation: "Receipt Settings is currently preview-only, with the editable features explicitly marked as not yet built.",
+      },
+    ],
+    nextLesson: null,
+  },
+
+  // ── AI Assistant ──────────────────────────────────────────────
+  "ai-1": {
+    id: "ai-1",
+    sectionId: "ai-assistant",
+    title: "Reading the Executive Briefing",
+    minutes: 4,
+    badgeId: "briefing-reader",
+    overview: {
+      objectives: [
+        "Read the Wegn AI Executive Briefing's health cards and alerts",
+        "Know which cards are Owner/Manager-only",
+        "Use the Recommended Actions shortcuts",
+      ],
+      summary: "The top of the Wegn AI page is a static, always-current briefing — not a chat response — built from the same data as the rest of the app.",
+      whyItMatters: "It's the fastest single screen to spot a stock problem or check if the drawer's open, without a single question typed.",
+    },
+    walkthrough: {
+      screenLabel: "Wegn AI — Executive Briefing",
+      callouts: [
+        { label: "1", title: "Overall Store Health cards", description: "Today's Sales (everyone), Today's Profit (Owner/Manager only), Inventory Health, and Cash Drawer status." },
+        { label: "2", title: "Priority Alerts", description: "Low-stock, out-of-stock, and expiring-batch alerts, most severe first — up to 5 at a time." },
+        { label: "3", title: "Recommended Actions", description: "Three fixed shortcut buttons into Inventory and Purchasing — not AI-generated suggestions, just quick navigation." },
+      ],
+    },
+    practice: {
+      intro: "Find each health card and the alerts list.",
+      steps: [
+        { title: "Check Today's Sales", description: "Available to every role that can see this tab." },
+        { title: "Check Today's Profit", description: "Note it's Owner/Manager only." },
+        { title: "Review Priority Alerts", description: "See what's flagged most severe first." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Check the Briefing first before typing a question to the chat below it — it may already have your answer." },
+        { text: "Use the Recommended Actions buttons as shortcuts instead of navigating the full menu." },
+      ],
+      watchOutFor: [
+        { text: "Expecting the Briefing to update in response to a question — it's a static summary, not part of the chat." },
+        { text: "Assuming a Cashier or Inventory Clerk can see this page at all — Wegn AI is Owner/Manager only." },
+      ],
+    },
+    quiz: [
+      {
+        question: "Is the Executive Briefing generated by the AI model?",
+        options: [
+          { text: "No — it's a static, computed summary from the same data as the rest of the app", correct: true },
+          { text: "Yes, it's an AI-written summary", correct: false },
+          { text: "It's random sample data", correct: false },
+        ],
+        explanation: "The Briefing is deliberately not routed through the AI — it's a fast, deterministic dashboard.",
+      },
+      {
+        question: "Who can see the Today's Profit card?",
+        options: [
+          { text: "Owner and Manager only", correct: true },
+          { text: "Every role", correct: false },
+          { text: "Only the Owner", correct: false },
+        ],
+        explanation: "Profit is gated the same way as everywhere else — Owner/Manager only.",
+      },
+      {
+        question: "What do the Recommended Actions buttons do?",
+        options: [
+          { text: "Navigate to Inventory or Purchasing — they're fixed shortcuts, not AI suggestions", correct: true },
+          { text: "Automatically create a purchase order", correct: false },
+          { text: "Message the supplier directly", correct: false },
+        ],
+        explanation: "They're navigation shortcuts, not actions the AI performs on your behalf.",
+      },
+    ],
+    nextLesson: { lessonId: "ai-2", sectionId: "ai-assistant", title: "Asking Wegn AI" },
+  },
+
+  "ai-2": {
+    id: "ai-2",
+    sectionId: "ai-assistant",
+    title: "Asking Wegn AI",
+    minutes: 5,
+    badgeId: "ai-questioner",
+    overview: {
+      objectives: [
+        "Ask Wegn AI a question about sales, stock, or suppliers",
+        "Know that Wegn AI is read-only — it cannot create, edit, or approve anything",
+        "Know that chat history doesn't persist across a page reload",
+      ],
+      summary: "Wegn AI answers questions using your store's real data — sales, low stock, supplier balances, and more — but it can only look things up, never act on them.",
+      whyItMatters: "Trusting Wegn AI to actually place an order, adjust stock, or process anything would be a mistake — it can't; overselling what it can do sets up a real failure.",
+    },
+    walkthrough: {
+      screenLabel: "Ask Wegn AI — chat",
+      callouts: [
+        { label: "1", title: "Ask a question", description: "e.g. \"What are my top sellers this week?\" or \"Which products are low on stock?\" — answered from real data, never guessed." },
+        { label: "2", title: "Read-only, always", description: "Every tool behind Wegn AI only looks up data — it cannot create a PO, adjust inventory, apply a discount, or process a return." },
+        { label: "3", title: "No memory across reloads", description: "Refreshing the page starts a brand-new conversation — nothing from before is remembered." },
+      ],
+    },
+    practice: {
+      intro: "Ask Wegn AI a real question, then note what it can't do.",
+      steps: [
+        { title: "Ask about today's sales", description: "See it answer from real data." },
+        { title: "Ask it to do something write-based", description: "e.g. \"create a purchase order for me\" — see it explain it can't." },
+        { title: "Reload the page", description: "Confirm the conversation starts fresh." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Ask specific questions — \"low stock items\" or \"supplier balance for X\" — it's built to answer exactly those kinds of lookups." },
+        { text: "If Wegn AI says it can't find or report something, trust that — it's told to say so rather than guess." },
+      ],
+      watchOutFor: [
+        { text: "Asking Wegn AI to take an action (create a PO, adjust stock, apply a discount) — it has no write tools at all." },
+        { text: "Expecting it to remember an earlier conversation after a page reload — it doesn't." },
+      ],
+    },
+    quiz: [
+      {
+        question: "Can Wegn AI create a purchase order for you?",
+        options: [
+          { text: "No — it has no write/action tools, only read-only lookups", correct: true },
+          { text: "Yes, just ask it to", correct: false },
+          { text: "Only if you're the Owner", correct: false },
+        ],
+        explanation: "Every tool available to Wegn AI is read-only — nothing it does changes your data.",
+      },
+      {
+        question: "What happens to your conversation if you reload the page?",
+        options: [
+          { text: "It starts a brand-new conversation — nothing is remembered", correct: true },
+          { text: "It picks up exactly where you left off", correct: false },
+          { text: "It's saved permanently to your profile", correct: false },
+        ],
+        explanation: "Chat history is session-only and doesn't persist across reloads.",
+      },
+      {
+        question: "What should you do if Wegn AI says it can't find or report a number?",
+        options: [
+          { text: "Trust it — it's designed to say so rather than guess", correct: true },
+          { text: "Assume it's broken and ask again the same way", correct: false },
+          { text: "Assume the number is zero", correct: false },
+        ],
+        explanation: "The system is explicitly told never to estimate — an honest \"I can't find that\" is by design.",
       },
     ],
     nextLesson: null,

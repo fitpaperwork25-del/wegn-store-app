@@ -19,20 +19,22 @@ const WELCOME_LESSON: OnboardingLessonContent = {
       "Everyone on your team sees the same live numbers",
     ],
     youWillLearn: [
-      "The 8 areas that make up the platform",
+      "The 10 areas that make up the platform",
       "Where to find what you need, fast",
       "How to complete your first hands-on task",
     ],
   },
   platformTour: [
     { id: "dashboard", label: "Dashboard", icon: "grid", description: "Your at-a-glance view of today's sales, stock alerts, and what needs attention." },
-    { id: "pos", label: "POS", icon: "cart", description: "Ring up sales, take payment, and print or email receipts." },
+    { id: "pos", label: "POS", icon: "cart", description: "Ring up sales, take payment, and print receipts." },
     { id: "inventory", label: "Inventory", icon: "box", description: "Every product you sell, its stock level, and low-stock alerts." },
     { id: "purchasing", label: "Purchasing", icon: "receipt", description: "Order stock from suppliers and receive shipments when they arrive." },
     { id: "customers", label: "Customers", icon: "users", description: "Your customer list, purchase history, and loyalty rewards." },
-    { id: "reports", label: "Reports", icon: "chart", description: "Daily summaries and exportable reports for your accountant." },
-    { id: "employees", label: "Employees", icon: "badge", description: "Staff accounts, roles, and shift hours." },
+    { id: "cash_drawer", label: "Cash Drawer", icon: "box", description: "Open and close the drawer, record paid-outs, and review the end-of-day summary." },
+    { id: "reports", label: "Reports", icon: "chart", description: "Sales analytics, inventory value, and profit — read on screen, no export." },
+    { id: "employees", label: "Employees", icon: "badge", description: "Staff accounts and the role that controls what each person can access." },
     { id: "settings", label: "Settings", icon: "gear", description: "Store details, tax rates, and how WEGN Store is configured for you." },
+    { id: "copilot", label: "Wegn AI", icon: "spark", description: "Ask questions about your sales, stock, and suppliers — owners and managers only, read-only answers." },
   ],
   quickChallenge: {
     intro: "Try it yourself — tap through the areas below to check off each task.",
@@ -81,13 +83,13 @@ const WELCOME_LESSON: OnboardingLessonContent = {
       explanation: "The Dashboard is your at-a-glance view of today's activity.",
     },
     {
-      question: "Where would you go to export a report for your accountant?",
+      question: "Where would you check today's sales analytics and profit?",
       options: [
         { text: "Reports", correct: true },
         { text: "Customers", correct: false },
         { text: "POS", correct: false },
       ],
-      explanation: "Reports has your daily summaries and accountant-ready exports.",
+      explanation: "Reports is where Sales Analytics, Inventory Valuation, and the Profit Report live — all read on screen.",
     },
   ],
   completion: {

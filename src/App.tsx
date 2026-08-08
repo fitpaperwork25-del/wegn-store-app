@@ -94,7 +94,7 @@ type AppProps = {
 // routing - it hands off to the Academy bundle with the right hash
 // already set.
 const ACADEMY_HELP_TARGETS: Record<string, string> = {
-  dashboard: "lesson/welcome-to-wegn-store",
+  dashboard: "lesson/do-3",
   pos: "lesson/sample-first-sale",
   inventory: "lesson/inv-1",
   purchasing: "lesson/pur-1",
@@ -102,8 +102,8 @@ const ACADEMY_HELP_TARGETS: Record<string, string> = {
   employees: "lesson/emp-1",
   cash_drawer: "lesson/opening-cash-drawer",
   reports: "lesson/rep-1",
-  copilot: "ai-assistant",
-  settings: "settings",
+  copilot: "lesson/ai-1",
+  settings: "lesson/settings-1",
 };
 
 function openAcademyHelp(activeTab: string) {

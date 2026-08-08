@@ -93,27 +93,27 @@ export const POS_LESSONS: Record<string, LessonContent> = {
     overview: {
       objectives: [
         "Scan an item into the cart",
-        "Fix a misread or unknown barcode",
-        "Scan multiples of the same item fast",
+        "Add more of the same item by rescanning",
+        "Resolve a barcode that isn't in your catalog yet",
       ],
       summary:
-        "Scanning is the fastest, most accurate way to add items — this lesson covers the scan flow and what to do when it doesn't go smoothly.",
+        "Scanning is the fastest, most accurate way to add items — this lesson covers the scan flow and exactly what happens when a barcode doesn't match anything.",
       whyItMatters: "Fewer manual lookups means shorter lines and fewer pricing mistakes.",
     },
     walkthrough: {
       screenLabel: "Scan field on the POS",
       callouts: [
-        { label: "1", title: "Scan field", description: "Always focused and ready — just scan, no clicking required." },
-        { label: "2", title: "Quantity stepper", description: "Scan the same item again, or bump the quantity directly." },
-        { label: "3", title: "Unknown barcode alert", description: "Lets you search for the product manually if the scan doesn't match." },
+        { label: "1", title: "Scan field", description: "Focused when the POS screen first loads — just scan. If you've clicked into another field, click back into the scan field first." },
+        { label: "2", title: "Rescan to add another", description: "There's no on-screen +/- stepper — scanning the same barcode again is how you add one more to that line." },
+        { label: "3", title: "Unmatched barcode banner", description: "If a scan doesn't match your catalog, a banner appears with two choices: Add New Product or Link to Existing Product — not a manual search." },
       ],
     },
     practice: {
-      intro: "Try scanning a few items and adjusting quantity.",
+      intro: "Try scanning a few items and triggering the unmatched-barcode banner.",
       steps: [
         { title: "Scan an item", description: "Add it to the cart with a single scan." },
         { title: "Scan the same item twice", description: "Watch the quantity bump instead of a duplicate line." },
-        { title: "Resolve an unknown barcode", description: "Search for the product manually when a scan doesn't match." },
+        { title: "Trigger the unmatched-barcode banner", description: "Scan a code that isn't in your catalog and see the two resolution options." },
       ],
     },
     tips: {
@@ -123,7 +123,7 @@ export const POS_LESSONS: Record<string, LessonContent> = {
       ],
       watchOutFor: [
         { text: "Scanning through a phone screen or crumpled label — it often misreads." },
-        { text: "Ignoring an unknown-barcode alert instead of resolving it." },
+        { text: "Ignoring the unmatched-barcode banner instead of resolving it with one of its two buttons." },
       ],
     },
     quiz: [
@@ -137,13 +137,13 @@ export const POS_LESSONS: Record<string, LessonContent> = {
         explanation: "A second scan just bumps the quantity — no extra steps needed.",
       },
       {
-        question: "What should you do if a barcode won't scan?",
+        question: "What happens when you scan a barcode that isn't in your catalog?",
         options: [
-          { text: "Search for the product manually", correct: true },
-          { text: "Skip the item", correct: false },
-          { text: "Charge a random similar item", correct: false },
+          { text: "A banner appears with Add New Product and Link to Existing Product options", correct: true },
+          { text: "The scanner beeps and does nothing else", correct: false },
+          { text: "It's added to the cart as an unknown item", correct: false },
         ],
-        explanation: "Manual search is the built-in fallback for a bad scan.",
+        explanation: "WEGN Store tells you directly and gives you two ways to resolve it — there's no manual-search fallback.",
       },
       {
         question: "Why avoid typing barcodes by hand?",
@@ -161,72 +161,72 @@ export const POS_LESSONS: Record<string, LessonContent> = {
   "product-search": {
     id: "product-search",
     sectionId: "getting-started",
-    title: "Product Search",
+    title: "Finding a Product Without a Barcode",
     minutes: 3,
     badgeId: "search-pro",
     overview: {
       objectives: [
-        "Find a product without a barcode",
-        "Use filters to narrow results",
-        "Add a search result to the cart",
+        "Add a product at checkout when there's no barcode to scan",
+        "Understand why POS uses a simple picker, not a search bar",
+        "Know where real name/SKU/category search lives when you need it",
       ],
       summary:
-        "Not everything has a scannable barcode in hand — search lets you find any product by name, category, or SKU.",
-      whyItMatters: "A fast search keeps the line moving when scanning isn't an option.",
+        "Not everything has a scannable barcode in hand. POS keeps this simple on purpose: a product picker, not a search bar.",
+      whyItMatters: "Expecting a search box that isn't there wastes time at the register — knowing the real tool (and where full search actually lives) keeps the line moving.",
     },
     walkthrough: {
-      screenLabel: "Search bar on the POS",
+      screenLabel: "Product picker (POS)",
       callouts: [
-        { label: "1", title: "Search bar", description: "Type a product name, SKU, or partial match." },
-        { label: "2", title: "Category filter", description: "Narrow results fast when a search returns too many items." },
-        { label: "3", title: "Result row", description: "Tap to add directly to the cart." },
+        { label: "1", title: "Product picker", description: "A dropdown listing every active product with stock on hand — there's no free-text search box at checkout." },
+        { label: "2", title: "One at a time", description: "Selecting a product adds one to the cart; scan or reselect it to add more." },
+        { label: "3", title: "Need to search by name, SKU, or category?", description: "That lives on the Inventory tab's Products & Stock table — a different screen from checkout." },
       ],
     },
     practice: {
-      intro: "Search for a product and add it using a filter.",
+      intro: "Open the picker, add a product, and note where real search lives.",
       steps: [
-        { title: "Search by name", description: "Type a partial product name and see live results." },
-        { title: "Narrow with a category filter", description: "Cut a long list down to what you need." },
-        { title: "Add a result to the cart", description: "Tap the correct row to add it." },
+        { title: "Open the product picker", description: "Find it on the POS screen." },
+        { title: "Select a product to add it", description: "It adds one unit to the cart." },
+        { title: "Remember where full search lives", description: "Name/SKU/category search is on the Inventory tab, not at checkout." },
       ],
     },
     tips: {
       good: [
-        { text: "Search partial words — you don't need the exact full name." },
-        { text: "Use category filters when a search returns a long list." },
+        { text: "Keep frequently-sold no-barcode items easy to recognize by name in the picker." },
+        { text: "If you need to search or filter by category, that's the Inventory tab's job, not checkout's." },
       ],
       watchOutFor: [
-        { text: "Typing the full product name when a few letters would do." },
-        { text: "Adding the wrong variant (size/color) from a crowded results list." },
+        { text: "Expecting a search box at checkout — POS only offers the picker." },
+        { text: "Picking the wrong item from a long dropdown — double-check before adding." },
       ],
     },
     quiz: [
       {
-        question: "What can you search by besides product name?",
+        question: "How do you add a product at POS when it has no barcode to scan?",
         options: [
-          { text: "SKU", correct: true },
-          { text: "Only exact name", correct: false },
-          { text: "Nothing else", correct: false },
+          { text: "Select it from the product picker", correct: true },
+          { text: "Type its name into a checkout search bar", correct: false },
+          { text: "It can't be added without a barcode", correct: false },
         ],
-        explanation: "Search matches names, partial names, and SKUs.",
+        explanation: "POS checkout has a product picker dropdown, not a search bar.",
       },
       {
-        question: "When should you use a category filter?",
+        question: "Where does real product search (by name, SKU, or category) live?",
         options: [
-          { text: "When search returns too many results", correct: true },
-          { text: "Never", correct: false },
-          { text: "Only for reports", correct: false },
+          { text: "The Inventory tab", correct: true },
+          { text: "The POS checkout screen", correct: false },
+          { text: "It doesn't exist anywhere in WEGN Store", correct: false },
         ],
-        explanation: "Filters exist to cut a long result list down fast.",
+        explanation: "Full search and category filtering is a Products & Stock feature on the Inventory tab.",
       },
       {
-        question: "What's a risk of a crowded results list?",
+        question: "What happens if you select the same product again in the picker?",
         options: [
-          { text: "Adding the wrong variant", correct: true },
-          { text: "Slower scanning", correct: false },
-          { text: "No risk at all", correct: false },
+          { text: "It adds one more to the cart", correct: true },
+          { text: "It removes it from the cart", correct: false },
+          { text: "Nothing happens", correct: false },
         ],
-        explanation: "Similar-looking variants are easy to mix up in a long list.",
+        explanation: "Each selection adds one unit, the same as a rescan would.",
       },
     ],
     nextLesson: { lessonId: "applying-discounts", sectionId: "getting-started", title: "Applying Discounts" },
@@ -240,67 +240,67 @@ export const POS_LESSONS: Record<string, LessonContent> = {
     badgeId: "discount-decider",
     overview: {
       objectives: [
-        "Apply a discount to one item",
-        "Apply a discount to the whole cart",
-        "Remove a discount you applied by mistake",
+        "Use Negotiate to manually reprice one item (when your store's Selling Policy allows it)",
+        "Apply a cart-wide % or $ off",
+        "Clear a cart-wide discount you applied by mistake",
       ],
       summary:
-        "Discounts can go on a single item or the entire cart — this lesson covers both and how to undo one.",
-      whyItMatters: "Applying a discount to the wrong scope is one of the most common checkout mistakes.",
+        "WEGN Store doesn't have one generic \"discount button.\" Per-item pricing flexibility comes from Negotiate; the whole order can get a separate cart-wide % or $ off.",
+      whyItMatters: "Negotiate is gated by your store's Selling Policy and reason-tracked; the cart-wide discount hits the entire order. Mixing them up misprices a sale.",
     },
     walkthrough: {
-      screenLabel: "Cart panel",
+      screenLabel: "Cart panel — pricing controls",
       callouts: [
-        { label: "1", title: "Item discount button", description: "Applies a discount to just that line." },
-        { label: "2", title: "Cart discount button", description: "Applies a discount to the entire order total." },
-        { label: "3", title: "Remove discount (×)", description: "Clears a discount you applied by mistake." },
+        { label: "1", title: "Negotiate (per item)", description: "Only appears if your store's Selling Policy allows negotiated pricing. Opens a panel to type a new unit price and pick a reason (Bulk discount, Loyal customer, Price match, Damaged packaging, Clearance, or your own)." },
+        { label: "2", title: "Cart-wide % or $ Off", description: "A dropdown lets you pick % Off or $ Off and type an amount — applies to the whole order total, not one line." },
+        { label: "3", title: "Clear", description: "A text button, not an × icon, that removes a cart-wide discount you applied by mistake." },
       ],
     },
     practice: {
-      intro: "Apply an item discount, then a cart-wide one, then remove it.",
+      intro: "Check whether Negotiate is available, apply a cart-wide discount, then clear it.",
       steps: [
-        { title: "Apply a 10% discount to one item", description: "Use the item-level discount button." },
-        { title: "Apply a cart-wide discount instead", description: "Switch to the whole-order discount." },
-        { title: "Remove the discount you just applied", description: "Use the × to clear it." },
+        { title: "Check whether Negotiate is available", description: "It only appears when Selling Policy isn't Fixed Prices." },
+        { title: "Apply a cart-wide % Off", description: "Pick a percentage and watch the total update." },
+        { title: "Clear the discount", description: "Use the Clear button to remove it." },
       ],
     },
     tips: {
       good: [
-        { text: "Double-check whether a promo applies to one item or the whole cart before applying it." },
-        { text: "Read the discount back to the customer before charging." },
+        { text: "Always enter an honest reason when negotiating a price — it's logged with the sale." },
+        { text: "Confirm with the customer whether they meant a % or a $ amount before applying a cart-wide discount." },
       ],
       watchOutFor: [
-        { text: "Applying a cart-wide discount when only one item qualifies." },
-        { text: "Stacking two discounts that weren't meant to combine." },
+        { text: "Expecting a generic \"item discount\" button — the real per-item tool is Negotiate, and only under certain selling policies." },
+        { text: "Forgetting a cart-wide discount applies to the whole order, not just the one item a customer asked about." },
       ],
     },
     quiz: [
       {
-        question: "Where does an item discount apply?",
+        question: "What lets you manually change one item's price at checkout?",
         options: [
-          { text: "Just that line", correct: true },
-          { text: "The whole cart", correct: false },
-          { text: "Nowhere until checkout", correct: false },
+          { text: "Negotiate", correct: true },
+          { text: "An item discount button", correct: false },
+          { text: "There's no way to do this", correct: false },
         ],
-        explanation: "Item discounts are scoped to the single line they're applied to.",
+        explanation: "Negotiate opens a panel for a manual price plus a reason — there's no separate \"discount\" control per item.",
       },
       {
-        question: "What should you check before applying a discount?",
+        question: "When does Negotiate appear at checkout?",
         options: [
-          { text: "Whether it's meant for one item or the whole cart", correct: true },
-          { text: "The customer's name", correct: false },
-          { text: "The time of day", correct: false },
+          { text: "Only when your store's Selling Policy isn't Fixed Prices", correct: true },
+          { text: "Always, on every sale", correct: false },
+          { text: "Only on returns", correct: false },
         ],
-        explanation: "Wrong scope is the most common discount mistake.",
+        explanation: "Negotiate is hidden entirely under a Fixed Prices selling policy.",
       },
       {
-        question: "How do you undo a discount you applied by mistake?",
+        question: "How do you remove a cart-wide discount you applied by mistake?",
         options: [
-          { text: "Use the remove (×) button", correct: true },
-          { text: "Void the whole sale", correct: false },
-          { text: "Restart the register", correct: false },
+          { text: "Click Clear", correct: true },
+          { text: "Click an × icon", correct: false },
+          { text: "Void the sale", correct: false },
         ],
-        explanation: "Removing a discount is a single, targeted action — no need to void anything.",
+        explanation: "The control is a text button labeled Clear, not an icon — and no void is needed.",
       },
     ],
     nextLesson: { lessonId: "payment-methods", sectionId: "getting-started", title: "Accepting Different Payment Methods" },
@@ -314,66 +314,66 @@ export const POS_LESSONS: Record<string, LessonContent> = {
     badgeId: "payment-pro",
     overview: {
       objectives: [
-        "Take a card payment",
-        "Take a cash payment and give correct change",
-        "Split a payment across two methods",
+        "Select the right payment method from WEGN Store's tender list",
+        "Take a cash payment and read the change due",
+        "Know that WEGN Store doesn't support splitting one sale across two payment methods",
       ],
-      summary: "WEGN Store accepts card, cash, and split payments — this lesson walks through all three.",
-      whyItMatters: "Knowing every payment path means no awkward pauses at checkout, whatever the customer hands you.",
+      summary: "WEGN Store checkout uses one payment-method dropdown — Cash, Card, and several local mobile-money options — for a single tender per sale.",
+      whyItMatters: "Knowing exactly what checkout does (and doesn't) support means never promising a customer something it can't do.",
     },
     walkthrough: {
       screenLabel: "Payment screen",
       callouts: [
-        { label: "1", title: "Card button", description: "Prompts the card reader — wait for approval before releasing the customer." },
-        { label: "2", title: "Cash button", description: "Opens a change calculator based on cash received." },
-        { label: "3", title: "Split payment", description: "Divide the total across two or more tender types." },
+        { label: "1", title: "Payment method dropdown", description: "Choose one: Cash, Card, Telebirr, CBE Birr, Chapa, M-Pesa/MTN Mobile Money, Airtel Money, or Other. Selecting Card just records that as the tender — there's no connected reader or approval step in the app." },
+        { label: "2", title: "Cash → Amount tendered", description: "Selecting Cash reveals an Amount Tendered field; Change Due calculates automatically once it covers the total." },
+        { label: "3", title: "One tender per sale", description: "There's no split-payment option — every sale is recorded against a single payment method." },
       ],
     },
     practice: {
-      intro: "Take a cash payment, then try a split payment.",
+      intro: "Select Cash, enter a tendered amount, then see what changes for a non-cash method.",
       steps: [
-        { title: "Charge a sale with cash", description: "Enter cash received and confirm the change due." },
-        { title: "Split a payment", description: "Divide the total between card and cash." },
-        { title: "Confirm the sale completes", description: "Check both tenders were applied correctly." },
+        { title: "Select Cash as the payment method", description: "See the Amount Tendered field appear." },
+        { title: "Enter a tendered amount above the total", description: "Watch Change Due calculate." },
+        { title: "Switch to another method", description: "See the tendered/change fields disappear." },
       ],
     },
     tips: {
       good: [
-        { text: "Always wait for card approval before handing over the receipt or goods." },
-        { text: "Read the change amount back to the customer." },
+        { text: "Read the change amount back to the customer before handing it over." },
+        { text: "If a customer wants to split a payment across two methods, tell them upfront WEGN Store can't do that on one sale." },
       ],
       watchOutFor: [
-        { text: "Releasing goods before a card payment is approved." },
-        { text: "Miscalculating change on a cash sale." },
+        { text: "Assuming Card triggers a reader/approval wait — it doesn't; it's just a record of the tender." },
+        { text: "Promising a split payment — it isn't supported." },
       ],
     },
     quiz: [
       {
-        question: "What should you wait for before releasing goods on a card sale?",
+        question: "What happens when you select Card as the payment method?",
         options: [
-          { text: "Approval", correct: true },
-          { text: "Nothing — hand it over right away", correct: false },
-          { text: "A printed receipt only", correct: false },
+          { text: "It's recorded as the tender — there's no reader or approval step in the app", correct: true },
+          { text: "It prompts a connected card reader and waits for approval", correct: false },
+          { text: "It automatically adds a card surcharge", correct: false },
         ],
-        explanation: "Releasing goods before approval risks a declined or failed charge.",
+        explanation: "Card is one option in the tender dropdown, not a hardware integration.",
       },
       {
-        question: "What does the cash button open?",
+        question: "What appears when you select Cash?",
         options: [
-          { text: "A change calculator", correct: true },
+          { text: "An Amount Tendered field, with Change Due calculated automatically", correct: true },
           { text: "A discount menu", correct: false },
-          { text: "The drawer report", correct: false },
+          { text: "Nothing different from other methods", correct: false },
         ],
-        explanation: "It calculates change owed based on cash received.",
+        explanation: "Cash is the only method with a tendered/change calculation.",
       },
       {
-        question: "Can a sale be split across two payment types?",
+        question: "Can a sale be split across two payment methods?",
         options: [
-          { text: "Yes", correct: true },
-          { text: "No", correct: false },
+          { text: "No — one payment method per sale", correct: true },
+          { text: "Yes, always", correct: false },
           { text: "Only for returns", correct: false },
         ],
-        explanation: "Split payments divide the total across two or more tenders.",
+        explanation: "WEGN Store has no split-payment feature; each sale stores a single tender.",
       },
     ],
     nextLesson: { lessonId: "printing-receipt", sectionId: "getting-started", title: "Printing a Receipt" },
@@ -387,48 +387,48 @@ export const POS_LESSONS: Record<string, LessonContent> = {
     badgeId: "receipt-runner",
     overview: {
       objectives: [
-        "Print a paper receipt",
-        "Email a receipt instead",
-        "Reprint a receipt for a past sale",
+        "Print a receipt to the connected printer",
+        "Reprint a receipt for a past sale from Sales History",
+        "Know that emailing a receipt isn't a feature yet",
       ],
-      summary: "Every completed sale can go out as a printed receipt, an emailed one, or both.",
-      whyItMatters: "Customers need proof of purchase for returns — getting this right avoids disputes later.",
+      summary: "Every completed sale can be printed right away or reprinted later from Sales History — there's no email option today.",
+      whyItMatters: "Customers need proof of purchase for returns — knowing exactly how to get them one (and that email isn't an option) avoids promising something checkout can't do.",
     },
     walkthrough: {
-      screenLabel: "Receipt options screen",
+      screenLabel: "Receipt print modal",
       callouts: [
-        { label: "1", title: "Print button", description: "Sends the receipt to the connected receipt printer." },
-        { label: "2", title: "Email field", description: "Send a digital copy instead of, or in addition to, paper." },
-        { label: "3", title: "No receipt", description: "Skip printing when the customer declines." },
+        { label: "1", title: "Print button", description: "Sends the receipt to your browser's print dialog / connected printer." },
+        { label: "2", title: "Close", description: "Dismisses the receipt without printing — there's no separate \"no receipt\" control, Close is how you skip it." },
+        { label: "3", title: "Reprint from Sales History", description: "Every past sale has its own Print button — nothing is lost if a customer wants a copy later." },
       ],
     },
     practice: {
-      intro: "Print a receipt, then try emailing one instead.",
+      intro: "Print a receipt, close one without printing, then reprint from Sales History.",
       steps: [
-        { title: "Print a paper receipt", description: "Send it straight to the printer." },
-        { title: "Email a receipt", description: "Send a digital copy to a customer instead." },
+        { title: "Print a receipt", description: "Send it to the printer." },
+        { title: "Close without printing", description: "Practice skipping a receipt when a customer declines." },
         { title: "Reprint from Sales History", description: "Find a past sale and print it again." },
       ],
     },
     tips: {
       good: [
-        { text: "Confirm the email address back to the customer before sending." },
-        { text: "Offer both print and email if the customer isn't sure." },
+        { text: "If a customer asks to have it emailed, let them know WEGN Store doesn't support that yet — offer a reprint if they come back instead." },
+        { text: "Confirm the printer has paper before the line builds up." },
       ],
       watchOutFor: [
-        { text: "Sending a receipt to the wrong email address." },
-        { text: "Forgetting a declined receipt can still be reprinted later from Sales History." },
+        { text: "Promising to email a receipt — that feature doesn't exist." },
+        { text: "Forgetting a declined receipt can still be printed later from Sales History." },
       ],
     },
     quiz: [
       {
-        question: "What should you confirm before emailing a receipt?",
+        question: "What are the two options in the receipt print modal?",
         options: [
-          { text: "The email address", correct: true },
-          { text: "The tax rate", correct: false },
-          { text: "The register number", correct: false },
+          { text: "Print and Close", correct: true },
+          { text: "Print and Email", correct: false },
+          { text: "Print, Email, and No Receipt", correct: false },
         ],
-        explanation: "A wrong address sends someone else's proof of purchase to a stranger.",
+        explanation: "There is no email option anywhere in the receipt flow — only Print and Close.",
       },
       {
         question: "Where can you reprint a past receipt?",
@@ -442,85 +442,11 @@ export const POS_LESSONS: Record<string, LessonContent> = {
       {
         question: "What happens if a customer declines a receipt?",
         options: [
-          { text: "It can still be reprinted later", correct: true },
+          { text: "Click Close — it can still be reprinted later from Sales History", correct: true },
           { text: "It's gone forever", correct: false },
           { text: "The sale is voided", correct: false },
         ],
         explanation: "Declining a receipt at checkout doesn't erase the sale record.",
-      },
-    ],
-    nextLesson: { lessonId: "suspend-resume-sale", sectionId: "getting-started", title: "Suspending and Resuming a Sale" },
-  },
-
-  "suspend-resume-sale": {
-    id: "suspend-resume-sale",
-    sectionId: "getting-started",
-    title: "Suspending and Resuming a Sale",
-    minutes: 4,
-    badgeId: "hold-and-resume",
-    overview: {
-      objectives: [
-        "Suspend a sale in progress",
-        "Resume a suspended sale later",
-        "Know what happens to a suspended cart",
-      ],
-      summary:
-        "Sometimes a sale needs to pause — a forgotten wallet, a call to a manager. Suspending holds the cart so you can help the next customer.",
-      whyItMatters: "Without this, an interrupted sale either blocks the register or gets lost entirely.",
-    },
-    walkthrough: {
-      screenLabel: "Cart panel",
-      callouts: [
-        { label: "1", title: "Suspend button", description: "Holds the current cart and clears the screen for the next customer." },
-        { label: "2", title: "Suspended sales list", description: "Shows every held sale, oldest first." },
-        { label: "3", title: "Resume", description: "Brings a suspended cart right back where you left off." },
-      ],
-    },
-    practice: {
-      intro: "Suspend a sale, ring up someone else, then resume it.",
-      steps: [
-        { title: "Add an item and suspend the sale", description: "Hold the cart instead of finishing it." },
-        { title: "Start and complete a different sale", description: "Serve the next customer normally." },
-        { title: "Resume the suspended sale", description: "Pick it back up and finish it." },
-      ],
-    },
-    tips: {
-      good: [
-        { text: "Suspend instead of voiding when a customer just needs a minute." },
-        { text: "Check the suspended list at the end of a shift — nothing should be left sitting there." },
-      ],
-      watchOutFor: [
-        { text: "Forgetting a suspended sale is still open and expected to be paid." },
-        { text: "Suspending instead of using discounts or holds meant for other situations." },
-      ],
-    },
-    quiz: [
-      {
-        question: "What does suspending a sale do?",
-        options: [
-          { text: "Holds the cart for later", correct: true },
-          { text: "Cancels it", correct: false },
-          { text: "Emails a receipt", correct: false },
-        ],
-        explanation: "Suspending pauses a sale without canceling it.",
-      },
-      {
-        question: "Where do you find a suspended sale later?",
-        options: [
-          { text: "The suspended sales list", correct: true },
-          { text: "Reports", correct: false },
-          { text: "Settings", correct: false },
-        ],
-        explanation: "Every held sale shows up in the suspended sales list, oldest first.",
-      },
-      {
-        question: "What should you check at the end of a shift?",
-        options: [
-          { text: "That no suspended sales are left open", correct: true },
-          { text: "The receipt printer paper", correct: false },
-          { text: "Employee schedules", correct: false },
-        ],
-        explanation: "A leftover suspended sale carries into the next shift unresolved.",
       },
     ],
     nextLesson: { lessonId: "processing-return", sectionId: "getting-started", title: "Processing a Return" },

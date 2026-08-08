@@ -83,7 +83,7 @@ export const GUIDE_NAV: GuideNavItem[] = [
       },
       {
         id: "product-search",
-        title: "Product Search",
+        title: "Finding a Product Without a Barcode",
         minutes: 3,
         implemented: true,
         prerequisiteLessonId: "barcode-scanning",
@@ -110,18 +110,11 @@ export const GUIDE_NAV: GuideNavItem[] = [
         prerequisiteLessonId: "payment-methods",
       },
       {
-        id: "suspend-resume-sale",
-        title: "Suspending and Resuming a Sale",
-        minutes: 4,
-        implemented: true,
-        prerequisiteLessonId: "printing-receipt",
-      },
-      {
         id: "processing-return",
         title: "Processing a Return",
         minutes: 5,
         implemented: true,
-        prerequisiteLessonId: "suspend-resume-sale",
+        prerequisiteLessonId: "printing-receipt",
       },
       {
         id: "closing-cash-drawer",
@@ -148,6 +141,8 @@ export const GUIDE_NAV: GuideNavItem[] = [
     plannedLessons: [
       { id: "do-1", title: "Looking Up a Past Sale", minutes: 3, implemented: true },
       { id: "do-2", title: "Voiding a Sale", minutes: 3, implemented: true, prerequisiteLessonId: "do-1" },
+      { id: "do-3", title: "Understanding Your Dashboard", minutes: 4, implemented: true, prerequisiteLessonId: "do-2" },
+      { id: "do-4", title: "Cash Drawer Reports & Paid Outs", minutes: 4, implemented: true, prerequisiteLessonId: "do-3" },
     ],
   },
   {
@@ -158,6 +153,8 @@ export const GUIDE_NAV: GuideNavItem[] = [
       { id: "inv-1", title: "Adding your first product", minutes: 4, implemented: true },
       { id: "inv-2", title: "Setting low-stock alerts", minutes: 3, implemented: true, prerequisiteLessonId: "inv-1" },
       { id: "inv-3", title: "Running a stock count", minutes: 8, implemented: true, prerequisiteLessonId: "inv-2" },
+      { id: "inv-4", title: "Editing, Deactivating, and Organizing Products", minutes: 5, implemented: true, prerequisiteLessonId: "inv-3" },
+      { id: "inv-5", title: "Printing Barcode Labels", minutes: 3, implemented: true, prerequisiteLessonId: "inv-4" },
     ],
   },
   {
@@ -167,6 +164,8 @@ export const GUIDE_NAV: GuideNavItem[] = [
     plannedLessons: [
       { id: "pur-1", title: "Creating a purchase order", minutes: 5, implemented: true },
       { id: "pur-2", title: "Receiving a supplier shipment", minutes: 6, implemented: true, prerequisiteLessonId: "pur-1" },
+      { id: "pur-3", title: "Managing Suppliers", minutes: 5, implemented: true, prerequisiteLessonId: "pur-2" },
+      { id: "pur-4", title: "Canceling, Printing, and Signing POs; Supplier Statements", minutes: 6, implemented: true, prerequisiteLessonId: "pur-3" },
     ],
   },
   {
@@ -179,6 +178,7 @@ export const GUIDE_NAV: GuideNavItem[] = [
       // screen in WEGN Store, loyalty is automatic; the accurate title
       // teaches what actually exists (see sectionLessons.ts).
       { id: "cust-2", title: "Loyalty Points at Checkout", minutes: 5, implemented: true, prerequisiteLessonId: "cust-1" },
+      { id: "cust-3", title: "Editing and Deactivating Customers", minutes: 4, implemented: true, prerequisiteLessonId: "cust-2" },
     ],
   },
   {
@@ -192,6 +192,7 @@ export const GUIDE_NAV: GuideNavItem[] = [
       // (valuation, low stock, PO, returns) is the real second half
       // of the Reports tab.
       { id: "rep-2", title: "Reviewing Inventory Reports", minutes: 4, implemented: true, prerequisiteLessonId: "rep-1" },
+      { id: "rep-3", title: "Understanding the Profit Report", minutes: 5, implemented: true, prerequisiteLessonId: "rep-2" },
     ],
   },
   {
@@ -204,10 +205,27 @@ export const GUIDE_NAV: GuideNavItem[] = [
       // feature exists; role-based tab access is the real, valuable
       // second employee topic.
       { id: "emp-2", title: "Understanding Staff Roles & Permissions", minutes: 4, implemented: true, prerequisiteLessonId: "emp-1" },
+      { id: "emp-3", title: "Editing and Deactivating Staff", minutes: 4, implemented: true, prerequisiteLessonId: "emp-2" },
     ],
   },
-  { id: "settings", label: "Settings", icon: "gear" },
-  { id: "ai-assistant", label: "AI Assistant", icon: "spark" },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: "gear",
+    plannedLessons: [
+      { id: "settings-1", title: "Configuring Your Business Profile", minutes: 5, implemented: true },
+      { id: "settings-2", title: "Registering Devices & Receipt Settings", minutes: 4, implemented: true, prerequisiteLessonId: "settings-1" },
+    ],
+  },
+  {
+    id: "ai-assistant",
+    label: "AI Assistant",
+    icon: "spark",
+    plannedLessons: [
+      { id: "ai-1", title: "Reading the Executive Briefing", minutes: 4, implemented: true },
+      { id: "ai-2", title: "Asking Wegn AI", minutes: 5, implemented: true, prerequisiteLessonId: "ai-1" },
+    ],
+  },
   {
     id: "troubleshooting",
     label: "Troubleshooting",
@@ -221,10 +239,10 @@ export const GUIDE_NAV: GuideNavItem[] = [
 ];
 
 /** Every lesson stub across every section, flattened once, so search
- *  and progress tracking don't each re-derive it. Only "home" and the
- *  utility sections (search/settings/ai-assistant/troubleshooting's
- *  own landing/learning-progress) are excluded, since those aren't
- *  lesson lists themselves. */
+ *  and progress tracking don't each re-derive it. Only the sections
+ *  with no plannedLessons array at all (home, search, achievements,
+ *  learning-progress — pure utility pages, not lesson lists) are
+ *  excluded. */
 export const ALL_LESSON_STUBS: Array<GuideLessonStub & { sectionId: GuideSectionId; sectionLabel: string }> =
   GUIDE_NAV.flatMap((section) =>
     (section.plannedLessons ?? []).map((lesson) => ({
