@@ -1,17 +1,30 @@
 import { ALL_LESSON_STUBS, GUIDE_NAV, IMPLEMENTED_LESSON_IDS } from "../data/navigation";
 import type { GuideSectionId } from "../data/navigation";
 import { GUIDE_BADGES } from "../data/badges";
+import { getLearningPath } from "../data/learningPaths";
+import { formatDate } from "../lib/format";
 import { GuideIcon } from "../components/icons";
 import { useGuideProgress } from "../context/useGuideProgress";
 
 interface LearningProgressPageProps {
   onOpenLesson: (lessonId: string) => void;
   onGoToSection: (sectionId: GuideSectionId) => void;
+  onViewCertificate: (pathId: string) => void;
 }
 
-export default function LearningProgressPage({ onOpenLesson, onGoToSection }: LearningProgressPageProps) {
-  const { percentComplete, completedCount, totalLessons, completedLessonIds, bookmarkedLessonIds, isLessonUnlocked, hasBadge } =
-    useGuideProgress();
+export default function LearningProgressPage({ onOpenLesson, onGoToSection, onViewCertificate }: LearningProgressPageProps) {
+  const {
+    percentComplete,
+    completedCount,
+    totalLessons,
+    completedLessonIds,
+    bookmarkedLessonIds,
+    isLessonUnlocked,
+    hasBadge,
+    certificates,
+    learnerName,
+  } = useGuideProgress();
+  const certificateEntries = Object.entries(certificates);
 
   const bookmarked = ALL_LESSON_STUBS.filter((l) => bookmarkedLessonIds.has(l.id));
   const sectionsWithLessons = GUIDE_NAV.filter((s) => (s.plannedLessons?.length ?? 0) > 0);
@@ -47,6 +60,34 @@ export default function LearningProgressPage({ onOpenLesson, onGoToSection }: Le
           );
         })}
       </div>
+
+      <p className="wg-card-title" style={{ fontSize: "0.95rem", margin: "24px 0 10px" }}>Certifications</p>
+      {certificateEntries.length === 0 ? (
+        <div className="wg-empty" style={{ marginBottom: 10 }}>
+          <div className="wg-empty-icon">
+            <GuideIcon.trophy />
+          </div>
+          <p className="wg-card-body">Complete every lesson in a Learning Path to earn its certificate.</p>
+        </div>
+      ) : (
+        certificateEntries.map(([pathId, certifiedAt]) => {
+          const path = getLearningPath(pathId);
+          if (!path) return null;
+          return (
+            <div key={pathId} className="wg-lesson-row" style={{ marginBottom: 10 }}>
+              <span className="wg-lesson-row-title">
+                {path.name}
+                <span className="wg-lesson-row-sub">
+                  {learnerName.trim() ? `${learnerName} · ` : ""}Awarded {formatDate(certifiedAt)}
+                </span>
+              </span>
+              <button type="button" className="wg-btn wg-btn-secondary" onClick={() => onViewCertificate(pathId)}>
+                View / print
+              </button>
+            </div>
+          );
+        })
+      )}
 
       <p className="wg-card-title" style={{ fontSize: "0.95rem", margin: "24px 0 10px" }}>By section</p>
       {sectionsWithLessons.map((s) => {

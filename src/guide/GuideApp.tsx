@@ -11,13 +11,28 @@ import SampleLessonPage from "./pages/SampleLessonPage";
 import WelcomeLessonPage from "./pages/WelcomeLessonPage";
 import PosLessonPage from "./pages/PosLessonPage";
 import LearningProgressPage from "./pages/LearningProgressPage";
+import LearningPathsPage from "./pages/LearningPathsPage";
+import AchievementsPage from "./pages/AchievementsPage";
+import CertificateView from "./pages/CertificateView";
+import RoleSelector from "./components/RoleSelector";
 import { IMPLEMENTED_LESSON_IDS } from "./data/navigation";
 import { POS_LESSONS } from "./data/posLessons";
 import type { GuideSectionId } from "./data/navigation";
 
 function GuideRoutes() {
   const [route, navigate] = useHashRoute();
-  const { setLastSectionId, isLessonUnlocked } = useGuideProgress();
+  const { setLastSectionId, isLessonUnlocked, userRole, theme } = useGuideProgress();
+
+  // First-ever visit: ask what the person's role is before showing
+  // anything else. Answering (or skipping) sets userRole and this
+  // never shows again.
+  if (userRole === null) {
+    return (
+      <div className="wegn-guide" data-guide-theme={theme} id="wegn-guide-root">
+        <RoleSelector onDone={() => {}} />
+      </div>
+    );
+  }
 
   const goToSection = (sectionId: GuideSectionId) => {
     setLastSectionId(sectionId);
@@ -29,7 +44,9 @@ function GuideRoutes() {
 
   let page: ReactNode;
 
-  if (route.lessonId) {
+  if (route.certificatePathId) {
+    page = <CertificateView pathId={route.certificatePathId} onBack={() => goToSection("learning-paths")} />;
+  } else if (route.lessonId) {
     const lessonId = route.lessonId;
     const isReal = IMPLEMENTED_LESSON_IDS.has(lessonId);
     const isUnlocked = isLessonUnlocked(lessonId);
@@ -72,7 +89,23 @@ function GuideRoutes() {
         page = <SearchPage onGoToSection={goToSection} onOpenLesson={openLesson} />;
         break;
       case "learning-progress":
-        page = <LearningProgressPage onOpenLesson={openLesson} onGoToSection={goToSection} />;
+        page = (
+          <LearningProgressPage
+            onOpenLesson={openLesson}
+            onGoToSection={goToSection}
+            onViewCertificate={(pathId) => navigate({ sectionId: "learning-paths", lessonId: null, certificatePathId: pathId })}
+          />
+        );
+        break;
+      case "learning-paths":
+        page = (
+          <LearningPathsPage
+            onViewCertificate={(pathId) => navigate({ sectionId: "learning-paths", lessonId: null, certificatePathId: pathId })}
+          />
+        );
+        break;
+      case "achievements":
+        page = <AchievementsPage />;
         break;
       default:
         page = <SectionPage sectionId={route.sectionId} onOpenLesson={openLesson} />;

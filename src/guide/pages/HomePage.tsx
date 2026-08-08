@@ -1,6 +1,10 @@
 import { ALL_LESSON_STUBS, GUIDE_NAV, IMPLEMENTED_LESSON_IDS } from "../data/navigation";
 import type { GuideSectionId } from "../data/navigation";
 import { GuideIcon } from "../components/icons";
+import { GUIDE_BADGES } from "../data/badges";
+import { getLearningPath } from "../data/learningPaths";
+import { getNextLevel } from "../data/levels";
+import { formatMinutes } from "../lib/format";
 import { useGuideProgress } from "../context/useGuideProgress";
 
 interface HomePageProps {
@@ -8,13 +12,29 @@ interface HomePageProps {
   onOpenLesson: (lessonId: string) => void;
 }
 
-const BROWSE_SECTIONS = GUIDE_NAV.filter((n) => n.id !== "home" && n.id !== "search" && n.id !== "learning-progress");
+const EXCLUDED_FROM_BROWSE = new Set(["home", "search", "learning-progress", "learning-paths", "achievements"]);
+const BROWSE_SECTIONS = GUIDE_NAV.filter((n) => !EXCLUDED_FROM_BROWSE.has(n.id));
 const IMPLEMENTED_LESSONS = ALL_LESSON_STUBS.filter((l) => IMPLEMENTED_LESSON_IDS.has(l.id));
 
 export default function HomePage({ onGoToSection, onOpenLesson }: HomePageProps) {
-  const { percentComplete, completedCount, totalLessons, lastSectionId, isLessonComplete, isLessonUnlocked } =
-    useGuideProgress();
+  const {
+    percentComplete,
+    completedCount,
+    lessonsRemaining,
+    totalLessons,
+    lastSectionId,
+    isLessonComplete,
+    isLessonUnlocked,
+    timeSpentMinutes,
+    level,
+    earnedBadgeIds,
+    currentPathId,
+    getPathProgress,
+  } = useGuideProgress();
   const resumeSection = lastSectionId ? GUIDE_NAV.find((n) => n.id === lastSectionId) : null;
+  const nextLevel = getNextLevel(completedCount);
+  const currentPath = currentPathId ? getLearningPath(currentPathId) : undefined;
+  const currentPathProgress = currentPathId ? getPathProgress(currentPathId) : null;
 
   // The next lesson worth pointing the user at: the first implemented,
   // unlocked lesson they haven't finished yet. Once everything built
@@ -24,16 +44,41 @@ export default function HomePage({ onGoToSection, onOpenLesson }: HomePageProps)
 
   return (
     <div>
-      <span className="wg-eyebrow">WEGN Store Guide</span>
+      <span className="wg-eyebrow">WEGN Store Academy</span>
       <h1 className="wg-page-title">Learn WEGN Store by doing.</h1>
       <p className="wg-page-subtitle">
         Short, hands-on lessons for every part of the platform — no manuals, no reading walls. Pick a topic below or
         jump into the first lesson.
       </p>
 
-      <div className="wg-card" style={{ marginBottom: 24 }}>
+      <div className="wg-dash-stats">
+        <div className="wg-dash-stat">
+          <div className="wg-dash-stat-icon"><GuideIcon.check /></div>
+          <div className="wg-dash-stat-value">{completedCount}</div>
+          <div className="wg-dash-stat-label">Lessons completed</div>
+        </div>
+        <div className="wg-dash-stat">
+          <div className="wg-dash-stat-icon"><GuideIcon.flag /></div>
+          <div className="wg-dash-stat-value">{lessonsRemaining}</div>
+          <div className="wg-dash-stat-label">Lessons remaining</div>
+        </div>
+        <div className="wg-dash-stat">
+          <div className="wg-dash-stat-icon"><GuideIcon.sun /></div>
+          <div className="wg-dash-stat-value">{formatMinutes(timeSpentMinutes)}</div>
+          <div className="wg-dash-stat-label">Time spent learning</div>
+        </div>
+        <div className="wg-dash-stat">
+          <div className="wg-dash-stat-icon"><GuideIcon.badge /></div>
+          <div className="wg-dash-stat-value">{level.name}</div>
+          <div className="wg-dash-stat-label">
+            {nextLevel ? `${nextLevel.minLessons - completedCount} lessons to ${nextLevel.name}` : "Top level reached"}
+          </div>
+        </div>
+      </div>
+
+      <div className="wg-card" style={{ marginBottom: 16 }}>
         <div className="wg-progress-label">
-          <span>Your progress</span>
+          <span>Overall progress</span>
           <span>{completedCount}/{totalLessons} lessons</span>
         </div>
         <div className="wg-progress-track">
@@ -51,6 +96,25 @@ export default function HomePage({ onGoToSection, onOpenLesson }: HomePageProps)
             </button>
           )}
         </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
+        <button type="button" className="wg-card" style={{ textAlign: "left", border: "1px solid var(--g-line)" }} onClick={() => onGoToSection("achievements")}>
+          <div className="wg-dash-stat-icon" style={{ marginBottom: 10 }}><GuideIcon.trophy /></div>
+          <p className="wg-card-title" style={{ fontSize: "0.94rem" }}>{earnedBadgeIds.size}/{GUIDE_BADGES.length} badges earned</p>
+          <p className="wg-card-body">Open the Achievement Center →</p>
+        </button>
+        <button type="button" className="wg-card" style={{ textAlign: "left", border: "1px solid var(--g-line)" }} onClick={() => onGoToSection("learning-paths")}>
+          <div className="wg-dash-stat-icon" style={{ marginBottom: 10 }}><GuideIcon.compass /></div>
+          <p className="wg-card-title" style={{ fontSize: "0.94rem" }}>
+            {currentPath ? currentPath.name : "Choose a learning path"}
+          </p>
+          <p className="wg-card-body">
+            {currentPathProgress
+              ? `${currentPathProgress.completedCount}/${currentPathProgress.totalCount} lessons · ${currentPathProgress.percentComplete}%`
+              : "See all 5 Academy learning paths →"}
+          </p>
+        </button>
       </div>
 
       <p className="wg-card-title" style={{ fontSize: "1rem", marginBottom: 12 }}>Browse by topic</p>
