@@ -86,6 +86,31 @@ type AppProps = {
   onRetryBusinessRegistration?: () => void;
 };
 
+// Contextual Help: maps each top-level tab to the WEGN Store Academy
+// lesson (or, for tabs whose ideal lesson isn't built yet, the
+// Academy section) most relevant to what's on screen. The Academy is
+// a separate standalone app (see main.tsx's ?module=guide gate), so
+// "opening" a lesson from here is a real navigation, not in-app
+// routing - it hands off to the Academy bundle with the right hash
+// already set.
+const ACADEMY_HELP_TARGETS: Record<string, string> = {
+  dashboard: "lesson/welcome-to-wegn-store",
+  pos: "lesson/sample-first-sale",
+  inventory: "lesson/inv-1",
+  purchasing: "lesson/pur-1",
+  customers: "lesson/cust-1",
+  employees: "lesson/emp-1",
+  cash_drawer: "lesson/opening-cash-drawer",
+  reports: "lesson/rep-1",
+  copilot: "ai-assistant",
+  settings: "settings",
+};
+
+function openAcademyHelp(activeTab: string) {
+  const target = ACADEMY_HELP_TARGETS[activeTab] ?? "home";
+  window.open(`/?module=guide#${target}`, "_blank", "noopener");
+}
+
 function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canReturnToStaffMode, enterOwnerOverride, restoreDeviceSession, activateDeviceSession, enterEmployeeSession, exitEmployeeSession, registrationIncomplete, registrationRetrying, onRetryBusinessRegistration }: AppProps) {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -5311,6 +5336,24 @@ function App({ userId, userEmail, onSignOut, sessionKind, overrideActive, canRet
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => openAcademyHelp(activeTab)}
+            title="Open the Academy lesson for this screen"
+            aria-label="Help"
+            style={{
+              padding: "8px 12px",
+              background: "transparent",
+              color: "#64748b",
+              border: "1px solid #e2e8f0",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: 600,
+              fontSize: "14px",
+            }}
+          >
+            ? Help
+          </button>
           <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "4px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
             <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "12px", background: "#eff6ff", color: "#1d4ed8", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.05em" }}>{userRole.replace('_', ' ')}</span>
             {staffSession && <span style={{ fontSize: "12px", color: "#64748b" }}>{staffSession.name}</span>}
