@@ -1,40 +1,49 @@
-// Resolves the real signed-in person's name and business, for the one
-// place the Academy actually needs live identity: auto-filling a
-// certificate recipient's name instead of leaving it blank.
+// Suggests real values for the Academy's own learner profile (see
+// useGuideProgress's AcademyProfile), for the one place the Academy
+// actually benefits from live identity: not making a Staff or Owner
+// retype what the Store already knows about them.
 //
 // The Academy is otherwise intentionally backend-free (see
-// GuideProgressContext's header comment) - this is the one deliberate,
-// minimal, read-only exception, because a blank certificate name is a
-// real defect, not a missing feature. It reuses the exact same
-// `supabase` client and session the host app already authenticates
-// with (Supabase persists the session in localStorage by default, so
-// it's readable here too, even though the Academy is a separate
-// standalone mount - see main.tsx).
+// GuideProgressContext's header comment) - this is a deliberate,
+// minimal, read-only exception. It reuses the exact same `supabase`
+// client and session the host app already authenticates with
+// (Supabase persists the session in localStorage by default, so it's
+// readable here too, even though the Academy is a separate standalone
+// mount - see main.tsx).
 //
-// Covers both real-world identities in this schema:
-// - An employee signed in via PIN (Staff Mode): resolved by
-//   `employees.auth_user_id`, which the employee-pin-login Edge
-//   Function sets at login (see supabase/functions/employee-pin-login).
-// - The account Owner: there is no full-name field anywhere in this
-//   schema (auth.signUp collects only email/password - see
-//   AuthGate.tsx), so the email's local part is the best real signal
-//   available, the same fallback Wegn AI's Executive Briefing already
-//   uses (`deriveGreetingName` in executiveBriefing.ts).
+// Importantly, this never assumes every learner is a Store employee:
+// a Partner, Promoter, or other external trainee has no `employees`
+// or `businesses` row to resolve from at all, and that's a normal,
+// expected outcome here, not an error - the profile just stays
+// self-entered for them. That's what makes future partner
+// certification work with zero code changes: same profile shape,
+// this resolver simply contributes nothing for an account it doesn't
+// recognize, and the learner (or whoever sets them up) fills in the
+// rest by hand.
 //
-// Never throws - a resolution failure (signed out, RLS denial, offline)
-// just means the certificate name field stays editable and blank,
-// exactly like today, rather than breaking the page.
+// Never throws - a resolution failure (signed out, RLS denial,
+// offline) just means the profile form stays exactly as it was:
+// blank and editable, never a crash.
 
 import { supabase } from "../../supabase";
+import type { AcademyProfileRole } from "../context/useGuideProgress";
 
-export interface LearnerIdentity {
-  name: string | null;
-  businessName: string | null;
+export interface ResolvedIdentity {
+  /** A real full name, only when one genuinely exists (an employee's
+   *  name on file). Null for an Owner - see the note in
+   *  resolveLearnerIdentity - so the certificate never silently
+   *  substitutes something that isn't actually the person's name. */
+  fullName: string | null;
+  email: string | null;
+  /** The business name, suggested as the profile's Organization -
+   *  never as a stand-in for a person's name. */
+  organization: string | null;
+  role: AcademyProfileRole | null;
 }
 
-const EMPTY_IDENTITY: LearnerIdentity = { name: null, businessName: null };
+const EMPTY_IDENTITY: ResolvedIdentity = { fullName: null, email: null, organization: null, role: null };
 
-export async function resolveLearnerIdentity(): Promise<LearnerIdentity> {
+export async function resolveLearnerIdentity(): Promise<ResolvedIdentity> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return EMPTY_IDENTITY;
@@ -51,7 +60,7 @@ export async function resolveLearnerIdentity(): Promise<LearnerIdentity> {
         .select("name")
         .eq("id", employee.business_id)
         .maybeSingle();
-      return { name: employee.name, businessName: business?.name ?? null };
+      return { fullName: employee.name, email: user.email ?? null, organization: business?.name ?? null, role: "staff" };
     }
 
     const { data: business } = await supabase
@@ -59,8 +68,21 @@ export async function resolveLearnerIdentity(): Promise<LearnerIdentity> {
       .select("name")
       .eq("owner_id", user.id)
       .maybeSingle();
-    const emailLocalPart = user.email ? user.email.split("@")[0] : null;
-    return { name: emailLocalPart, businessName: business?.name ?? null };
+
+    if (business) {
+      // There is no full-name field anywhere in this schema for an
+      // Owner (auth.signUp collects only email/password - see
+      // AuthGate.tsx) - deliberately leaving fullName null rather than
+      // guessing from the business name, which is often not a person's
+      // name at all. The Owner types their own name into the profile
+      // once; only the organization is safe to suggest automatically.
+      return { fullName: null, email: user.email ?? null, organization: business.name, role: "owner" };
+    }
+
+    // Signed in, but neither an employee nor an owner record matched -
+    // e.g. a future Partner/Promoter account type. Nothing to suggest
+    // beyond the email; the rest is self-entered.
+    return { fullName: null, email: user.email ?? null, organization: null, role: null };
   } catch {
     return EMPTY_IDENTITY;
   }

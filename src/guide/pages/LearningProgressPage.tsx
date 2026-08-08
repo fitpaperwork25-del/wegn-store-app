@@ -22,7 +22,7 @@ export default function LearningProgressPage({ onOpenLesson, onGoToSection, onVi
     isLessonUnlocked,
     hasBadge,
     certificates,
-    learnerName,
+    profile,
   } = useGuideProgress();
   const certificateEntries = Object.entries(certificates);
 
@@ -78,7 +78,7 @@ export default function LearningProgressPage({ onOpenLesson, onGoToSection, onVi
               <span className="wg-lesson-row-title">
                 {path.name}
                 <span className="wg-lesson-row-sub">
-                  {learnerName.trim() ? `${learnerName} · ` : ""}Awarded {formatDate(certificate.awardedAt)}
+                  {profile.fullName.trim() ? `${profile.fullName} · ` : ""}Awarded {formatDate(certificate.awardedAt)}
                 </span>
               </span>
               <button type="button" className="wg-btn wg-btn-secondary" onClick={() => onViewCertificate(pathId)}>

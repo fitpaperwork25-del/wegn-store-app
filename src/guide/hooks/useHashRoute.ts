@@ -15,6 +15,10 @@ export interface GuideRoute {
   /** Set only for #certificate/<pathId> — takes priority over
    *  sectionId/lessonId when present. */
   certificatePathId?: string;
+  /** Set only for #verify/<certificateId> — the printable/QR
+   *  verification link on a certificate. Same priority tier as
+   *  certificatePathId (mutually exclusive with it in practice). */
+  verifyCertificateId?: string;
 }
 
 const DEFAULT_ROUTE: GuideRoute = { sectionId: "home", lessonId: null };
@@ -34,6 +38,9 @@ function parseHash(hash: string): GuideRoute {
   if (first === "certificate" && second) {
     return { sectionId: "learning-paths", lessonId: null, certificatePathId: second };
   }
+  if (first === "verify" && second) {
+    return { sectionId: "learning-paths", lessonId: null, verifyCertificateId: second };
+  }
   return { sectionId: (first as GuideSectionId) || "home", lessonId: null };
 }
 
@@ -49,9 +56,11 @@ export function useHashRoute(): [GuideRoute, (route: GuideRoute) => void] {
   const navigate = useCallback((next: GuideRoute) => {
     const hash = next.certificatePathId
       ? `#certificate/${next.certificatePathId}`
-      : next.lessonId
-        ? `#lesson/${next.lessonId}`
-        : `#${next.sectionId}`;
+      : next.verifyCertificateId
+        ? `#verify/${next.verifyCertificateId}`
+        : next.lessonId
+          ? `#lesson/${next.lessonId}`
+          : `#${next.sectionId}`;
     if (window.location.hash !== hash) {
       window.location.hash = hash;
     } else {

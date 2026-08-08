@@ -14,6 +14,7 @@ import LearningProgressPage from "./pages/LearningProgressPage";
 import LearningPathsPage from "./pages/LearningPathsPage";
 import AchievementsPage from "./pages/AchievementsPage";
 import CertificateView from "./pages/CertificateView";
+import VerifyCertificatePage from "./pages/VerifyCertificatePage";
 import RoleSelector from "./components/RoleSelector";
 import { IMPLEMENTED_LESSON_IDS } from "./data/navigation";
 import { POS_LESSONS } from "./data/posLessons";
@@ -47,6 +48,8 @@ function GuideRoutes() {
 
   if (route.certificatePathId) {
     page = <CertificateView pathId={route.certificatePathId} onBack={() => goToSection("learning-paths")} />;
+  } else if (route.verifyCertificateId) {
+    page = <VerifyCertificatePage certificateId={route.verifyCertificateId} onBack={() => goToSection("learning-paths")} />;
   } else if (route.lessonId) {
     const lessonId = route.lessonId;
     const isReal = IMPLEMENTED_LESSON_IDS.has(lessonId);

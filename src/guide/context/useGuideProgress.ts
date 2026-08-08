@@ -26,6 +26,33 @@ export interface CertificateRecord {
   certificateId: string;
 }
 
+/** Every kind of person the Academy can certify. Not every learner is
+ *  a store employee — this is what lets a Partner or Promoter get a
+ *  real, correctly-labeled certificate with zero code changes: they
+ *  just fill in this same profile with role "partner"/"promoter". */
+export type AcademyProfileRole = "owner" | "staff" | "partner" | "promoter" | "trainer" | "other";
+
+export const ACADEMY_PROFILE_ROLE_LABELS: Record<AcademyProfileRole, string> = {
+  owner: "Business Owner",
+  staff: "Staff Member",
+  partner: "Partner",
+  promoter: "Promoter",
+  trainer: "Trainer",
+  other: "Learner",
+};
+
+/** The Academy's own learner profile — independent of the Store's
+ *  employees/businesses tables. Auto-suggested where real Store data
+ *  exists (see lib/identity.ts) but always self-owned and editable,
+ *  since a Partner or Promoter has no Store record to resolve from at
+ *  all. This — not any Store table — is what a certificate renders. */
+export interface AcademyProfile {
+  fullName: string;
+  email: string;
+  organization: string;
+  role: AcademyProfileRole;
+}
+
 export interface GuideProgressValue {
   theme: "light" | "dark";
   toggleTheme: () => void;
@@ -66,13 +93,13 @@ export interface GuideProgressValue {
 
   userRole: string | null;
   setUserRole: (roleId: string) => void;
-  learnerName: string;
-  setLearnerName: (name: string) => void;
 
-  /** The signed-in account's real business name, resolved once from
-   *  Supabase (see lib/identity.ts) — null if unresolved/unavailable.
-   *  Read-only: there's nothing to "correct" here the way a name can be. */
-  businessName: string | null;
+  /** The Academy's own learner profile (see AcademyProfile) — what
+   *  every certificate actually renders. Auto-suggested once from
+   *  Supabase where real Store data exists (lib/identity.ts), then
+   *  fully owned by the learner from that point on. */
+  profile: AcademyProfile;
+  setProfile: (patch: Partial<AcademyProfile>) => void;
 
   currentPathId: string | null;
   setCurrentPathId: (pathId: string | null) => void;

@@ -14,9 +14,17 @@ import { ALL_LESSON_STUBS } from "../data/navigation";
 import { LEARNING_PATHS } from "../data/learningPaths";
 import { getLevelForCompletedCount } from "../data/levels";
 import { resolveLearnerIdentity } from "../lib/identity";
-import { GuideProgressContext, type CertificateRecord, type GuideProgressValue, type PathProgress } from "./useGuideProgress";
+import {
+  GuideProgressContext,
+  type AcademyProfile,
+  type CertificateRecord,
+  type GuideProgressValue,
+  type PathProgress,
+} from "./useGuideProgress";
 
 const STORAGE_KEY = "wegn-store-guide:v1";
+
+const DEFAULT_PROFILE: AcademyProfile = { fullName: "", email: "", organization: "", role: "owner" };
 
 interface StoredState {
   completedLessonIds: string[];
@@ -25,11 +33,10 @@ interface StoredState {
   lastSectionId: GuideSectionId | null;
   theme: "light" | "dark";
   userRole: string | null;
-  learnerName: string;
-  /** Auto-resolved once from the signed-in account (see lib/identity.ts).
-   *  Kept separate from learnerName so a manual correction never gets
-   *  silently overwritten by a later resolution. */
-  businessName: string | null;
+  /** The Academy's own learner profile — see AcademyProfile. Not tied
+   *  to any Store table, so a Partner or Promoter with no Store record
+   *  at all can still hold a complete, correctly-labeled profile. */
+  profile: AcademyProfile;
   currentPathId: string | null;
   certificates: Record<string, CertificateRecord>;
   lastActiveDate: string | null;
@@ -44,14 +51,26 @@ const DEFAULT_STATE: StoredState = {
   lastSectionId: null,
   theme: "light",
   userRole: null,
-  learnerName: "",
-  businessName: null,
+  profile: DEFAULT_PROFILE,
   currentPathId: null,
   certificates: {},
   lastActiveDate: null,
   currentStreak: 0,
   longestStreak: 0,
 };
+
+/** Pre-profile installs stored a bare `learnerName` string (and,
+ *  briefly, a separate `businessName`). Migrated once into the new
+ *  profile shape so nobody's already-typed name gets silently dropped. */
+function migrateProfile(parsed: Record<string, unknown>): AcademyProfile {
+  if (parsed.profile && typeof parsed.profile === "object") {
+    return { ...DEFAULT_PROFILE, ...(parsed.profile as Partial<AcademyProfile>) };
+  }
+  const legacyName = typeof parsed.learnerName === "string" ? parsed.learnerName : "";
+  const legacyBusiness = typeof parsed.businessName === "string" ? parsed.businessName : "";
+  if (!legacyName && !legacyBusiness) return DEFAULT_PROFILE;
+  return { ...DEFAULT_PROFILE, fullName: legacyName, organization: legacyBusiness };
+}
 
 /** Stable, human-readable, and unique enough for a client-only academy
  *  with no backend of its own: readable prefix + path + award date for
@@ -129,7 +148,12 @@ function loadState(): StoredState {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_STATE, ...parsed, certificates: migrateCertificates(parsed.certificates) };
+    return {
+      ...DEFAULT_STATE,
+      ...parsed,
+      certificates: migrateCertificates(parsed.certificates),
+      profile: migrateProfile(parsed),
+    };
   } catch {
     // Corrupt or inaccessible storage (private browsing, quota, etc.)
     // degrades to defaults rather than throwing - this is convenience
@@ -163,22 +187,34 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     root?.setAttribute("data-guide-theme", state.theme);
   }, [state.theme]);
 
-  // Auto-fill the certificate recipient's real name/business, once,
-  // from whatever Supabase session is already live (see lib/identity.ts)
-  // — never overwriting a name the learner already typed themselves.
-  // A resolution failure (signed out, offline, RLS) just leaves the
-  // field exactly as it was: empty and editable, same as before this
-  // existed.
+  // Auto-suggest the Academy profile, once, from whatever Supabase
+  // session is already live (see lib/identity.ts) — but only while the
+  // profile is still completely untouched (every field blank), so a
+  // manual edit — including a Partner or Promoter filling in their own
+  // profile with no Store account behind it at all — is never
+  // overwritten. A resolution failure (signed out, offline, RLS) just
+  // leaves the form exactly as it was: blank and editable, same as
+  // before this existed.
   useEffect(() => {
     let cancelled = false;
-    if (state.learnerName.trim() && state.businessName) return;
-    resolveLearnerIdentity().then(({ name, businessName }) => {
+    const p = state.profile;
+    if (p.fullName.trim() || p.email.trim() || p.organization.trim()) return;
+    resolveLearnerIdentity().then((resolved) => {
       if (cancelled) return;
-      setState((prev) => ({
-        ...prev,
-        learnerName: prev.learnerName.trim() ? prev.learnerName : (name ?? prev.learnerName),
-        businessName: prev.businessName ?? businessName,
-      }));
+      if (!resolved.fullName && !resolved.email && !resolved.organization && !resolved.role) return;
+      setState((prev) => {
+        const cur = prev.profile;
+        if (cur.fullName.trim() || cur.email.trim() || cur.organization.trim()) return prev;
+        return {
+          ...prev,
+          profile: {
+            fullName: resolved.fullName ?? cur.fullName,
+            email: resolved.email ?? cur.email,
+            organization: resolved.organization ?? cur.organization,
+            role: resolved.role ?? cur.role,
+          },
+        };
+      });
     });
     return () => {
       cancelled = true;
@@ -252,8 +288,8 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, userRole: roleId }));
   }, []);
 
-  const setLearnerName = useCallback((name: string) => {
-    setState((prev) => ({ ...prev, learnerName: name }));
+  const setProfile = useCallback((patch: Partial<AcademyProfile>) => {
+    setState((prev) => ({ ...prev, profile: { ...prev.profile, ...patch } }));
   }, []);
 
   const setCurrentPathId = useCallback((pathId: string | null) => {
@@ -324,11 +360,10 @@ export function GuideProgressProvider({ children }: { children: ReactNode }) {
     lastActiveDate: state.lastActiveDate,
     currentStreak: state.currentStreak,
     longestStreak: state.longestStreak,
-    businessName: state.businessName,
     userRole: state.userRole,
     setUserRole,
-    learnerName: state.learnerName,
-    setLearnerName,
+    profile: state.profile,
+    setProfile,
     currentPathId: state.currentPathId,
     setCurrentPathId,
     getPathProgress,
