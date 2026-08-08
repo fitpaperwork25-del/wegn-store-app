@@ -2,8 +2,8 @@
 // host app has none either - checked package.json before adding this)
 // and no server-side rewrite config is needed since '#...' never
 // leaves the client. Gives the guide real, shareable, back/forward-
-// capable URLs (e.g. #inventory, #lesson/sample-first-sale) without
-// any new infrastructure.
+// capable URLs (e.g. #inventory, #lesson/sample-first-sale,
+// #certificate/cashier-certification) without any new infrastructure.
 
 import { useCallback, useEffect, useState } from "react";
 import type { GuideSectionId } from "../data/navigation";
@@ -11,6 +11,9 @@ import type { GuideSectionId } from "../data/navigation";
 export interface GuideRoute {
   sectionId: GuideSectionId;
   lessonId: string | null;
+  /** Set only for #certificate/<pathId> — takes priority over
+   *  sectionId/lessonId when present. */
+  certificatePathId?: string;
 }
 
 const DEFAULT_ROUTE: GuideRoute = { sectionId: "home", lessonId: null };
@@ -21,6 +24,9 @@ function parseHash(hash: string): GuideRoute {
   const [first, second] = clean.split("/");
   if (first === "lesson" && second) {
     return { sectionId: "getting-started", lessonId: second };
+  }
+  if (first === "certificate" && second) {
+    return { sectionId: "learning-paths", lessonId: null, certificatePathId: second };
   }
   return { sectionId: (first as GuideSectionId) || "home", lessonId: null };
 }
@@ -35,7 +41,11 @@ export function useHashRoute(): [GuideRoute, (route: GuideRoute) => void] {
   }, []);
 
   const navigate = useCallback((next: GuideRoute) => {
-    const hash = next.lessonId ? `#lesson/${next.lessonId}` : `#${next.sectionId}`;
+    const hash = next.certificatePathId
+      ? `#certificate/${next.certificatePathId}`
+      : next.lessonId
+        ? `#lesson/${next.lessonId}`
+        : `#${next.sectionId}`;
     if (window.location.hash !== hash) {
       window.location.hash = hash;
     } else {

@@ -6,6 +6,17 @@
 
 import { createContext, useContext } from "react";
 import type { GuideSectionId } from "../data/navigation";
+import type { AcademyLevel } from "../data/levels";
+
+export interface PathProgress {
+  pathId: string;
+  completedCount: number;
+  totalCount: number;
+  percentComplete: number;
+  isUnlocked: boolean;
+  isCertified: boolean;
+  certifiedAt: string | null;
+}
 
 export interface GuideProgressValue {
   theme: "light" | "dark";
@@ -29,7 +40,36 @@ export interface GuideProgressValue {
   setLastSectionId: (id: GuideSectionId) => void;
   totalLessons: number;
   completedCount: number;
+  lessonsRemaining: number;
   percentComplete: number;
+
+  /** Estimated minutes invested, summing the `minutes` of every
+   *  completed lesson — the only honest "time spent" figure available
+   *  without a real running timer. */
+  timeSpentMinutes: number;
+  level: AcademyLevel;
+
+  /** yyyy-mm-dd of the last day a lesson was completed, and the
+   *  resulting consecutive-day streak. Updated automatically by
+   *  markLessonComplete. */
+  lastActiveDate: string | null;
+  currentStreak: number;
+  longestStreak: number;
+
+  userRole: string | null;
+  setUserRole: (roleId: string) => void;
+  learnerName: string;
+  setLearnerName: (name: string) => void;
+
+  currentPathId: string | null;
+  setCurrentPathId: (pathId: string | null) => void;
+  getPathProgress: (pathId: string) => PathProgress;
+
+  /** pathId -> ISO date the certificate was earned. Awarded
+   *  automatically the moment every lesson in a path is complete —
+   *  see GuideProgressContext's completion effect. */
+  certificates: Record<string, string>;
+  isPathCertified: (pathId: string) => boolean;
 }
 
 export const GuideProgressContext = createContext<GuideProgressValue | null>(null);

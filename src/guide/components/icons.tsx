@@ -51,6 +51,8 @@ export const GuideIcon = {
   check: (p: IconProps) => base(<path d="M4 12.5 9.5 18 20 6.5" />, p),
   grid: (p: IconProps) => base(<><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.5" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1.5" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.5" /><rect x="13" y="13" width="7.5" height="7.5" rx="1.5" /></>, p),
   receipt: (p: IconProps) => base(<><path d="M6 3.5h12v17l-2.5-1.6-2.5 1.6-2.5-1.6L8 20.5l-2-1.3V3.5Z" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4" /></>, p),
+  compass: (p: IconProps) => base(<><circle cx="12" cy="12" r="9.5" /><path d="m15 9-4.5 1.5L9 15l4.5-1.5L15 9Z" /></>, p),
+  flame: (p: IconProps) => base(<path d="M12 21.5c-4 0-6.5-2.7-6.5-6 0-2.6 1.7-4 2.6-6.1.6 1 .9 2 .9 2.9 0-3.3 1.4-6.2 3.7-7.8-.4 2-.1 3.6.9 5 .6-1 .8-1.9.8-2.9 2 1.7 4.1 4.2 4.1 7.9 0 3.3-2.5 7-6.5 7Z" />, p),
 } as const;
 
 export type GuideIconName = keyof typeof GuideIcon;

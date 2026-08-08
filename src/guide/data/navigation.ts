@@ -8,6 +8,8 @@
 export type GuideSectionId =
   | "home"
   | "search"
+  | "learning-paths"
+  | "achievements"
   | "getting-started"
   | "daily-operations"
   | "inventory"
@@ -47,6 +49,8 @@ export interface GuideNavItem {
 export const GUIDE_NAV: GuideNavItem[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "search", label: "Search", icon: "search" },
+  { id: "learning-paths", label: "Learning Paths", icon: "compass" },
+  { id: "achievements", label: "Achievements", icon: "trophy" },
   {
     id: "getting-started",
     label: "Getting Started",
