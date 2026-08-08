@@ -155,6 +155,13 @@ export const GUIDE_NAV: GuideNavItem[] = [
       { id: "inv-3", title: "Running a stock count", minutes: 8, implemented: true, prerequisiteLessonId: "inv-2" },
       { id: "inv-4", title: "Editing, Deactivating, and Organizing Products", minutes: 5, implemented: true, prerequisiteLessonId: "inv-3" },
       { id: "inv-5", title: "Printing Barcode Labels", minutes: 3, implemented: true, prerequisiteLessonId: "inv-4" },
+      { id: "inv-6", title: "Running a Receiving Session", minutes: 6, implemented: true, prerequisiteLessonId: "inv-5" },
+      { id: "inv-7", title: "Rapid Receive & Smart Receive", minutes: 4, implemented: true, prerequisiteLessonId: "inv-6" },
+      { id: "inv-8", title: "Receiving History, Invoices & Supplier Linking", minutes: 5, implemented: true, prerequisiteLessonId: "inv-7" },
+      { id: "inv-9", title: "Bulk Importing Products via CSV", minutes: 5, implemented: true, prerequisiteLessonId: "inv-8" },
+      { id: "inv-10", title: "Investigating Transaction History", minutes: 4, implemented: true, prerequisiteLessonId: "inv-9" },
+      { id: "inv-11", title: "Expiration & Batch Tracking", minutes: 5, implemented: true, prerequisiteLessonId: "inv-10" },
+      { id: "inv-12", title: "Adjusting Inventory", minutes: 4, implemented: true, prerequisiteLessonId: "inv-11" },
     ],
   },
   {

@@ -666,6 +666,521 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         explanation: "Auto-fill only works for barcodes your business has already used — there's no external lookup.",
       },
     ],
+    nextLesson: { lessonId: "inv-6", sectionId: "inventory", title: "Running a Receiving Session" },
+  },
+
+  "inv-6": {
+    id: "inv-6",
+    sectionId: "inventory",
+    title: "Running a Receiving Session",
+    minutes: 6,
+    badgeId: "receiving-session-runner",
+    overview: {
+      objectives: [
+        "Start a Receiving Session against a supplier",
+        "Scan items in and capture batch/lot/expiry when required",
+        "Post or cancel a session",
+      ],
+      summary: "A Receiving Session is the full scan-as-you-go way to bring in a shipment — separate from receiving against a specific PO — with per-line cost, quantity, and tracking details captured as you go.",
+      whyItMatters: "It's the fastest way to receive stock accurately, and it saves your progress if you get interrupted partway through.",
+    },
+    walkthrough: {
+      screenLabel: "Receiving Sessions (Inventory tab)",
+      callouts: [
+        { label: "1", title: "Start a session", description: "Optionally pick a supplier and add notes, then start scanning items in." },
+        { label: "2", title: "Scan-to-add loop", description: "Each scan adds a line; edit unit cost and quantity per line as you go." },
+        { label: "3", title: "Batch/lot/expiry capture", description: "For any product tracked by expiration/batch, lot number and expiration date are required before that line can be posted; manufacture date is optional." },
+        { label: "4", title: "Post or Cancel", description: "Post commits the session and updates stock; the session persists if you navigate away and come back, so Cancel is a deliberate discard, not a timeout." },
+      ],
+    },
+    practice: {
+      intro: "Start a session, scan in an item, and post it.",
+      steps: [
+        { title: "Start a Receiving Session", description: "Pick a supplier or leave it blank." },
+        { title: "Scan or add a line item", description: "Set its quantity and unit cost." },
+        { title: "Post the session", description: "Confirm stock updates." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Double-check unit cost per line before posting — it feeds average cost calculations right away." },
+        { text: "If you're interrupted, it's safe to navigate away — the session is still there when you come back." },
+      ],
+      watchOutFor: [
+        { text: "Forgetting lot number and expiration date on a tracked product — the line can't post without them." },
+        { text: "Using Cancel when you meant to just pause — Cancel discards the session's progress." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What happens if you navigate away mid-session?",
+        options: [
+          { text: "The session persists — you can come back and continue", correct: true },
+          { text: "It's automatically posted", correct: false },
+          { text: "It's lost immediately", correct: false },
+        ],
+        explanation: "Receiving Sessions are saved as you go, not just on Post.",
+      },
+      {
+        question: "What's required before posting a line for a batch-tracked product?",
+        options: [
+          { text: "Lot number and expiration date", correct: true },
+          { text: "Nothing extra — it posts like any other line", correct: false },
+          { text: "A supplier invoice number", correct: false },
+        ],
+        explanation: "Tracked products require lot/expiration before that line can post; manufacture date is optional.",
+      },
+      {
+        question: "What does Cancel do to a Receiving Session?",
+        options: [
+          { text: "Discards its progress — it's not the same as pausing", correct: true },
+          { text: "Saves it for later automatically", correct: false },
+          { text: "Posts it with zero quantities", correct: false },
+        ],
+        explanation: "Cancel is a deliberate discard — pausing is just leaving the screen, no Cancel needed.",
+      },
+    ],
+    nextLesson: { lessonId: "inv-7", sectionId: "inventory", title: "Rapid Receive & Smart Receive" },
+  },
+
+  "inv-7": {
+    id: "inv-7",
+    sectionId: "inventory",
+    title: "Rapid Receive & Smart Receive",
+    minutes: 4,
+    badgeId: "rapid-receiver",
+    overview: {
+      objectives: [
+        "Use Rapid Receive to post a shipment in one batch",
+        "Handle exceptions Rapid Receive flags",
+        "Know what Smart Receive's camera entry point does",
+      ],
+      summary: "Rapid Receive is a faster, scan-to-list alternative to a full Receiving Session, built for when you just need stock in fast. Smart Receive adds a camera-based entry point to the same idea.",
+      whyItMatters: "Not every shipment needs full batch/lot tracking — Rapid Receive trades some detail for speed when that's the right call.",
+    },
+    walkthrough: {
+      screenLabel: "Rapid Receive (Inventory tab)",
+      callouts: [
+        { label: "1", title: "Scan-to-list", description: "Scan items one after another into a running list instead of a full session workflow." },
+        { label: "2", title: "Exceptions list", description: "Anything that didn't scan cleanly (unmatched barcode, missing info) is called out separately instead of silently dropped." },
+        { label: "3", title: "Post in one batch", description: "The whole list is committed to stock in a single action, once you're satisfied with it." },
+        { label: "4", title: "Smart Receive", description: "A camera-based entry point into the same fast-receive idea — point your camera instead of using a dedicated scanner." },
+      ],
+    },
+    practice: {
+      intro: "Scan a few items into Rapid Receive and post the batch.",
+      steps: [
+        { title: "Scan several items", description: "Build the running list." },
+        { title: "Check the exceptions list", description: "See anything flagged." },
+        { title: "Post the batch", description: "Commit it all to stock at once." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Use Rapid Receive for a quick, simple restock; use a full Receiving Session when you need batch/lot/expiry tracking or per-line cost review." },
+        { text: "Always check the exceptions list before posting — it's there so nothing gets silently missed." },
+      ],
+      watchOutFor: [
+        { text: "Posting without reviewing exceptions — an unmatched item flagged there won't be in your stock count otherwise." },
+        { text: "Using Rapid Receive for a shipment that actually needs batch/expiry tracking — use a full Receiving Session instead." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What's the main trade-off Rapid Receive makes vs. a full Receiving Session?",
+        options: [
+          { text: "Speed over detailed per-line tracking", correct: true },
+          { text: "It's slower but more accurate", correct: false },
+          { text: "It only works for returns", correct: false },
+        ],
+        explanation: "Rapid Receive is the fast path — a full session is the detailed path.",
+      },
+      {
+        question: "What happens to items that don't scan cleanly in Rapid Receive?",
+        options: [
+          { text: "They're called out in an exceptions list", correct: true },
+          { text: "They're silently dropped", correct: false },
+          { text: "They block the entire batch from posting", correct: false },
+        ],
+        explanation: "Exceptions are surfaced, not hidden or fatal to the rest of the batch.",
+      },
+      {
+        question: "What is Smart Receive?",
+        options: [
+          { text: "A camera-based entry point into fast receiving", correct: true },
+          { text: "An AI feature that receives shipments automatically with no input", correct: false },
+          { text: "A separate product database lookup", correct: false },
+        ],
+        explanation: "It's a camera-driven way into the same rapid-receiving flow, not an autonomous feature.",
+      },
+    ],
+    nextLesson: { lessonId: "inv-8", sectionId: "inventory", title: "Receiving History, Invoices & Supplier Linking" },
+  },
+
+  "inv-8": {
+    id: "inv-8",
+    sectionId: "inventory",
+    title: "Receiving History, Invoices & Supplier Linking",
+    minutes: 5,
+    badgeId: "receiving-historian",
+    overview: {
+      objectives: [
+        "Review a past Receiving Session's line-item detail",
+        "Understand invoice reconciliation — auto-approved vs. flagged variance",
+        "Record a payment and resolve an unlinked supplier",
+      ],
+      summary: "Every posted Receiving Session is reviewable afterward, along with the invoice it generated — some invoices reconcile automatically, others need your eyes on a variance.",
+      whyItMatters: "This is where a receiving mistake or a supplier mismatch actually gets caught and fixed, after the fact.",
+    },
+    walkthrough: {
+      screenLabel: "Receiving Session History",
+      callouts: [
+        { label: "1", title: "Expandable session detail", description: "Open any past session to see its full line-item breakdown." },
+        { label: "2", title: "Invoice reconciliation", description: "An invoice that matches expected totals is auto-approved; a mismatch is flagged as a variance for you to review." },
+        { label: "3", title: "Record a payment", description: "Apply a payment against a receiving-generated invoice, same as any supplier invoice." },
+        { label: "4", title: "Link Supplier", description: "If a session was recorded without a linked supplier record, resolve it here — creating a new supplier requires supplier-management permission." },
+      ],
+    },
+    practice: {
+      intro: "Open a past session, then resolve an unlinked supplier if one exists.",
+      steps: [
+        { title: "Open a past Receiving Session", description: "Review its line items." },
+        { title: "Check its invoice status", description: "See whether it auto-approved or flagged a variance." },
+        { title: "Use Link Supplier if needed", description: "Attach a proper supplier record." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Investigate a flagged variance promptly — it means what was recorded doesn't match what was expected." },
+        { text: "Link a supplier as soon as you notice one is missing — it keeps your Supplier Statements accurate." },
+      ],
+      watchOutFor: [
+        { text: "Ignoring a variance-flagged invoice because the shipment itself already got put away." },
+        { text: "Assuming every receiving invoice auto-approves — only matching ones do." },
+      ],
+    },
+    quiz: [
+      {
+        question: "When is a receiving-generated invoice auto-approved?",
+        options: [
+          { text: "When it matches the expected totals", correct: true },
+          { text: "Always, automatically", correct: false },
+          { text: "Only if the Owner approves it manually every time", correct: false },
+        ],
+        explanation: "A mismatch gets flagged as a variance instead of auto-approving.",
+      },
+      {
+        question: "What does Link Supplier resolve?",
+        options: [
+          { text: "A receiving session or invoice that has no linked supplier record", correct: true },
+          { text: "A customer's loyalty points", correct: false },
+          { text: "An employee's role", correct: false },
+        ],
+        explanation: "It's specifically for attaching a proper supplier record after the fact.",
+      },
+      {
+        question: "Who can create a new supplier from the Link Supplier flow?",
+        options: [
+          { text: "Only someone with supplier-management permission", correct: true },
+          { text: "Anyone who can view Inventory", correct: false },
+          { text: "Only the employee who ran the session", correct: false },
+        ],
+        explanation: "Creating a supplier here is gated the same as supplier management anywhere else.",
+      },
+    ],
+    nextLesson: { lessonId: "inv-9", sectionId: "inventory", title: "Bulk Importing Products via CSV" },
+  },
+
+  "inv-9": {
+    id: "inv-9",
+    sectionId: "inventory",
+    title: "Bulk Importing Products via CSV",
+    minutes: 5,
+    badgeId: "csv-importer",
+    overview: {
+      objectives: [
+        "Download the CSV import template",
+        "Preview and validate rows before importing",
+        "Read the import results summary",
+      ],
+      summary: "Adding products one at a time doesn't scale for a big catalog — CSV import lets you bring in many products at once, with every row checked before anything is saved.",
+      whyItMatters: "Catching a bad row before import beats discovering a broken product record afterward.",
+    },
+    walkthrough: {
+      screenLabel: "Bulk Import (Inventory tab)",
+      callouts: [
+        { label: "1", title: "Download template", description: "Get the exact CSV column format WEGN Store expects." },
+        { label: "2", title: "Upload & preview", description: "Every row is checked and shown with a status: valid, missing name, missing price, invalid price, or duplicate barcode." },
+        { label: "3", title: "Import valid rows only", description: "Rows with problems are skipped, not silently guessed at or force-imported." },
+        { label: "4", title: "Results summary", description: "Shows exactly how many rows were imported, skipped, and failed." },
+      ],
+    },
+    practice: {
+      intro: "Download the template, then preview a file before importing.",
+      steps: [
+        { title: "Download the CSV template", description: "See the required columns." },
+        { title: "Upload a file and review the preview", description: "Check each row's validation status." },
+        { title: "Run the import", description: "Read the results summary." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Always start from the downloaded template — it guarantees the columns line up." },
+        { text: "Fix flagged rows in your spreadsheet and re-upload rather than importing partial data repeatedly." },
+      ],
+      watchOutFor: [
+        { text: "Assuming a row with a problem still gets imported — only valid rows go in." },
+        { text: "Not checking the results summary — it's the only place that confirms what actually happened." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What happens to a row flagged as \"duplicate barcode\"?",
+        options: [
+          { text: "It's skipped, not imported", correct: true },
+          { text: "It overwrites the existing product", correct: false },
+          { text: "It's imported with a blank barcode", correct: false },
+        ],
+        explanation: "Only valid rows are imported — problem rows are skipped and reported.",
+      },
+      {
+        question: "Where do you get the correct column format for import?",
+        options: [
+          { text: "The downloadable CSV template", correct: true },
+          { text: "Any spreadsheet works, formatted however you like", correct: false },
+          { text: "It's auto-detected regardless of columns", correct: false },
+        ],
+        explanation: "The template guarantees your columns match what the importer expects.",
+      },
+      {
+        question: "What does the results summary show?",
+        options: [
+          { text: "Counts of imported, skipped, and failed rows", correct: true },
+          { text: "Only a success/fail flag with no detail", correct: false },
+          { text: "Nothing — you have to check the catalog manually", correct: false },
+        ],
+        explanation: "It's a direct accounting of what the import actually did.",
+      },
+    ],
+    nextLesson: { lessonId: "inv-10", sectionId: "inventory", title: "Investigating Transaction History" },
+  },
+
+  "inv-10": {
+    id: "inv-10",
+    sectionId: "inventory",
+    title: "Investigating Transaction History",
+    minutes: 4,
+    badgeId: "transaction-investigator",
+    overview: {
+      objectives: [
+        "Filter Transaction History by date range and movement type",
+        "Read a single transaction's before/after quantities",
+        "Use Transaction History to investigate a stock discrepancy",
+      ],
+      summary: "Every stock-changing event — sales, receiving, returns, voids, damaged/expired/lost, corrections — is logged here, individually, with the quantity before and after.",
+      whyItMatters: "When a product's stock doesn't look right, this is where you trace exactly what changed it and when.",
+    },
+    walkthrough: {
+      screenLabel: "Transaction History (Inventory tab)",
+      callouts: [
+        { label: "1", title: "Date range filter", description: "Today, Last 7 Days, Last 30 Days, or All Time." },
+        { label: "2", title: "Movement-type filter", description: "All, Sale, Receiving, Return, Void, Damaged, Expired, Lost, or Correction." },
+        { label: "3", title: "Before/After columns", description: "Every row shows the exact quantity before and after that single event — the full audit trail for one product's stock." },
+      ],
+    },
+    practice: {
+      intro: "Filter to a specific movement type and trace one product's history.",
+      steps: [
+        { title: "Filter to \"Damaged\"", description: "See only damage-related stock changes." },
+        { title: "Switch to Last 30 Days", description: "Widen the window." },
+        { title: "Read one row's Before/After", description: "Confirm the math matches the Change column." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Start a stock investigation here before assuming a count was wrong — the transaction log usually explains it." },
+        { text: "Filter by movement type first, then narrow the date range, to find a specific event fast." },
+      ],
+      watchOutFor: [
+        { text: "Assuming a stock discrepancy is a bug before checking whether a logged adjustment or correction explains it." },
+        { text: "Forgetting sales and receiving both show up here too — it's not just for damage/loss events." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What movement types can you filter by?",
+        options: [
+          { text: "Sale, Receiving, Return, Void, Damaged, Expired, Lost, Correction", correct: true },
+          { text: "Only Sale and Return", correct: false },
+          { text: "Only Damaged and Expired", correct: false },
+        ],
+        explanation: "The filter covers every kind of event that can change stock.",
+      },
+      {
+        question: "What do the Before/After columns show?",
+        options: [
+          { text: "The exact quantity on hand immediately before and after that one event", correct: true },
+          { text: "The product's price before and after a change", correct: false },
+          { text: "The supplier before and after a change", correct: false },
+        ],
+        explanation: "It's a per-event quantity audit trail, not a pricing or supplier log.",
+      },
+      {
+        question: "Where should you look first when a product's stock doesn't match what you expect?",
+        options: [
+          { text: "Transaction History", correct: true },
+          { text: "Employee settings", correct: false },
+          { text: "The receipt printer", correct: false },
+        ],
+        explanation: "It's the definitive record of every event that touched that product's stock.",
+      },
+    ],
+    nextLesson: { lessonId: "inv-11", sectionId: "inventory", title: "Expiration & Batch Tracking" },
+  },
+
+  "inv-11": {
+    id: "inv-11",
+    sectionId: "inventory",
+    title: "Expiration & Batch Tracking",
+    minutes: 5,
+    badgeId: "batch-tracker",
+    overview: {
+      objectives: [
+        "Read the Expired / Expires ≤7 days / Expires ≤30 days dashboard tiles",
+        "Find a specific batch's lot number, supplier, and quantity remaining",
+        "Write off an expired batch",
+      ],
+      summary: "For any product with expiration/batch tracking turned on, WEGN Store tracks each batch separately — with its own lot number, expiration date, and remaining quantity.",
+      whyItMatters: "Selling expired stock or losing track of a recall-relevant lot number is a real risk this panel exists to prevent.",
+    },
+    walkthrough: {
+      screenLabel: "Stock Integrity — Expiration Tracking",
+      callouts: [
+        { label: "1", title: "Dashboard tiles", description: "Expired, Expires ≤7 days, and Expires ≤30 days — computed live from every active batch's expiration date." },
+        { label: "2", title: "Batch list", description: "Product, expiry date, lot #, batch #, supplier, and quantity remaining vs. received, per batch." },
+        { label: "3", title: "Write Off Batch", description: "Enter a quantity (must be more than zero and no more than what remains) and confirm — it reduces both that batch's remaining quantity and the product's total stock." },
+      ],
+    },
+    practice: {
+      intro: "Review the dashboard tiles, then write off a batch.",
+      steps: [
+        { title: "Check the Expires ≤7 days tile", description: "See what's coming due soon." },
+        { title: "Open a batch's detail", description: "Note its lot number and remaining quantity." },
+        { title: "Write off part of a batch", description: "Confirm both the batch and product stock update." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Check Expires ≤30 days regularly, not just Expired — it gives you time to discount or move the product first." },
+        { text: "Write off the exact quantity that's actually expired or unsellable, not the whole batch by habit." },
+      ],
+      watchOutFor: [
+        { text: "Trying to write off more than a batch's remaining quantity — it's blocked." },
+        { text: "Forgetting a batch hitting zero remaining is marked expired automatically." },
+      ],
+    },
+    quiz: [
+      {
+        question: "What determines whether a product uses batch tracking at all?",
+        options: [
+          { text: "A per-product tracking-mode setting", correct: true },
+          { text: "Every product is tracked by batch automatically", correct: false },
+          { text: "Only products from certain suppliers", correct: false },
+        ],
+        explanation: "Batch/expiration tracking is opt-in per product.",
+      },
+      {
+        question: "What's the limit on writing off a batch?",
+        options: [
+          { text: "You can't write off more than its remaining quantity", correct: true },
+          { text: "There's no limit", correct: false },
+          { text: "You can only write off the entire batch, never a partial amount", correct: false },
+        ],
+        explanation: "Write-off quantity is bounded between zero (exclusive) and the batch's current remaining quantity.",
+      },
+      {
+        question: "What happens when a batch's remaining quantity hits zero?",
+        options: [
+          { text: "It's automatically marked expired", correct: true },
+          { text: "It's deleted from the system", correct: false },
+          { text: "Nothing — it stays active indefinitely", correct: false },
+        ],
+        explanation: "A depleted batch is marked expired rather than left in an ambiguous active state.",
+      },
+    ],
+    nextLesson: { lessonId: "inv-12", sectionId: "inventory", title: "Adjusting Inventory" },
+  },
+
+  "inv-12": {
+    id: "inv-12",
+    sectionId: "inventory",
+    title: "Adjusting Inventory",
+    minutes: 4,
+    badgeId: "inventory-adjuster",
+    overview: {
+      objectives: [
+        "Choose the right adjustment type for a stock discrepancy",
+        "Know which types add vs. subtract",
+        "Understand the negative-stock guard",
+      ],
+      summary: "Adjust Inventory is the direct way to correct stock outside of a sale, receiving, or count — Damaged, Expired, Lost, Found/Extra, or a plain Correction.",
+      whyItMatters: "Picking the wrong type still moves the number, but it muddies your Transaction History when you go looking for why later.",
+    },
+    walkthrough: {
+      screenLabel: "Stock Integrity — Adjust Inventory",
+      callouts: [
+        { label: "1", title: "Adjustment type", description: "Damaged, Expired, and Lost always subtract; Found/Extra always adds; Correction can go either direction based on what you enter." },
+        { label: "2", title: "Quantity, Reason, Notes", description: "Quantity is required and must be non-zero; Reason and Notes are optional but land in Transaction History for later." },
+        { label: "3", title: "Negative-stock guard", description: "An adjustment that would push a product's stock below zero is blocked outright." },
+      ],
+    },
+    practice: {
+      intro: "Adjust a product's stock down, then try to over-adjust.",
+      steps: [
+        { title: "Adjust a product as Damaged", description: "Enter a quantity and confirm stock drops." },
+        { title: "Add optional Reason and Notes", description: "See them appear in Transaction History." },
+        { title: "Try adjusting below zero", description: "Confirm it's blocked." },
+      ],
+    },
+    tips: {
+      good: [
+        { text: "Always enter a Reason — it's what makes Transaction History useful three months from now." },
+        { text: "Use Correction for a plain count fix, and the specific type (Damaged/Expired/Lost) whenever you know the real cause." },
+      ],
+      watchOutFor: [
+        { text: "Defaulting to Correction for everything — the specific types keep your loss reporting meaningful." },
+        { text: "Trying to adjust a quantity that would take stock negative — the system won't allow it." },
+      ],
+    },
+    quiz: [
+      {
+        question: "Which adjustment type can move stock in either direction?",
+        options: [
+          { text: "Correction", correct: true },
+          { text: "Damaged", correct: false },
+          { text: "Found/Extra", correct: false },
+        ],
+        explanation: "Damaged/Expired/Lost always subtract and Found always adds; Correction is the flexible one.",
+      },
+      {
+        question: "What happens if an adjustment would take a product's stock below zero?",
+        options: [
+          { text: "It's blocked", correct: true },
+          { text: "Stock is set to zero automatically", correct: false },
+          { text: "It's allowed and shows a negative number", correct: false },
+        ],
+        explanation: "Negative stock is guarded against at the adjustment step.",
+      },
+      {
+        question: "Are Reason and Notes required on an adjustment?",
+        options: [
+          { text: "No, they're optional — but they show up in Transaction History if you fill them in", correct: true },
+          { text: "Yes, both are required", correct: false },
+          { text: "Only Notes is required", correct: false },
+        ],
+        explanation: "Only the quantity is required; Reason and Notes are optional context.",
+      },
+    ],
     nextLesson: null,
   },
 
@@ -680,7 +1195,7 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
       objectives: [
         "Create a draft purchase order for a supplier",
         "Add line items with quantity and cost",
-        "Mark a PO as ordered",
+        "Mark a PO as ordered, and find it again in the PO list",
       ],
       summary: "A purchase order tracks what you're buying from a supplier, at what cost, before it ever arrives.",
       whyItMatters: "A clear PO is what you check the shipment against when it shows up — and what your supplier gets billed against.",
@@ -691,14 +1206,15 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         { label: "1", title: "Select supplier", description: "Every PO belongs to one active supplier." },
         { label: "2", title: "Add Item", description: "Pick a product, quantity, and unit cost — repeat for every item on the order." },
         { label: "3", title: "Mark Ordered", description: "Moves the PO from draft to ordered once it's ready to send." },
+        { label: "4", title: "PO list & status filters", description: "Every PO you've ever created lives in one list, filterable by status chip (All/Draft/Awaiting Delivery/Partial/Received/Cancelled), with older POs paginated behind \"Show All.\"" },
       ],
     },
     practice: {
-      intro: "Create a draft PO and add a couple of items.",
+      intro: "Create a draft PO, add a couple of items, then find it in the filtered list.",
       steps: [
         { title: "Select a supplier and create a draft PO", description: "Starts a new purchase order." },
         { title: "Add an item", description: "Enter quantity and unit cost." },
-        { title: "Mark the PO as Ordered", description: "Moves it out of draft." },
+        { title: "Filter the PO list to \"Draft\"", description: "Confirm you can find it there." },
       ],
     },
     tips: {
@@ -738,6 +1254,15 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
           { text: "Automatically receives the shipment", correct: false },
         ],
         explanation: "Marking ordered is a status change, not a receiving action.",
+      },
+      {
+        question: "How do you find every Draft PO you've started?",
+        options: [
+          { text: "Filter the PO list to the \"Draft\" status chip", correct: true },
+          { text: "There's no way to list drafts separately", correct: false },
+          { text: "Search Sales History", correct: false },
+        ],
+        explanation: "The PO list has a status-chip filter covering every stage, including Draft.",
       },
     ],
     nextLesson: { lessonId: "pur-2", sectionId: "purchasing", title: "Receiving a supplier shipment" },
@@ -1065,9 +1590,9 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
     walkthrough: {
       screenLabel: "Customers tab",
       callouts: [
-        { label: "1", title: "Add Customer", description: "Name and phone are required; email is optional." },
+        { label: "1", title: "Add Customer", description: "Name and phone are required; email is optional. A phone number already on file is rejected with \"Phone number already registered\" rather than creating a duplicate." },
         { label: "2", title: "Customer row", description: "Shows visit count, total spend, last visit, and points balance at a glance." },
-        { label: "3", title: "Lookup at POS", description: "Search by name or phone during checkout to attach a customer to a sale." },
+        { label: "3", title: "Lookup at POS", description: "Search by exact name or exact phone during checkout to attach a customer to a sale — it's not a partial/fuzzy search." },
       ],
     },
     practice: {
@@ -1084,8 +1609,8 @@ export const SECTION_LESSONS: Record<string, LessonContent> = {
         { text: "Attach a customer to every sale you can, even small ones — it's what builds their history." },
       ],
       watchOutFor: [
-        { text: "Creating duplicate customer records instead of searching first." },
-        { text: "Skipping the phone number, which makes lookup much slower." },
+        { text: "Trying to re-add a phone number that's already registered — it's blocked, so search first instead." },
+        { text: "Expecting a partial-name match at POS lookup — it needs the exact name or exact phone." },
       ],
     },
     quiz: [

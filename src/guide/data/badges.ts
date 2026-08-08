@@ -259,6 +259,48 @@ export const GUIDE_BADGES: GuideBadge[] = [
     description: "Resolves an unmatched product during receiving without missing a beat.",
     icon: "life-ring",
   },
+  {
+    id: "receiving-session-runner",
+    name: "Receiving Session Runner",
+    description: "Runs a full Receiving Session, including batch and expiry capture.",
+    icon: "box",
+  },
+  {
+    id: "rapid-receiver",
+    name: "Rapid Receiver",
+    description: "Knows when to use Rapid Receive or Smart Receive over a full session.",
+    icon: "box",
+  },
+  {
+    id: "receiving-historian",
+    name: "Receiving Historian",
+    description: "Reviews receiving history, reconciles invoices, and links suppliers.",
+    icon: "receipt",
+  },
+  {
+    id: "csv-importer",
+    name: "CSV Importer",
+    description: "Bulk-imports products via CSV with confidence.",
+    icon: "grid",
+  },
+  {
+    id: "transaction-investigator",
+    name: "Transaction Investigator",
+    description: "Traces a stock discrepancy through Transaction History.",
+    icon: "search",
+  },
+  {
+    id: "batch-tracker",
+    name: "Batch Tracker",
+    description: "Manages expiration and batch tracking, including write-offs.",
+    icon: "box",
+  },
+  {
+    id: "inventory-adjuster",
+    name: "Inventory Adjuster",
+    description: "Picks the right adjustment type for every stock discrepancy.",
+    icon: "gear",
+  },
 ];
 
 export function getBadge(badgeId: string): GuideBadge | undefined {
